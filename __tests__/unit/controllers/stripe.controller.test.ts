@@ -224,7 +224,7 @@ describe('StripeController', () => {
       const response = await controller.createPortalSession(mockCtx, {});
 
       expect(response.success).toBe(true);
-      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'pl');
+      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'pl', false);
       expect(gateway.createPortalSession).not.toHaveBeenCalled();
     });
 
@@ -236,7 +236,25 @@ describe('StripeController', () => {
 
       await controller.createPortalSession(mockCtx, { locale: 'en' });
 
-      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'en');
+      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'en', false);
+    });
+
+    it('selects the caller’s own portal on a personal surface', async () => {
+      billing.createPortalSession.mockResolvedValueOnce({
+        success: true,
+        data: { url: 'https://billing.stripe.com/session' },
+      });
+
+      await controller.createPortalSession(mockCtx, { locale: 'en', scope: 'personal' });
+
+      expect(billing.createPortalSession).toHaveBeenCalledWith(mockCtx, 'en', true);
+    });
+
+    it('rejects an unknown scope with 422 instead of forwarding it', async () => {
+      const response = await controller.createPortalSession(mockCtx, { scope: 'organization' });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.createPortalSession).not.toHaveBeenCalled();
     });
 
     it('rejects an unknown locale with 422 instead of forwarding it', async () => {

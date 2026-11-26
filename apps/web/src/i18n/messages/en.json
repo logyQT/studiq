@@ -2139,6 +2139,8 @@
     "price_free": "Free",
     "cta_register": "Create account",
     "cta_contact": "Let's talk",
+    "cta_change_plan": "Change plan",
+    "cta_current": "Current plan",
     "close_individual_line": "The first plan is free. Turn on the next one when you need it.",
     "close_org_line": "An implementation starts with a conversation about seats and roles.",
     "close_org_cta": "Let's talk rollout",
@@ -3186,7 +3188,8 @@
     "answer_key": "Answer Key",
     "answer_key_desc": "Include a separate answer key page",
     "save": "Save Settings",
-    "saved": "Settings saved"
+    "saved": "Settings saved",
+    "save_failed": "The app cannot save the settings on this device."
   },
   "AppAssignmentsPage": {
     "title": "My Assignments",

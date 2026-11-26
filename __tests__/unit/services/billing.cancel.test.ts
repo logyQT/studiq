@@ -136,6 +136,20 @@ describe('BillingService.cancelSubscription', () => {
     );
   });
 
+  it('cancels the caller’s own row in personal mode even when they may bill the org', async () => {
+    await service.cancelSubscription(managerCtx, true, true);
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.cancelAtPeriodEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
+  });
+
   it('returns NOT_FOUND when there is no active subscription', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(success(null));
 

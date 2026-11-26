@@ -135,9 +135,13 @@ function createReads(overrides: Partial<BillingReadRepository> = {}): BillingRea
   });
 }
 
-function createPlans(result: ServiceResult<PlanInfo> = success(planInfo())) {
-  return asService<Pick<SubscriptionPlanService, 'getMyPlan'>>({
+function createPlans(
+  result: ServiceResult<PlanInfo> = success(planInfo()),
+  personalResult: ServiceResult<PlanInfo> = result,
+) {
+  return asService<Pick<SubscriptionPlanService, 'getMyPlan' | 'getPersonalPlan'>>({
     getMyPlan: vi.fn().mockResolvedValue(result),
+    getPersonalPlan: vi.fn().mockResolvedValue(personalResult),
   });
 }
 
@@ -145,7 +149,7 @@ describe('BillingService.getSubscription', () => {
   let gateway: PaymentGateway;
   let repository: StripeBillingRepository;
   let reads: BillingReadRepository;
-  let plans: Pick<SubscriptionPlanService, 'getMyPlan'>;
+  let plans: Pick<SubscriptionPlanService, 'getMyPlan' | 'getPersonalPlan'>;
   let service: BillingService;
 
   beforeEach(() => {
@@ -481,6 +485,63 @@ describe('BillingService.getSubscription', () => {
     });
   });
 
+  it('reads the caller’s own row in personal mode even when they may bill the org', async () => {
+    reads = createReads({
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
+    });
+    service = new BillingService(gateway, repository, reads, plans);
+
+    // `/app/billing` and `/edu/billing` are the personal surfaces: the same
+    // manager who reads the org row by default reads only their own row here.
+    await service.getSubscription(managerCtx, true);
+
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(reads.findLatestHostedInvoiceUrl).toHaveBeenCalledWith({
+      userId: 'u-9',
+      organizationId: null,
+      stripeSubscriptionId: 'sub_1',
+    });
+  });
+
+  it('names the personal plan on the personal surface and the org plan by default', async () => {
+    const orgPlan = planInfo({
+      key: 'launch',
+      name: 'Launch',
+      priceMonthly: 0,
+      scope: 'organization',
+      audience: null,
+    });
+    const personalPlan = planInfo({ key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 });
+    plans = createPlans(success(orgPlan), success(personalPlan));
+    reads = createReads({
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
+    });
+    service = new BillingService(gateway, repository, reads, plans);
+
+    // A manager holding org.billing.manage with a paid personal plan must see
+    // that plan on `/app/billing`, never the organization's.
+    await expect(service.getSubscription(managerCtx, true)).resolves.toMatchObject({
+      success: true,
+      data: {
+        planKey: 'spark',
+        planName: 'StudiQ Plus',
+        priceMonthly: 1999,
+        status: 'active',
+      },
+    });
+    expect(plans.getPersonalPlan).toHaveBeenCalledWith(managerCtx);
+    expect(plans.getMyPlan).not.toHaveBeenCalled();
+
+    await expect(service.getSubscription(managerCtx)).resolves.toMatchObject({
+      success: true,
+      data: { planKey: 'launch', planName: 'Launch', priceMonthly: 0 },
+    });
+    expect(plans.getMyPlan).toHaveBeenCalledWith(managerCtx);
+  });
+
   it('resolves a student holding org.billing.manage to the org row', async () => {
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
@@ -604,6 +665,21 @@ describe('BillingService.createPortalSession', () => {
       returnUrl: 'https://studiq.test/edu/billing',
       locale: 'en',
     });
+  });
+
+  it('opens the caller’s own portal and returns to the personal page in personal mode', async () => {
+    await service.createPortalSession(managerCtx, 'pl', true);
+
+    expect(repository.findCustomer).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.createPortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+        returnUrl: 'https://studiq.test/app/billing',
+      }),
+    );
   });
 
   it('resolves a manager without an organization as a personal owner, key or not', async () => {

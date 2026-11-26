@@ -2,9 +2,10 @@
 
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { usePrintSettings } from '@/hooks/use-print-settings';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface PrintData {
@@ -29,40 +30,10 @@ interface PrintData {
   }>;
 }
 
-interface PrintSettings {
-  showNameField: boolean;
-  showClassField: boolean;
-  showDateField: boolean;
-  showPoints: boolean;
-  includeAnswerKey: boolean;
-}
-
-const defaultSettings: PrintSettings = {
-  showNameField: true,
-  showClassField: true,
-  showDateField: true,
-  showPoints: true,
-  includeAnswerKey: true,
-};
-
-function loadSettings(): PrintSettings {
-  if (typeof window === 'undefined') return defaultSettings;
-  try {
-    const saved = localStorage.getItem('assignment-print-settings');
-    if (saved) {
-      const parsed: unknown = JSON.parse(saved);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return { ...defaultSettings, ...parsed };
-      }
-    }
-  } catch {}
-  return defaultSettings;
-}
-
 export default function PrintAssignmentClient() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations('EduAssignmentPrintPage');
-  const [settings, setSettings] = useState<PrintSettings>(defaultSettings);
+  const { settings } = usePrintSettings();
 
   const { data: assignment } = useApiQuery<PrintData>({
     queryKey: assignmentKeys.detail(id),
@@ -71,10 +42,6 @@ export default function PrintAssignmentClient() {
 
   // The assignment title is the breadcrumb label; the raw UUID must never render.
   useBreadcrumbLabel(id, assignment?.title);
-
-  useEffect(() => {
-    setSettings(loadSettings());
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 500);

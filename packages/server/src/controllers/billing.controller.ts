@@ -6,6 +6,7 @@ import {
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
+  BillingScopeQuerySchema,
   CancelSubscriptionSchema,
   ChangePlanSchema,
   ReconcileCheckoutSchema,
@@ -17,12 +18,36 @@ import { type BillingService, billingService } from '@studiq/server/services/bil
  * phase 4). Every method delegates authorization to `BillingService`, which
  * resolves the owner from `RequestContext` and requires `org.billing.manage` for
  * an org owner.
+ *
+ * A request may name `scope: 'personal'` (#1493 follow-up). That selects the
+ * caller's own subscription on `/app/billing` and `/edu/billing`; it is a
+ * server-side literal, never an owner id, and an unknown value is a 422.
  */
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
-  async getSubscription(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.billing.getSubscription(ctx);
+  /**
+   * The optional `?scope=personal` shared by the query-scoped actions. An
+   * unknown value is a 422, not a silent fallback to the org owner.
+   */
+  private personalScope(
+    query: unknown,
+  ): { success: true; personal: boolean } | { success: false; response: ControllerResponse } {
+    const parsed = BillingScopeQuerySchema.safeParse(query ?? {});
+    if (!parsed.success) {
+      return {
+        success: false,
+        response: controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues),
+      };
+    }
+    return { success: true, personal: parsed.data.scope === 'personal' };
+  }
+
+  async getSubscription(ctx: RequestContext, query: unknown = {}): Promise<ControllerResponse> {
+    const scope = this.personalScope(query);
+    if (!scope.success) return scope.response;
+
+    const result = await this.billing.getSubscription(ctx, scope.personal);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 
@@ -35,7 +60,11 @@ export class BillingController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.billing.changePlan(ctx, parsed.data.planKey);
+    const result = await this.billing.changePlan(
+      ctx,
+      parsed.data.planKey,
+      parsed.data.scope === 'personal',
+    );
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     return controllerResponse.success(result.data);
@@ -47,19 +76,29 @@ export class BillingController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.billing.cancelSubscription(ctx, parsed.data.cancel);
+    const result = await this.billing.cancelSubscription(
+      ctx,
+      parsed.data.cancel,
+      parsed.data.scope === 'personal',
+    );
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     return controllerResponse.success(result.data);
   }
 
   /**
-   * Revert a scheduled downgrade ("keep current plan"). The body carries
-   * nothing: the owner, customer and subscription come from the context and
-   * the mirror, never from the client.
+   * Revert a scheduled downgrade ("keep current plan"). `?scope=personal`
+   * selects the caller's own subscription; the customer and subscription still
+   * come from the context and the mirror, never from the client.
    */
-  async releaseScheduledPlan(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.billing.releaseScheduledChange(ctx);
+  async releaseScheduledPlan(
+    ctx: RequestContext,
+    query: unknown = {},
+  ): Promise<ControllerResponse> {
+    const scope = this.personalScope(query);
+    if (!scope.success) return scope.response;
+
+    const result = await this.billing.releaseScheduledChange(ctx, scope.personal);
     if (isFailure(result)) return controllerResponse.error(result.error);
 
     return controllerResponse.success(result.data);

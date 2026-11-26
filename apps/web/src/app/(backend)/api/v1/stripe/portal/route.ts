@@ -5,8 +5,9 @@ import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
   const locale = req.nextUrl.searchParams.get('locale') || undefined;
+  const scope = req.nextUrl.searchParams.get('scope') || undefined;
 
   return withAuth(req, async (ctx) => {
-    return toNextResponse(await stripeController.createPortalSession(ctx, { locale }));
+    return toNextResponse(await stripeController.createPortalSession(ctx, { locale, scope }));
   });
 }

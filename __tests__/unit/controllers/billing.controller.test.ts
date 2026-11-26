@@ -66,7 +66,26 @@ describe('BillingController', () => {
       const response = await controller.getSubscription(ctx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: view });
-      expect(billing.getSubscription).toHaveBeenCalledWith(ctx);
+      expect(billing.getSubscription).toHaveBeenCalledWith(ctx, false);
+    });
+
+    it('reads the caller’s own row when the request names the personal scope', async () => {
+      billing.getSubscription.mockResolvedValueOnce(success(view));
+
+      await controller.getSubscription(ctx, { scope: 'personal' });
+
+      expect(billing.getSubscription).toHaveBeenCalledWith(ctx, true);
+    });
+
+    it('rejects an unknown scope on the subscription read with 422', async () => {
+      const response = await controller.getSubscription(ctx, { scope: 'organization' });
+
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(billing.getSubscription).not.toHaveBeenCalled();
     });
 
     it('maps a service failure to its status code', async () => {
@@ -110,7 +129,22 @@ describe('BillingController', () => {
       const response = await controller.changePlan(ctx, { planKey: 'ace' });
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { status: 'scheduled' } });
-      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace');
+      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', false);
+    });
+
+    it('selects the caller’s own subscription when the change body names the personal scope', async () => {
+      billing.changePlan.mockResolvedValueOnce(success({ status: 'applied' }));
+
+      await controller.changePlan(ctx, { planKey: 'ace', scope: 'personal' });
+
+      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', true);
+    });
+
+    it('rejects an unknown scope on the change body with 422', async () => {
+      const response = await controller.changePlan(ctx, { planKey: 'ace', scope: 'organization' });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.changePlan).not.toHaveBeenCalled();
     });
 
     it('maps forbidden and not-found failures', async () => {
@@ -135,7 +169,22 @@ describe('BillingController', () => {
       const response = await controller.releaseScheduledPlan(ctx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { released: true } });
-      expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx);
+      expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx, false);
+    });
+
+    it('selects the caller’s own subscription when the release query names the personal scope', async () => {
+      billing.releaseScheduledChange.mockResolvedValueOnce(success({ released: true }));
+
+      await controller.releaseScheduledPlan(ctx, { scope: 'personal' });
+
+      expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx, true);
+    });
+
+    it('rejects an unknown scope on the release query with 422', async () => {
+      const response = await controller.releaseScheduledPlan(ctx, { scope: 'organization' });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.releaseScheduledChange).not.toHaveBeenCalled();
     });
 
     it('maps a forbidden failure', async () => {
@@ -218,7 +267,7 @@ describe('BillingController', () => {
     it('delegates cancel and reactivate', async () => {
       billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: true }));
       await controller.cancelSubscription(ctx, { cancel: true });
-      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, true);
+      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, true, false);
 
       billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: false }));
       const response = await controller.cancelSubscription(ctx, { cancel: false });
@@ -227,7 +276,25 @@ describe('BillingController', () => {
         statusCode: 200,
         data: { cancelAtPeriodEnd: false },
       });
-      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, false);
+      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, false, false);
+    });
+
+    it('selects the caller’s own subscription when the cancel body names the personal scope', async () => {
+      billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: true }));
+
+      await controller.cancelSubscription(ctx, { cancel: true, scope: 'personal' });
+
+      expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, true, true);
+    });
+
+    it('rejects an unknown scope on the cancel body with 422', async () => {
+      const response = await controller.cancelSubscription(ctx, {
+        cancel: true,
+        scope: 'organization',
+      });
+
+      expect(response).toMatchObject({ success: false, statusCode: 422 });
+      expect(billing.cancelSubscription).not.toHaveBeenCalled();
     });
 
     it('maps forbidden failures', async () => {

@@ -4,52 +4,26 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Label, Switch } from 
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { AssignmentPage } from '@/components/edu/assignment-page';
-
-interface PrintSettings {
-  showNameField: boolean;
-  showClassField: boolean;
-  showDateField: boolean;
-  showPoints: boolean;
-  includeAnswerKey: boolean;
-}
-
-const STORAGE_KEY = 'assignment-print-settings';
-
-const defaultSettings: PrintSettings = {
-  showNameField: true,
-  showClassField: true,
-  showDateField: true,
-  showPoints: true,
-  includeAnswerKey: true,
-};
-
-function loadSettings(): PrintSettings {
-  if (typeof window === 'undefined') return defaultSettings;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed: unknown = JSON.parse(saved);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return { ...defaultSettings, ...parsed };
-      }
-    }
-  } catch {}
-  return defaultSettings;
-}
+import { type PrintSettings, usePrintSettings } from '@/hooks/use-print-settings';
 
 export default function AssignmentSettingsClient() {
   const t = useTranslations('EduAssignmentSettingsPage');
-  const [settings, setSettings] = useState<PrintSettings>(loadSettings);
-  const [saved, setSaved] = useState(false);
+  const { settings, ready, updateSetting, saveSettings } = usePrintSettings();
+  const [saveResult, setSaveResult] = useState<'saved' | 'failed' | null>(null);
 
-  const update = (key: keyof PrintSettings) => (value: boolean) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-    setSaved(false);
-  };
+  /** A switch keeps its place but shows no value until the saved settings are read. */
+  const switchProps = (key: keyof PrintSettings) => ({
+    checked: settings[key],
+    onCheckedChange: (value: boolean) => {
+      updateSetting(key, value);
+      setSaveResult(null);
+    },
+    disabled: !ready,
+    className: ready ? undefined : 'invisible',
+  });
 
   const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    setSaved(true);
+    setSaveResult(saveSettings() ? 'saved' : 'failed');
   };
 
   return (
@@ -58,51 +32,56 @@ export default function AssignmentSettingsClient() {
         <CardHeader>
           <CardTitle className="text-base">{t('pdf_defaults')}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {/* New switches after the read: a reused one would animate from the default value. */}
+        <CardContent key={ready ? 'ready' : 'pending'} className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <Label>{t('student_name')}</Label>
               <p className="text-xs text-muted-foreground">{t('student_name_desc')}</p>
             </div>
-            <Switch checked={settings.showNameField} onCheckedChange={update('showNameField')} />
+            <Switch {...switchProps('showNameField')} />
           </div>
           <div className="flex items-center justify-between">
             <div>
               <Label>{t('class_field')}</Label>
               <p className="text-xs text-muted-foreground">{t('class_field_desc')}</p>
             </div>
-            <Switch checked={settings.showClassField} onCheckedChange={update('showClassField')} />
+            <Switch {...switchProps('showClassField')} />
           </div>
           <div className="flex items-center justify-between">
             <div>
               <Label>{t('date_field')}</Label>
               <p className="text-xs text-muted-foreground">{t('date_field_desc')}</p>
             </div>
-            <Switch checked={settings.showDateField} onCheckedChange={update('showDateField')} />
+            <Switch {...switchProps('showDateField')} />
           </div>
           <div className="flex items-center justify-between">
             <div>
               <Label>{t('points_per_question')}</Label>
               <p className="text-xs text-muted-foreground">{t('points_per_question_desc')}</p>
             </div>
-            <Switch checked={settings.showPoints} onCheckedChange={update('showPoints')} />
+            <Switch {...switchProps('showPoints')} />
           </div>
           <div className="flex items-center justify-between">
             <div>
               <Label>{t('answer_key')}</Label>
               <p className="text-xs text-muted-foreground">{t('answer_key_desc')}</p>
             </div>
-            <Switch
-              checked={settings.includeAnswerKey}
-              onCheckedChange={update('includeAnswerKey')}
-            />
+            <Switch {...switchProps('includeAnswerKey')} />
           </div>
         </CardContent>
       </Card>
 
       <div className="flex items-center gap-3 justify-end">
-        {saved && <p className="text-sm text-green-600">{t('saved')}</p>}
-        <Button onClick={handleSave}>{t('save')}</Button>
+        {saveResult === 'saved' && <p className="text-sm text-green-600">{t('saved')}</p>}
+        {saveResult === 'failed' && (
+          <p role="alert" className="text-sm text-destructive">
+            {t('save_failed')}
+          </p>
+        )}
+        <Button onClick={handleSave} disabled={!ready}>
+          {t('save')}
+        </Button>
       </div>
     </AssignmentPage>
   );

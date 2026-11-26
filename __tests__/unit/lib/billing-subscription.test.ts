@@ -4,7 +4,9 @@ import type { PlanInfo } from '@studiq/server/services/subscription-plan.service
 import {
   activatedPlanLabel,
   alternativePlans,
+  billingCardRequest,
   billingPlanFamily,
+  billingScopeUrl,
   billingStatusKey,
   hasProviderActions,
   invoiceHistoryPath,
@@ -13,6 +15,7 @@ import {
   periodRow,
   planChangeFeedback,
   seatsSummary,
+  withPersonalScope,
 } from '@/lib/billing-subscription';
 import { describe, expect, it } from 'vitest';
 
@@ -272,5 +275,84 @@ describe('invoiceHistoryPath', () => {
     expect(invoiceHistoryPath(AccountType.STUDENT)).toBe('/app/account/payments');
     expect(invoiceHistoryPath(AccountType.EDUCATOR)).toBe('/edu/account/payments');
     expect(invoiceHistoryPath(AccountType.MANAGER)).toBeNull();
+  });
+});
+
+describe('billingScopeUrl', () => {
+  it('asks for the caller’s own row on a personal surface only', () => {
+    expect(billingScopeUrl('/api/v1/billing/subscription', true)).toBe(
+      '/api/v1/billing/subscription?scope=personal',
+    );
+    expect(billingScopeUrl('/api/v1/billing/subscription', false)).toBe(
+      '/api/v1/billing/subscription',
+    );
+  });
+
+  it('appends to an existing query string', () => {
+    expect(billingScopeUrl('/api/v1/stripe/portal?locale=pl', true)).toBe(
+      '/api/v1/stripe/portal?locale=pl&scope=personal',
+    );
+  });
+});
+
+describe('billingCardRequest', () => {
+  it('names the personal scope on all four provider actions', () => {
+    // Portal and release read like the billing read: the scope is in the URL.
+    expect(billingCardRequest({ type: 'portal', locale: 'pl' }, true)).toEqual({
+      method: 'GET',
+      url: '/api/v1/stripe/portal?locale=pl&scope=personal',
+    });
+    expect(billingCardRequest({ type: 'release' }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/release-scheduled-plan?scope=personal',
+      body: {},
+    });
+    // Change and cancel write it into the JSON body.
+    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan',
+      body: { planKey: 'ace', scope: 'personal' },
+    });
+    expect(billingCardRequest({ type: 'cancel', cancel: true }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/cancel',
+      body: { cancel: true, scope: 'personal' },
+    });
+  });
+
+  it('keeps every action org-first off a personal surface', () => {
+    expect(billingCardRequest({ type: 'portal', locale: 'pl' }, false)).toEqual({
+      method: 'GET',
+      url: '/api/v1/stripe/portal?locale=pl',
+    });
+    expect(billingCardRequest({ type: 'release' }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/release-scheduled-plan',
+      body: {},
+    });
+    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan',
+      body: { planKey: 'ace' },
+    });
+    expect(billingCardRequest({ type: 'cancel', cancel: false }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/cancel',
+      body: { cancel: false },
+    });
+  });
+});
+
+describe('withPersonalScope', () => {
+  it('adds the personal scope to a billing action body', () => {
+    expect(withPersonalScope({ planKey: 'ace' }, true)).toEqual({
+      planKey: 'ace',
+      scope: 'personal',
+    });
+    expect(withPersonalScope({ cancel: true }, true)).toEqual({ cancel: true, scope: 'personal' });
+  });
+
+  it('leaves the body untouched off a personal surface', () => {
+    expect(withPersonalScope({ planKey: 'ace' }, false)).toEqual({ planKey: 'ace' });
   });
 });

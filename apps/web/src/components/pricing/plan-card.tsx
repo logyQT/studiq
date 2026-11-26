@@ -5,9 +5,11 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } fr
 import { Check, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale } from 'next-intl';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
+import { pricingPlanAction } from '@/lib/pricing-plan-action';
 
 export function PlanCard({
   plan,
@@ -15,6 +17,8 @@ export function PlanCard({
   user,
   t,
   orgId,
+  hasActivePlan,
+  billingHref,
 }: {
   plan: PlanInfo;
   isCurrentPlan: boolean;
@@ -22,6 +26,10 @@ export function PlanCard({
   t: PricingTranslator;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
+  /** The reader owns a paid subscription; `null` while that read is pending or failed. */
+  hasActivePlan: boolean | null;
+  /** Where a subscriber changes plan: their own billing page or the org's. */
+  billingHref: string;
 }) {
   const locale = useLocale();
   const descKey = `plan_${plan.key}_desc`;
@@ -32,12 +40,19 @@ export function PlanCard({
   const ctaLabel = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
   const recommended = isRecommendedPlan(plan.key);
   const paid = plan.priceMonthly > 0;
+  const action = pricingPlanAction({
+    signedIn: Boolean(user),
+    isCurrent: isCurrentPlan,
+    isFree: !paid,
+    contactOnly: plan.key === 'campus',
+    hasActivePlan,
+  });
 
   return (
     <Card
       className={`flex flex-col relative ${recommended ? 'border-primary shadow-lg' : 'border-border/50'}`}
     >
-      {recommended && (
+      {recommended && !isCurrentPlan && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
           <Sparkles className="size-3 mr-1" />
           {t('recommended_badge')}
@@ -79,13 +94,21 @@ export function PlanCard({
           ))}
         </ul>
 
-        {plan.key === 'campus' ? (
+        {action === 'contact' ? (
           // Campus is a 699 zł conversation, not a self-serve checkout: the label
           // says contact sales, so the action under it must too.
           <Button className="w-full" variant="outline" asChild>
             <Link href="/contact">{ctaLabel}</Link>
           </Button>
-        ) : user && paid ? (
+        ) : action === 'current' ? (
+          <Button variant="outline" disabled className="w-full rounded-control">
+            {t('cta_current')}
+          </Button>
+        ) : action === 'change-plan' ? (
+          <CtaButton href={billingHref} tone={recommended ? 'signal' : 'quiet'} fullWidth>
+            {t('cta_change_plan')}
+          </CtaButton>
+        ) : action === 'checkout' ? (
           <CheckoutButton
             planKey={plan.key}
             orgId={plan.scope === 'organization' ? orgId : undefined}
@@ -93,11 +116,17 @@ export function PlanCard({
           >
             {ctaLabel}
           </CheckoutButton>
-        ) : (
+        ) : action === 'register' ? (
           <Button className="w-full" variant={recommended ? 'default' : 'outline'} asChild>
-            <Link href={user ? '/app' : '/register'}>{ctaLabel}</Link>
+            <Link href="/register">{ctaLabel}</Link>
           </Button>
-        )}
+        ) : !paid && user ? (
+          // A different free plan is not a subscription the reader changes; the
+          // card keeps its link to the app.
+          <Button className="w-full" variant={recommended ? 'default' : 'outline'} asChild>
+            <Link href="/app">{ctaLabel}</Link>
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );
