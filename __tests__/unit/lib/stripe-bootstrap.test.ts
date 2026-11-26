@@ -14,8 +14,8 @@ import { describe, expect, it } from 'vitest';
 
 function plan(overrides: Partial<CatalogPlanForBootstrap> = {}): CatalogPlanForBootstrap {
   return {
-    key: 'spark',
-    name: 'StudiQ Spark',
+    key: 'plus',
+    name: 'StudiQ Plus',
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
@@ -26,7 +26,7 @@ function plan(overrides: Partial<CatalogPlanForBootstrap> = {}): CatalogPlanForB
 
 describe('lookupKeyForPlan', () => {
   it('encodes the plan key and cycle', () => {
-    expect(lookupKeyForPlan('spark')).toBe('studiq_spark_monthly');
+    expect(lookupKeyForPlan('plus')).toBe('studiq_plus_monthly');
     expect(lookupKeyForPlan('campus')).toBe('studiq_campus_monthly');
   });
 });
@@ -34,16 +34,16 @@ describe('lookupKeyForPlan', () => {
 describe('selectBootstrapPrices', () => {
   it('selects active paid plans in catalog order', () => {
     const { prices, errors } = selectBootstrapPrices([
-      plan({ key: 'pro', name: 'StudiQ Pro', priceMonthly: 4999, sortOrder: 10 }),
-      plan({ key: 'spark', sortOrder: 4 }),
+      plan({ key: 'max', name: 'StudiQ Max', priceMonthly: 4999, sortOrder: 10 }),
+      plan({ key: 'plus', sortOrder: 4 }),
     ]);
 
     expect(errors).toEqual([]);
-    expect(prices.map((price) => price.planKey)).toEqual(['spark', 'pro']);
+    expect(prices.map((price) => price.planKey)).toEqual(['plus', 'max']);
     expect(prices[0]).toMatchObject({
-      planKey: 'spark',
-      productName: 'StudiQ Spark',
-      lookupKey: 'studiq_spark_monthly',
+      planKey: 'plus',
+      productName: 'StudiQ Plus',
+      lookupKey: 'studiq_plus_monthly',
       currency: 'pln',
       unitAmount: 999,
       interval: 'month',
@@ -53,19 +53,19 @@ describe('selectBootstrapPrices', () => {
 
   it('skips free and inactive plans', () => {
     const { prices, errors } = selectBootstrapPrices([
-      plan({ key: 'base', priceMonthly: 0, sortOrder: 1 }),
+      plan({ key: 'free', priceMonthly: 0, sortOrder: 1 }),
       plan({ key: 'old', isActive: false, sortOrder: 2 }),
-      plan({ key: 'spark', sortOrder: 4 }),
+      plan({ key: 'plus', sortOrder: 4 }),
     ]);
 
     expect(errors).toEqual([]);
-    expect(prices.map((price) => price.planKey)).toEqual(['spark']);
+    expect(prices.map((price) => price.planKey)).toEqual(['plus']);
   });
 
   it('defaults a missing currency to PLN and lowercases it for Stripe', () => {
     const { prices, errors } = selectBootstrapPrices([
       plan({ currency: null }),
-      plan({ key: 'ace', currency: 'pln', sortOrder: 7 }),
+      plan({ key: 'pro', currency: 'pln', sortOrder: 7 }),
     ]);
 
     expect(errors).toEqual([]);
@@ -91,52 +91,52 @@ describe('selectBootstrapPrices', () => {
     const { prices, errors } = selectBootstrapPrices([plan({ priceMonthly: -100 })]);
 
     expect(prices).toEqual([]);
-    expect(errors).toEqual(['spark: amount must not be negative']);
+    expect(errors).toEqual(['plus: amount must not be negative']);
   });
 
   it('rejects a non-integer amount', () => {
     const { prices, errors } = selectBootstrapPrices([plan({ priceMonthly: 999.5 })]);
 
     expect(prices).toEqual([]);
-    expect(errors).toEqual(['spark: amount must be an integer number of minor units']);
+    expect(errors).toEqual(['plus: amount must be an integer number of minor units']);
   });
 
   it('rejects an invalid plan key and an empty name', () => {
     const { prices, errors } = selectBootstrapPrices([
-      plan({ key: 'Spark Plan' }),
-      plan({ key: 'ace', name: '   ', sortOrder: 7 }),
+      plan({ key: 'Plus Plan' }),
+      plan({ key: 'pro', name: '   ', sortOrder: 7 }),
     ]);
 
     expect(prices).toEqual([]);
     expect(errors).toEqual([
-      'Spark Plan: key must match /^[a-z0-9_]+$/ so it can be used in a lookup key',
-      'ace: name is empty',
+      'Plus Plan: key must match /^[a-z0-9_]+$/ so it can be used in a lookup key',
+      'pro: name is empty',
     ]);
   });
 
   it('reports duplicate plan keys once', () => {
     const { errors } = selectBootstrapPrices([plan(), plan({ sortOrder: 5 })]);
 
-    expect(errors).toEqual(['duplicate plan key "spark"']);
+    expect(errors).toEqual(['duplicate plan key "plus"']);
   });
 
   it('reports every catalog problem instead of stopping at the first', () => {
     const { errors } = selectBootstrapPrices([
-      plan({ key: 'spark', currency: 'USD' }),
-      plan({ key: 'ace', priceMonthly: 0, sortOrder: 7 }),
-      plan({ key: 'pro', priceMonthly: 100, sortOrder: 10 }),
+      plan({ key: 'plus', currency: 'USD' }),
+      plan({ key: 'pro', priceMonthly: 0, sortOrder: 7 }),
+      plan({ key: 'max', priceMonthly: 100, sortOrder: 10 }),
     ]);
 
     expect(errors).toHaveLength(2);
-    expect(errors[0]).toContain('spark: currency must be PLN');
-    expect(errors[1]).toContain('pro: amount 100 is below the PLN minimum');
+    expect(errors[0]).toContain('plus: currency must be PLN');
+    expect(errors[1]).toContain('max: amount 100 is below the PLN minimum');
   });
 });
 
 const bootstrapPrice = {
-  planKey: 'spark',
-  productName: 'StudiQ Spark',
-  lookupKey: 'studiq_spark_monthly',
+  planKey: 'plus',
+  productName: 'StudiQ Plus',
+  lookupKey: 'studiq_plus_monthly',
   currency: 'pln',
   unitAmount: 999,
   interval: 'month' as const,
@@ -189,25 +189,25 @@ describe('priceMatches', () => {
 describe('productUpdateFor', () => {
   it('returns null when the name and tax code already match', () => {
     expect(
-      productUpdateFor({ name: 'StudiQ Spark', tax_code: 'txcd_123' }, bootstrapPrice, 'txcd_123'),
+      productUpdateFor({ name: 'StudiQ Plus', tax_code: 'txcd_123' }, bootstrapPrice, 'txcd_123'),
     ).toBeNull();
   });
 
   it('updates only the name when the tax code matches', () => {
     expect(
       productUpdateFor({ name: 'Old', tax_code: 'txcd_123' }, bootstrapPrice, 'txcd_123'),
-    ).toEqual({ name: 'StudiQ Spark' });
+    ).toEqual({ name: 'StudiQ Plus' });
   });
 
   it('adds the tax code without renaming', () => {
     expect(
-      productUpdateFor({ name: 'StudiQ Spark', tax_code: null }, bootstrapPrice, 'txcd_123'),
+      productUpdateFor({ name: 'StudiQ Plus', tax_code: null }, bootstrapPrice, 'txcd_123'),
     ).toEqual({ tax_code: 'txcd_123' });
   });
 
   it('never clears an existing tax code when none is configured', () => {
     expect(
-      productUpdateFor({ name: 'StudiQ Spark', tax_code: 'txcd_old' }, bootstrapPrice, null),
+      productUpdateFor({ name: 'StudiQ Plus', tax_code: 'txcd_old' }, bootstrapPrice, null),
     ).toBeNull();
   });
 });

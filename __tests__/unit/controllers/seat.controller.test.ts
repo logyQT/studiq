@@ -63,10 +63,10 @@ describe('SeatController', () => {
     it('creates a pool and returns 201', async () => {
       mockService.addPool.mockResolvedValueOnce({
         success: true,
-        data: { id: 'p-1', planKey: 'ace', total: 10, assigned: 0 },
+        data: { id: 'p-1', planKey: 'pro', total: 10, assigned: 0 },
       });
       const response = await controller.createPool(mockCtx, {
-        planKey: 'ace',
+        planKey: 'pro',
         quantity: 10,
       });
       expect(response.success).toBe(true);
@@ -171,7 +171,7 @@ describe('SeatController', () => {
     // refused on each, and the service is never reached.
     const calls = {
       listPools: () => controller.listPools(memberCtx),
-      createPool: () => controller.createPool(memberCtx, { planKey: 'ace', quantity: 1 }),
+      createPool: () => controller.createPool(memberCtx, { planKey: 'pro', quantity: 1 }),
       updatePool: () => controller.updatePool(memberCtx, 'pool-1', { total: 1 }),
       listAssignments: () => controller.listAssignments(memberCtx),
       assignSeat: () =>

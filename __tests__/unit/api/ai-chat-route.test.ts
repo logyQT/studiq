@@ -141,7 +141,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('exposes the RequestContext to tool executions via conversationStorage', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'pro', resetsAt: '' });
 
     await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -155,7 +155,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('blocks with 429 before calling the model when usage is at the limit', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 0, plan: 'base', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 0, plan: 'free', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -168,7 +168,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('blocks when usage has already reached a positive limit', async () => {
-    getUsageMock.mockResolvedValue({ current: 200000, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 200000, limit: 200000, plan: 'pro', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -179,7 +179,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('allows the request through when usage is below the limit', async () => {
-    getUsageMock.mockResolvedValue({ current: 100, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 100, limit: 200000, plan: 'pro', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -190,7 +190,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('never sends the model reasoning to the client', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'pro', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -201,7 +201,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('never checks usage against the model for unlimited plans (-1)', async () => {
-    getUsageMock.mockResolvedValue({ current: 999999, limit: -1, plan: 'base', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 999999, limit: -1, plan: 'free', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -212,7 +212,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('records actual token usage via trackTokenUsage when the stream finishes', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'pro', resetsAt: '' });
 
     await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -232,7 +232,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('does not throw when totalUsage is missing from the finish result', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'pro', resetsAt: '' });
 
     await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
@@ -245,7 +245,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('swallows a failing token write so the finished stream is not broken', async () => {
-    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'pro', resetsAt: '' });
     trackTokenUsageMock.mockRejectedValueOnce(new Error('db down'));
 
     await POST(

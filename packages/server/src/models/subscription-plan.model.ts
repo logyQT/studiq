@@ -16,15 +16,8 @@ const NAME_FIELD = z
   .min(2, { error: ValidationErrorCode.TOO_SHORT })
   .max(64, { error: ValidationErrorCode.TOO_LONG });
 
-/** The shared scope/audience fields; create adds defaults, update stays partial. */
+/** The shared scope field; create adds a default, update stays partial. */
 const PLAN_SCOPE_FIELD = z.enum(PLAN_SCOPES, { error: ValidationErrorCode.INVALID_INPUT });
-/**
- * No plan carries an audience since #1193: the one individual ladder serves
- * every persona, and an organization plan never had one. The column stays, so
- * the field accepts `null` (or an absent value on update) and rejects every
- * other value at the model, before the database CHECK answers.
- */
-const PLAN_AUDIENCE_FIELD = z.literal(null, { error: ValidationErrorCode.INVALID_INPUT });
 
 export const CreateSubscriptionPlanSchema = registry.register(
   'CreateSubscriptionPlanRequest',
@@ -62,7 +55,6 @@ export const CreateSubscriptionPlanSchema = registry.register(
       .optional()
       .default('PLN'),
     scope: PLAN_SCOPE_FIELD.optional().default('personal'),
-    audience: PLAN_AUDIENCE_FIELD.optional().default(null),
   }),
 );
 
@@ -97,7 +89,6 @@ export const UpdateSubscriptionPlanSchema = registry.register(
       .max(3, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     scope: PLAN_SCOPE_FIELD.optional(),
-    audience: PLAN_AUDIENCE_FIELD.optional(),
   }),
 );
 

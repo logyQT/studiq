@@ -97,9 +97,9 @@ describe('money-action route rate limits', () => {
       checkoutRoute,
       createCheckoutSession,
       '/api/v1/stripe/create-checkout-session',
-      { planKey: 'spark' },
+      { planKey: 'plus' },
     ],
-    [changePlanRoute, changePlan, '/api/v1/billing/change-plan', { planKey: 'ace' }],
+    [changePlanRoute, changePlan, '/api/v1/billing/change-plan', { planKey: 'pro' }],
     [cancelRoute, cancelSubscription, '/api/v1/billing/cancel', { cancel: true }],
   ])('forwards an allowed request to its controller', async (route, handler, path, body) => {
     const response = await route(request(path, body));

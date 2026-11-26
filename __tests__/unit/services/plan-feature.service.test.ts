@@ -55,7 +55,7 @@ describe('PlanFeatureService', () => {
 
   describe('getAll', () => {
     it('returns all plan features', async () => {
-      const features = [{ id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' }];
+      const features = [{ id: 'f-1', plan_key: 'free', entitlement_key: 'quiz' }];
       const listQb = qb(features);
       mock.from.mockReturnValueOnce(listQb);
 
@@ -79,21 +79,21 @@ describe('PlanFeatureService', () => {
 
   describe('getByPlanKey', () => {
     it('returns features for plan key', async () => {
-      const features = [{ id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' }];
+      const features = [{ id: 'f-1', plan_key: 'free', entitlement_key: 'quiz' }];
       const listQb = qb(features);
       mock.from.mockReturnValueOnce(listQb);
 
-      const result = await service.getByPlanKey('base');
+      const result = await service.getByPlanKey('free');
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(features);
-      expect(listQb.eq).toHaveBeenCalledWith('plan_key', 'base');
+      expect(listQb.eq).toHaveBeenCalledWith('plan_key', 'free');
     });
 
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.getByPlanKey('base');
+      const result = await service.getByPlanKey('free');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
@@ -102,16 +102,16 @@ describe('PlanFeatureService', () => {
 
   describe('create', () => {
     it('creates a plan feature', async () => {
-      const feature = { id: 'f-1', plan_key: 'base', entitlement_key: 'quiz' };
+      const feature = { id: 'f-1', plan_key: 'free', entitlement_key: 'quiz' };
       const insertQb = qb(feature);
       mock.from.mockReturnValueOnce(insertQb);
 
-      const result = await service.create({ planKey: 'base', entitlementKey: 'quiz' });
+      const result = await service.create({ planKey: 'free', entitlementKey: 'quiz' });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(feature);
       expect(insertQb.insert).toHaveBeenCalledWith({
-        plan_key: 'base',
+        plan_key: 'free',
         entitlement_key: 'quiz',
       });
     });
@@ -119,7 +119,7 @@ describe('PlanFeatureService', () => {
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.create({ planKey: 'base', entitlementKey: 'quiz' });
+      const result = await service.create({ planKey: 'free', entitlementKey: 'quiz' });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');

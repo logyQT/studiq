@@ -43,7 +43,7 @@ const POOLS_API = '/api/v1/organization/seats/pools';
 const ASSIGNMENTS_API = '/api/v1/organization/seats/assignments';
 
 /** Pool the test buys in; the label is the plan catalogue's own name. */
-const PLAN_KEY = 'ace';
+const PLAN_KEY = 'pro';
 const PLAN_LABEL = 'StudiQ Pro';
 const QUANTITY = 3;
 

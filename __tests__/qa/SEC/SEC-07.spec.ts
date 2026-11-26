@@ -35,11 +35,11 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    `ai.chat` entitlement) → `403` as well.
  * 5. Anonymous `POST` → `401 UNAUTHORIZED`, so the manager's `403` is an
  *    authorization boundary and not "no session".
- * 6. The teacher (personal `base` inside the same `launch` org) is refused for
+ * 6. The teacher (personal `free` inside the same `launch` org) is refused for
  *    the same reason: `/me/entitlements` without `ai.chat`, and the same empty body
  *    → `403`. The refusal is a plan boundary, not a manager-specific rule.
  * 7. Positive control by plan, not persona: the student's
- *    `profiles.personal_plan_key` is set to the paid `ace` (Pro) plan through the
+ *    `profiles.personal_plan_key` is set to the paid `pro` (Pro) plan through the
  *    service-role client (`ai.chat` is `personalPortable`, so the key carries
  *    inside the org even though `launch` does not grant it; D3). The same
  *    launch-org student then has `ai.chat` in `/me/entitlements`, reads
@@ -191,7 +191,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
 
     // --- Precondition: the entitlement, not the persona, is the reason ------
     // The tenant org is on `launch`, which carries no `ai.chat` (and
-    // `max_ai_tokens_per_day = 0`), and the manager's personal `base` plan
+    // `max_ai_tokens_per_day = 0`), and the manager's personal `free` plan
     // carries none either, so the resolver never makes the key effective:
     // `/me/entitlements` does not list it. This is what makes the 403 below the
     // entitlement gate and not an account-type rule.
@@ -238,7 +238,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     expect(anonymous.headers()['x-error-code'], 'anonymous x-error-code').toBe('UNAUTHORIZED');
 
     // --- The refusal is not manager-specific: the teacher is refused too ----
-    // Same org (`launch`), personal plan `base` — no `ai.chat` there either, so
+    // Same org (`launch`), personal plan `free` — no `ai.chat` there either, so
     // the same empty body gets the gate's 403, not the handler's 400.
     await switchUser(page, tenant, 'teacher');
     const teacherEntitlements = await page.request.get('/api/v1/me/entitlements');
@@ -248,7 +248,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     );
     expect(
       teacherEntitlementsBody.data.entitlements,
-      'the base personal plan does not resolve ai.chat',
+      'the free personal plan does not resolve ai.chat',
     ).not.toContain('ai.chat');
     expectForbidden(
       await postChat(page, JSON.stringify({})),
@@ -256,7 +256,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
     );
 
     // --- Positive control by plan, not persona: the student on Pro ----------
-    // `ace` carries `ai.chat` and `max_ai_tokens_per_day = 250000`, and
+    // `pro` carries `ai.chat` and `max_ai_tokens_per_day = 250000`, and
     // `ai.chat` is `personalPortable`, so the paid personal plan carries inside
     // the `launch` org (D3) even though the org plan does not grant it. The
     // update goes through the service-role client the spec already builds and
@@ -267,12 +267,12 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
       .eq('id', student.id)
       .maybeSingle();
     expect(originalPlanRow.error, 'reading the tenant student’s personal plan').toBeNull();
-    const originalPlan = asJson<string | null>(originalPlanRow.data?.personal_plan_key) ?? 'base';
+    const originalPlan = asJson<string | null>(originalPlanRow.data?.personal_plan_key) ?? 'free';
 
     try {
       const setup = await db
         .from('profiles')
-        .update({ personal_plan_key: 'ace' })
+        .update({ personal_plan_key: 'pro' })
         .eq('id', student.id);
       expect(setup.error, 'move the tenant student to the paid Pro plan').toBeNull();
 
@@ -296,7 +296,7 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
       const studentUsageBody = await json<Envelope<AiUsage>>(studentUsage);
       expect(studentUsageBody.success).toBe(true);
       // The effective primary is the org plan (`launch`); the limit is the
-      // user-scope max(org `launch` 0, personal `ace` 250000) = 250000.
+      // user-scope max(org `launch` 0, personal `pro` 250000) = 250000.
       expect(studentUsageBody.data, 'the paid personal plan lifts the AI budget').toMatchObject({
         current: expect.any(Number),
         limit: 250_000,

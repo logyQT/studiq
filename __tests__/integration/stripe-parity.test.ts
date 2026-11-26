@@ -436,7 +436,6 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 900,
         scope: 'personal',
-        audience: null,
       },
       {
         key: secondStudentPlanKey,
@@ -445,7 +444,6 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 901,
         scope: 'personal',
-        audience: null,
       },
       {
         key: orgPlanKey,
@@ -454,7 +452,6 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 902,
         scope: 'organization',
-        audience: null,
       },
     ]);
     if (planError) throw new Error(`parity plans: ${planError.message}`);
@@ -554,7 +551,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
 
     await service
       .from('profiles')
-      .update({ personal_plan_key: 'base' })
+      .update({ personal_plan_key: 'free' })
       .in('id', [
         mockStudent.id,
         stripeStudent.id,
@@ -585,7 +582,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     await service.from('stripe_webhook_events').delete().like('id', `evt_parity_${tag}%`);
 
     if (userIds.length > 0) {
-      await service.from('profiles').update({ personal_plan_key: 'base' }).in('id', userIds);
+      await service.from('profiles').update({ personal_plan_key: 'free' }).in('id', userIds);
     }
 
     for (const orgId of orgIds) {
@@ -811,7 +808,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     ).resolves.toEqual({ ok: false, error: 'CONFLICT' });
 
     expect(await profilePlan(mockStudent.id)).toBe(studentPlanKey);
-    expect(await profilePlan(replayStudent.id)).toBe('base');
+    expect(await profilePlan(replayStudent.id)).toBe('free');
     expect(await paymentsFor({ sessionId: started.sessionId })).toHaveLength(1);
 
     // Stripe: the same invoice under a *different* event id (the provider can

@@ -29,7 +29,7 @@ describe('/checkout driver branch (#662 §5.6)', () => {
   it('renders the simulated form for the mock driver', async () => {
     selectDriver('mock');
 
-    const element = await render({ plan_id: 'spark' });
+    const element = await render({ plan_id: 'plus' });
 
     expect(element.type).toBe(Suspense);
     expect(asJson<ElementShape>(element.props.children).type).toBe(CheckoutMockForm);
@@ -38,11 +38,11 @@ describe('/checkout driver branch (#662 §5.6)', () => {
   it('never renders the simulated form for the stripe driver', async () => {
     selectDriver('stripe');
 
-    const element = await render({ plan_id: 'spark' });
+    const element = await render({ plan_id: 'plus' });
 
     expect(element.type).toBe(StripeCheckoutRedirect);
     expect(element.type).not.toBe(CheckoutMockForm);
-    expect(element.props).toMatchObject({ planKey: 'spark', orgId: null, canceled: false });
+    expect(element.props).toMatchObject({ planKey: 'plus', orgId: null, canceled: false });
   });
 
   it('passes the organization and canceled notice through', async () => {
@@ -57,7 +57,7 @@ describe('/checkout driver branch (#662 §5.6)', () => {
   it('treats only canceled=1 as canceled and trims blank values', async () => {
     selectDriver('stripe');
 
-    const notCanceled = await render({ plan_id: 'spark', canceled: '0', org_id: '   ' });
+    const notCanceled = await render({ plan_id: 'plus', canceled: '0', org_id: '   ' });
     const missing = await render({});
 
     expect(notCanceled.props).toMatchObject({ canceled: false, orgId: null });

@@ -73,7 +73,6 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key' | 'limits'>): 
     sortOrder: 1,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
     ...overrides,
   };
@@ -101,21 +100,21 @@ describe('BillingPage current-plan card', () => {
     // Names differ so the header's source is observable: the card names the
     // `/me/plan` row, while the lists must come from the catalogue row.
     data.plan = plan({
-      key: 'ace',
+      key: 'pro',
       name: 'Pro effective',
       features: ['flashcards', 'branding'],
       limits: { max_flashcards: 100, max_decks: 0, max_questions: 0 },
     });
     data.personalPlan = plan({
-      key: 'spark',
-      name: 'Spark personal',
+      key: 'plus',
+      name: 'Plus personal',
       priceMonthly: 4900,
       features: ['flashcards'],
       limits: { max_flashcards: 50, max_decks: 2, max_questions: 0 },
     });
     data.plans = [
       plan({
-        key: 'ace',
+        key: 'pro',
         name: 'Pro',
         priceMonthly: 2900,
         limits: { max_flashcards: 100, max_decks: 5, max_questions: 50 },
@@ -141,7 +140,7 @@ describe('BillingPage current-plan card', () => {
     expect(markup).toContain('>5</span>');
     expect(markup).toContain('>50</span>');
     expect(markup).not.toContain('tabular-nums">0<');
-    // `branding` is in the effective union (the org layer) but not on `ace`.
+    // `branding` is in the effective union (the org layer) but not on `pro`.
     expect(markup).not.toContain(pt('feature_branding'));
   });
 
@@ -161,7 +160,7 @@ describe('BillingPage current-plan card', () => {
     expect(reads.urls).not.toContain('/api/v1/me/plan');
     expect(reads.keys).toContainEqual(['me', 'personal-plan']);
     expect(reads.keys).not.toContainEqual(['me', 'plan']);
-    expect(markup).toContain('Spark personal');
+    expect(markup).toContain('Plus personal');
     expect(markup).toContain('49,00');
   });
 

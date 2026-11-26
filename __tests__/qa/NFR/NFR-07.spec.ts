@@ -189,7 +189,7 @@ async function exerciseUserMenu(page: Page, tenant: QaTenant, role: QaRole): Pro
 /**
  * Recreate this spec's deck with `DECK_CARDS` flashcards through the product API.
  * Deleting first keeps a re-run on an already-seeded tenant (CI seeds once) from
- * accumulating decks or cards, and stays inside the student's Base limits.
+ * accumulating decks or cards, and stays inside the student's Free limits.
  */
 async function resetDeck(page: Page): Promise<string> {
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);

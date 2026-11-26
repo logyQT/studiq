@@ -32,9 +32,7 @@ export interface PlanInfo {
   sources: PlanSource[];
   sortOrder: number;
   isActive: boolean;
-  /** No plan carries an audience since #1193; the field remains for the column. */
   scope: string;
-  audience: string | null;
   /**
    * Derived from the live `entitlement_catalog` (D33): true iff the plan
    * carries at least one entitlement and every one of its keys is
@@ -151,7 +149,6 @@ export class SubscriptionPlanService {
       sortOrder: plan.sort_order ?? 0,
       isActive: plan.is_active ?? true,
       scope: plan.scope,
-      audience: plan.audience ?? null,
       features: features ?? entitlementRows.map((row) => row.entitlement_key),
       seatEligible: SubscriptionPlanService.seatEligibilityOf(entitlementRows),
       limits,
@@ -299,7 +296,7 @@ export class SubscriptionPlanService {
     if (!plan) return failure('NOT_FOUND');
 
     // `features`/`limits` are the effective resolved set, not the plan row's
-    // own rows; `scope`/`audience`/`seatEligible` still describe the plan.
+    // own rows; `scope`/`seatEligible` still describe the plan.
     const view = await this.planView(supabase, plan);
     if (isFailure(view)) return view;
     return success({
@@ -312,10 +309,8 @@ export class SubscriptionPlanService {
 
   /**
    * The caller's personal plan (`profiles.personal_plan_key`), returned as
-   * stored. The legacy "paid org plan demoted to the free manager plan"
-   * fallback is deleted in phase 4a: the migration backfills every manager
-   * off organization-scope plans onto the free personal plan, so the stored plan is
-   * the answer.
+   * stored. A manager holds no personal plan (ADR-0007), so this answers
+   * NOT_FOUND for them and no individual surface asks it.
    */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
@@ -402,7 +397,6 @@ export class SubscriptionPlanService {
         is_active: input.isActive,
         currency: input.currency,
         scope: input.scope,
-        audience: null,
       })
       .select()
       .single();
@@ -425,7 +419,6 @@ export class SubscriptionPlanService {
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
     if (input.currency !== undefined) updateData.currency = input.currency;
     if (input.scope !== undefined) updateData.scope = input.scope;
-    if (input.audience !== undefined) updateData.audience = input.audience;
 
     const { data, error } = await supabase
       .from('subscription_plans')

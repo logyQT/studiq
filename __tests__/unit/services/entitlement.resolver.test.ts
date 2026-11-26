@@ -86,7 +86,7 @@ describe('EntitlementResolver', () => {
         roleProfile: 'learner',
         orgPlan: 'hub',
         seatPlanKey: 'seat',
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
         readErrors: { org_seat_assignments: STATEMENT_TIMEOUT },
       });
 
@@ -104,7 +104,7 @@ describe('EntitlementResolver', () => {
         roleProfile: 'learner',
         orgPlan: 'hub',
         seatPlanKey: 'seat',
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
       };
       const readsWithoutSeat = RESOLVER_TABLES.filter((table) => table !== 'org_seat_assignments');
 
@@ -240,9 +240,9 @@ describe('EntitlementResolver', () => {
       // throw without the `isEntitlementKey` filter on `plan_entitlements`.
       // Phase 8, matrix cell E: DB ahead of code must be inert, not a crash.
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         planEntitlements: {
-          base: ['flashcards', 'quiz', 'test.fictional', 'test.other', 'test.legacy'],
+          free: ['flashcards', 'quiz', 'test.fictional', 'test.other', 'test.legacy'],
         },
       });
 
@@ -254,7 +254,7 @@ describe('EntitlementResolver', () => {
       // Phase 8 matrix cell F: a row for a key the TypeScript catalog does not
       // know is inert, in both directions, and never reaches `ENTITLEMENTS[key]`.
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         overrides: [
           { feature_key: 'test.dbonly', is_enabled: true },
           { feature_key: 'test.dbonly.revoked', is_enabled: false },
@@ -293,20 +293,20 @@ describe('EntitlementResolver', () => {
 
     it('does not add non-portable personal keys inside an org (whitelist, D3)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
-      mockTables({ roleProfile: 'none', orgPlan: 'launch', personalPlanKey: 'base' });
+      mockTables({ roleProfile: 'none', orgPlan: 'launch', personalPlanKey: 'free' });
 
       const { entitlements, sources } = await resolver.resolveEntitlements(ctx);
-      // `base` carries only flashcards/quiz, both `personalPortable: false`:
+      // `free` carries only flashcards/quiz, both `personalPortable: false`:
       // inside an org the personal layer adds nothing.
       expect(entitlements).toEqual([]);
-      expect(sources.personal).toEqual({ planKey: 'base', origin: 'personal' });
+      expect(sources.personal).toEqual({ planKey: 'free', origin: 'personal' });
     });
 
     it('adds portable personal keys on top of the org entitlement (paid PRO in a free org)', async () => {
-      // A `member` role on `launch` gets `flashcards`/`quiz`; a personal `pro`
+      // A `member` role on `launch` gets `flashcards`/`quiz`; a personal `max`
       // must still grant `ai.chat` (personalPortable).
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
-      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'pro' });
+      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'max' });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
@@ -338,7 +338,7 @@ describe('EntitlementResolver', () => {
 
     it('keeps an org-scoped key the org layer itself grants', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
-      mockTables({ roleProfile: 'all', orgPlan: 'hub', personalPlanKey: 'base' });
+      mockTables({ roleProfile: 'all', orgPlan: 'hub', personalPlanKey: 'free' });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toContain('branding');
@@ -366,10 +366,10 @@ describe('EntitlementResolver', () => {
 
     it('still applies a personal-scope plan inside an org (personalPortable keys, D3)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
-      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'pro' });
+      mockTables({ roleProfile: 'learner', orgPlan: 'launch', personalPlanKey: 'max' });
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
-      // learner ∩ launch gives flashcards/quiz; the personal pro adds its
+      // learner ∩ launch gives flashcards/quiz; the personal max adds its
       // portable keys (ai.chat, stats.insights).
       expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
     });
@@ -387,7 +387,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('returns personal plan features when not in org context', async () => {
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({ personalPlanKey: 'pro' });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
@@ -465,7 +465,7 @@ describe('EntitlementResolver', () => {
 
     it('ignores an expired user override grant (#382)', async () => {
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         overrides: [
           {
             feature_key: 'ai.chat',
@@ -481,7 +481,7 @@ describe('EntitlementResolver', () => {
 
     it('ignores an expired user override revoke (#382)', async () => {
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         overrides: [
           {
             feature_key: 'quiz',
@@ -497,7 +497,7 @@ describe('EntitlementResolver', () => {
 
     it('applies a user override whose expiry is still in the future', async () => {
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         overrides: [
           {
             feature_key: 'ai.chat',
@@ -517,7 +517,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('selects expires_at so expiry can be evaluated', async () => {
-      mockTables({ personalPlanKey: 'base' });
+      mockTables({ personalPlanKey: 'free' });
       const baseImpl: (table: string) => Record<string, unknown> = vi
         .mocked(mock.from)
         .getMockImplementation()!;
@@ -538,7 +538,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('returns empty when no entitlement source yields features', async () => {
-      mockTables({ personalPlanKey: 'base', planEntitlements: { base: [] } });
+      mockTables({ personalPlanKey: 'free', planEntitlements: { free: [] } });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual([]);
@@ -548,7 +548,7 @@ describe('EntitlementResolver', () => {
   describe('flag gate (kill switch only, fails closed)', () => {
     it('removes a surface key whose flag is disabled', async () => {
       mockTables({
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
         flags: [
           { key: 'flashcards', is_enabled: true },
           { key: 'quiz', is_enabled: true },
@@ -564,7 +564,7 @@ describe('EntitlementResolver', () => {
 
     it('removes a surface key whose flag row is missing (fail closed, D8)', async () => {
       mockTables({
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
         // Only `ai.chat` has a row; `stats.insights` is missing → removed.
         flags: [{ key: 'ai.chat', is_enabled: true }],
       });
@@ -575,7 +575,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('never gates baseline keys, even without a flag row (D9)', async () => {
-      mockTables({ personalPlanKey: 'base', flags: [] });
+      mockTables({ personalPlanKey: 'free', flags: [] });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toEqual(['flashcards', 'quiz']);
@@ -583,7 +583,7 @@ describe('EntitlementResolver', () => {
 
     it('lets an active override beat a kill switch on its key (D26)', async () => {
       mockTables({
-        personalPlanKey: 'base',
+        personalPlanKey: 'free',
         overrides: [{ feature_key: 'ai.chat', is_enabled: true }],
         flags: [
           { key: 'flashcards', is_enabled: true },
@@ -601,7 +601,7 @@ describe('EntitlementResolver', () => {
 
     it('an override revoke stays revoked even when the flag is on (D26, both directions)', async () => {
       mockTables({
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
         overrides: [{ feature_key: 'ai.chat', is_enabled: false }],
         // All surface flags on, including ai.chat: the active override revoke
         // is the final word on the key.
@@ -618,9 +618,9 @@ describe('EntitlementResolver', () => {
   describe('quota-0 exclusion (§6.1)', () => {
     it('excludes an entitlement whose quota limit resolves to 0', async () => {
       mockTables({
-        personalPlanKey: 'ace',
+        personalPlanKey: 'pro',
         planLimits: {
-          ace: {
+          pro: {
             max_flashcards: -1,
             max_quiz_attempts_per_day: -1,
             max_ai_tokens_per_day: 0,
@@ -635,7 +635,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('keeps the entitlement when its quota is unlimited (-1)', async () => {
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({ personalPlanKey: 'pro' });
 
       const { entitlements } = await resolver.resolveEntitlements(baseCtx);
       expect(entitlements).toContain('ai.chat');
@@ -652,12 +652,12 @@ describe('EntitlementResolver', () => {
         sources: {
           org: null,
           seat: null,
-          personal: { planKey: 'ace', origin: 'personal' },
+          personal: { planKey: 'pro', origin: 'personal' },
           overrides: [],
           revokedOverrides: [],
           flagsOff: [],
         },
-        plan: { primary: 'ace', sources: [{ planKey: 'ace', origin: 'personal' }] },
+        plan: { primary: 'pro', sources: [{ planKey: 'pro', origin: 'personal' }] },
       };
       const spy = vi.spyOn(entitlementResolver, 'resolveEntitlements').mockResolvedValue(fixture);
 
@@ -678,7 +678,7 @@ describe('EntitlementResolver', () => {
 
   describe('per-request memo', () => {
     it('resolves once per request context (memoized on the ctx object)', async () => {
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({ personalPlanKey: 'pro' });
       const ctx: RequestContext = { ...baseCtx };
 
       const first = await resolver.resolveEntitlements(ctx);
@@ -690,7 +690,7 @@ describe('EntitlementResolver', () => {
     });
 
     it('resolves again for a different ctx object', async () => {
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({ personalPlanKey: 'pro' });
 
       await resolver.resolveEntitlements({ ...baseCtx });
       const fromCallsAfterFirst = vi.mocked(mock.from).mock.calls.length;
@@ -706,7 +706,7 @@ describe('EntitlementResolver', () => {
         return clientCalls === 1 ? Promise.reject(new Error('db down')) : Promise.resolve(mock);
       };
       const retryResolver = new EntitlementResolver(flakyFactory);
-      mockTables({ personalPlanKey: 'ace' });
+      mockTables({ personalPlanKey: 'pro' });
       const ctx: RequestContext = { ...baseCtx };
 
       await expect(retryResolver.resolveEntitlements(ctx)).rejects.toThrow('db down');

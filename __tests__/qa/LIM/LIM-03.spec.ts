@@ -7,20 +7,20 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * LIM-03 — a higher limit after buying a plan.
  *
  * The case was written against the legacy manual seed (`test-student@dev.local`,
- * password `pass`) after LIM-02 lowered the **global** Base limits to 2 and
+ * password `pass`) after LIM-02 lowered the **global** Free limits to 2 and
  * reset the database. A QA-suite spec must not mutate the shared plan catalogue,
- * so the tenant reproduces the same starting point at the real Base cap (10
+ * so the tenant reproduces the same starting point at the real Free cap (10
  * decks, the value `/app/billing` shows):
  *
  *   bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: __tests__/qa/profiles/LIM-03.json
  *
  * `bare`/`student` is the case's TS account: one student, no organization, no
- * group and the free `base` personal plan from `handle_new_user`. Outside an org
+ * group and the free `free` personal plan from `handle_new_user`. Outside an org
  * the personal plan governs the deck limit (#233), so the Plus purchase
  * visibly raises it.
  *
  * Walked on the shared app (pl) before writing this test:
- * - at the Base cap a further deck answers 429 `USAGE_LIMIT_EXCEEDED`, the
+ * - at the Free cap a further deck answers 429 `USAGE_LIMIT_EXCEEDED`, the
  *   create dialog stays open with an error toast (never a blank screen);
  * - buying Plus from the individual ladder of `/pricing` ends on `/billing/success` and then
  *   `/app`; `/api/v1/me/personal-plan` reports Plus with `max_decks: 100`,
@@ -30,7 +30,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * Re-runnability: a purchase cannot be undone through the product, and CI
  * retries against the same tenant. The test therefore normalizes only its own
  * tenant at the start — `users.student`'s `profiles.personal_plan_key` back to
- * `base` and that student's own decks removed through the API — so every
+ * `free` and that student's own decks removed through the API — so every
  * attempt runs the same flow a freshly seeded tenant would. No global plan row,
  * admin setting, feature flag or foreign tenant is read or written.
  *
@@ -164,29 +164,29 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
     const db = createQaSupabase();
     const reset = await db
       .from('profiles')
-      .update({ personal_plan_key: 'base' })
+      .update({ personal_plan_key: 'free' })
       .eq('id', student.id);
-    expect(reset.error, 'reset the tenant student to the seeded Base plan').toBeNull();
+    expect(reset.error, 'reset the tenant student to the seeded Free plan').toBeNull();
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
 
     await deleteOwnDecks(page);
     const planBefore = await personalPlan(page);
-    expect(planBefore.key, 'the case starts on the free Base plan').toBe('base');
+    expect(planBefore.key, 'the case starts on the Free plan').toBe('free');
     const baseCap = planBefore.limits.max_decks;
-    if (baseCap === undefined) throw new Error(`${CASE} the Base plan carries no max_decks limit`);
-    expect(baseCap, 'Base caps decks at the documented Base value').toBe(10);
+    if (baseCap === undefined) throw new Error(`${CASE} the Free plan carries no max_decks limit`);
+    expect(baseCap, 'Free caps decks at the documented Free value').toBe(10);
     expect((await decks(page)).items, 'the student starts with no decks').toHaveLength(0);
 
-    // --- Precondition: the tenant is already at the Base deck cap ----------
+    // --- Precondition: the tenant is already at the Free deck cap ----------
     for (let index = 1; index <= baseCap; index++) {
       await createDeck(page, `QA LIM-03 deck ${index}`);
     }
     const atCap = await decks(page);
-    expect(atCap.total, 'the student owns exactly the Base quota').toBe(baseCap);
+    expect(atCap.total, 'the student owns exactly the Free quota').toBe(baseCap);
 
-    // --- Try one more deck on Base: refused, dialog stays readable ---------
+    // --- Try one more deck on Free: refused, dialog stays readable ---------
     const blockedName = `QA LIM-03 deck ${baseCap + 1}`;
     await page.goto('/app/flashcards');
     await expect(
@@ -210,13 +210,13 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
     const refused = await page.request.post('/api/v1/flashcards/decks', {
       data: { name: blockedName },
     });
-    expect(refused.status(), 'POST a deck past the Base cap').toBe(429);
+    expect(refused.status(), 'POST a deck past the Free cap').toBe(429);
     expect((await json<{ error?: string }>(refused)).error, 'the limit error code').toBe(
       'USAGE_LIMIT_EXCEEDED',
     );
 
     const stillAtCap = await decks(page);
-    expect(stillAtCap.total, 'no deck was created over the Base cap').toBe(baseCap);
+    expect(stillAtCap.total, 'no deck was created over the Free cap').toBe(baseCap);
     expect(
       stillAtCap.items.some((deck) => deck.name === blockedName),
       'the refused deck is not in the list',
@@ -225,11 +225,11 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
     // --- Step 1 (BIL-03): buy Plus from the /pricing individual ladder ------
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
-    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
+    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#plus') });
     await expect(sparkRow, 'one Plus plan row').toHaveCount(1);
     await sparkRow.getByRole('button', { name: UI.sparkCta, exact: true }).click();
 
-    await expect(page).toHaveURL(/\/checkout\?.*plan_id=spark/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/\/checkout\?.*plan_id=plus/, { timeout: 20_000 });
     const summary = page.locator('[data-slot="card"]').filter({ hasText: UI.summary });
     await expect(summary, 'the checkout renders the order summary').toBeVisible();
     await expect(summary, 'the summary names Plus').toContainText(UI.sparkName);
@@ -265,7 +265,7 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
 
     // Expected result: the personal plan is now Plus, with the higher limits.
     const planAfter = await personalPlan(page);
-    expect(planAfter.key, 'the student is on Plus').toBe('spark');
+    expect(planAfter.key, 'the student is on Plus').toBe('plus');
     expect(planAfter.name, 'Plus is the plan the checkout showed').toBe(UI.sparkName);
     expect(planAfter.limits, 'the documented Plus limits').toMatchObject({
       max_decks: 100,
@@ -273,7 +273,7 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
       max_questions: 500,
     });
 
-    // --- Step 2: the deck refused on Base is created now -------------------
+    // --- Step 2: the deck refused on Free is created now -------------------
     await page.goto('/app/flashcards');
     await submitDeckDialog(page, blockedName);
     await expect(
@@ -287,7 +287,7 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
     ).toBeVisible();
 
     const raised = await decks(page);
-    expect(raised.total, 'the Base cap no longer applies').toBe(baseCap + 1);
+    expect(raised.total, 'the Free cap no longer applies').toBe(baseCap + 1);
     expect(
       raised.items.some((deck) => deck.name === blockedName),
       'the formerly refused deck is in the list',

@@ -43,7 +43,7 @@ const RESOLVED: ResolvedEntitlements = {
   },
   plan: {
     primary: 'free',
-    sources: [{ planKey: 'base', origin: 'personal' }],
+    sources: [{ planKey: 'free', origin: 'personal' }],
   },
 };
 
@@ -67,7 +67,7 @@ describe('EntitlementsController', () => {
         orgId: null,
         entitlements: ['flashcards', 'quiz'],
         limits: RESOLVED.limits,
-        plan: { primary: 'free', sources: [{ planKey: 'base', origin: 'personal' }] },
+        plan: { primary: 'free', sources: [{ planKey: 'free', origin: 'personal' }] },
       });
     });
 

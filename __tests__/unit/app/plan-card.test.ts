@@ -11,9 +11,9 @@ const t = createTranslator({ locale, messages: pl, namespace: 'PricingPage' });
 
 function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   return {
-    id: 'plan-ace',
-    key: 'ace',
-    name: 'StudiQ Ace',
+    id: 'plan-pro',
+    key: 'pro',
+    name: 'StudiQ Pro',
     description: null,
     priceMonthly: 4999,
     priceYearly: 49990,
@@ -23,17 +23,16 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 1,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
     ...overrides,
   };
 }
 
 const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
-  { key: 'base', name: 'StudiQ Free', priceMonthly: 0 },
-  { key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 },
-  { key: 'ace', name: 'StudiQ Pro', priceMonthly: 3999 },
-  { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
+  { key: 'free', name: 'StudiQ Free', priceMonthly: 0 },
+  { key: 'plus', name: 'StudiQ Plus', priceMonthly: 1999 },
+  { key: 'pro', name: 'StudiQ Pro', priceMonthly: 3999 },
+  { key: 'max', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
 /** The organization grid: a free tier, the recommended Hub and sales-led Campus. */
@@ -53,7 +52,7 @@ interface CardOptions {
 }
 
 function cardElement({
-  planKey = 'ace',
+  planKey = 'pro',
   isCurrentPlan = false,
   signedIn = true,
   hasActivePlan,
@@ -134,7 +133,7 @@ describe('PlanCard action', () => {
 
     expect(markup).toContain('href="/app/billing"');
     expect(markup).toContain(t('cta_change_plan'));
-    expect(markup).not.toContain(t('cta_ace'));
+    expect(markup).not.toContain(t('cta_pro'));
   });
 
   it('prints a disabled current-plan action on the plan the reader owns', () => {
@@ -144,7 +143,7 @@ describe('PlanCard action', () => {
     expect(markup.split(t('current_plan_badge')).length - 1).toBe(1);
     expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
     expect(markup).not.toContain('href="/app/billing"');
-    expect(markup).not.toContain(t('cta_ace'));
+    expect(markup).not.toContain(t('cta_pro'));
     // A disabled control answers no pointer, so the quiet tone's hover fill has no
     // element to tint.
     expect(classes).toHaveLength(1);
@@ -154,7 +153,7 @@ describe('PlanCard action', () => {
   it('starts a checkout for a signed-in reader without a subscription', () => {
     const markup = render({ hasActivePlan: false });
 
-    expect(markup).toContain(t('cta_ace'));
+    expect(markup).toContain(t('cta_pro'));
     expect(markup).toMatch(/<button[^>]*/);
     expect(markup).not.toContain('href="/app/billing"');
   });
@@ -164,12 +163,12 @@ describe('PlanCard action', () => {
 
     expect(markup).toContain('StudiQ Pro');
     expect(markup).not.toContain('href="/app/billing"');
-    expect(markup).not.toContain(t('cta_ace'));
+    expect(markup).not.toContain(t('cta_pro'));
     expect(markup).not.toMatch(/<button[^>]*/);
   });
 
   it('keeps the free plan link to the app for a signed-in reader', () => {
-    const markup = render({ planKey: 'base', hasActivePlan: false });
+    const markup = render({ planKey: 'free', hasActivePlan: false });
 
     expect(markup).toContain('href="/app"');
     expect(markup).not.toContain('href="/app/billing"');
@@ -178,7 +177,7 @@ describe('PlanCard action', () => {
   it('sends the subscriber’s free card to the billing downgrade', () => {
     // The free card is a downgrade for a subscriber, so it goes to the billing
     // page rather than back into the app (#1523).
-    const markup = render({ planKey: 'base', hasActivePlan: true });
+    const markup = render({ planKey: 'free', hasActivePlan: true });
 
     expect(markup).toContain('href="/app/billing"');
     expect(markup).toContain(t('cta_change_plan'));
@@ -186,7 +185,7 @@ describe('PlanCard action', () => {
   });
 
   it('keeps the free plan the reader owns disabled and current', () => {
-    const markup = render({ planKey: 'base', isCurrentPlan: true, hasActivePlan: true });
+    const markup = render({ planKey: 'free', isCurrentPlan: true, hasActivePlan: true });
 
     expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
     expect(markup).not.toMatch(/href="\/app/);
@@ -208,7 +207,7 @@ describe('PlanCard action', () => {
   });
 
   it('gives the recommended paid card the single signal fill', () => {
-    const classes = actionClasses(render({ planKey: 'ace', hasActivePlan: false }));
+    const classes = actionClasses(render({ planKey: 'pro', hasActivePlan: false }));
 
     expect(classes).toHaveLength(1);
     expect(toneTokens(classes[0])).toContain('bg-signal');
@@ -217,7 +216,7 @@ describe('PlanCard action', () => {
   });
 
   it('keeps every other paid card quiet', () => {
-    const classes = actionClasses(render({ planKey: 'spark', hasActivePlan: false }));
+    const classes = actionClasses(render({ planKey: 'plus', hasActivePlan: false }));
 
     expect(classes).toHaveLength(1);
     expect(toneTokens(classes[0])).toContain('border-input');
@@ -225,7 +224,7 @@ describe('PlanCard action', () => {
   });
 
   it('keeps the current plan disabled and quiet even when the ladder recommends it', () => {
-    const markup = render({ planKey: 'ace', isCurrentPlan: true, hasActivePlan: true });
+    const markup = render({ planKey: 'pro', isCurrentPlan: true, hasActivePlan: true });
     const classes = actionClasses(markup);
 
     expect(classes).toHaveLength(1);
@@ -235,7 +234,7 @@ describe('PlanCard action', () => {
   });
 
   it('gives the recommended plan the signal fill for a signed-out reader', () => {
-    const classes = actionClasses(render({ planKey: 'ace', signedIn: false, hasActivePlan: null }));
+    const classes = actionClasses(render({ planKey: 'pro', signedIn: false, hasActivePlan: null }));
 
     expect(classes).toHaveLength(1);
     expect(toneTokens(classes[0])).toContain('bg-signal');
@@ -243,7 +242,7 @@ describe('PlanCard action', () => {
   });
 
   it('shares one control class and one signal fill across the whole grid', () => {
-    const classes = actionClasses(gridMarkup(LADDER, { isCurrentKey: 'base' }));
+    const classes = actionClasses(gridMarkup(LADDER, { isCurrentKey: 'free' }));
 
     expect(classes).toHaveLength(LADDER.length);
     for (const action of classes) {
@@ -257,14 +256,14 @@ describe('PlanCard action', () => {
 
 describe('PlanCard badges', () => {
   it('prints the current badge and not the recommended badge on a current recommended plan', () => {
-    const markup = render({ planKey: 'ace', isCurrentPlan: true, hasActivePlan: true });
+    const markup = render({ planKey: 'pro', isCurrentPlan: true, hasActivePlan: true });
 
     expect(markup).toContain(t('current_plan_badge'));
     expect(markup).not.toContain(t('recommended_badge'));
   });
 
   it('prints the recommended badge on a recommended plan the reader does not own', () => {
-    const markup = render({ planKey: 'ace', hasActivePlan: true });
+    const markup = render({ planKey: 'pro', hasActivePlan: true });
 
     expect(markup).toContain(t('recommended_badge'));
     expect(markup).not.toContain(t('current_plan_badge'));

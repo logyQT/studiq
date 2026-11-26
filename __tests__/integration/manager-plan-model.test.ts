@@ -18,13 +18,12 @@ import { GET as myPlanGet } from '@/app/(backend)/api/v1/me/plan/route';
 import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route';
 
 /**
- * #228 + ADR-0015 phase 4a (D2/D32/D34) — managers have no paid personal plan
- * and their free personal plan is `base` (not the organization `launch`). An
- * organization purchase changes only the organization: the buyer's
- * `profiles.personal_plan_key` stays `base`, `/me/plan` follows the active
- * organization for a member who may bill it (`org.billing.manage`), and an
- * organization-scope plan stored on a profile never widens another
- * organization's limits.
+ * #228 + ADR-0007 — a manager is an organization buyer and holds no personal
+ * plan at all. An organization purchase changes only the organization: the
+ * buyer's `profiles.personal_plan_key` stays NULL, `/me/plan` follows the active
+ * organization for a member who may bill it (`org.billing.manage`),
+ * `/me/personal-plan` answers NOT_FOUND, and an organization-scope plan left on
+ * a profile never widens another organization's limits.
  */
 const BASE_URL = 'http://localhost';
 
@@ -137,9 +136,8 @@ describe('manager plan model (#228)', () => {
       .select('personal_plan_key, account_type')
       .eq('id', manager.id)
       .single();
-    // A manager signup resolves `base` since #1193: handle_new_user mints the
-    // same free personal plan for every persona.
-    expect(profile?.personal_plan_key).toBe('base');
+    // handle_new_user mints no personal plan for a manager (ADR-0007).
+    expect(profile?.personal_plan_key).toBeNull();
     expect(profile?.account_type).toBe('manager');
 
     const { data: payments } = await service
@@ -149,7 +147,7 @@ describe('manager plan model (#228)', () => {
     expect(payments).toContainEqual({ organization_id: boughtOrgId, plan_key: 'hub' });
   });
 
-  it('resolves /me/plan from the active organization (org.billing.manage holder) and /me/personal-plan from base', async () => {
+  it('resolves /me/plan from the active organization and no personal plan at all', async () => {
     // The org creator holds the Admin role, which carries org.billing.manage.
     const bought = await planKey(myPlanGet, boughtOrgId);
     expect(bought.status).toBe(200);
@@ -158,12 +156,13 @@ describe('manager plan model (#228)', () => {
     const other = await planKey(myPlanGet, otherOrgId);
     expect(other.key).toBe('launch');
 
-    // An organization purchase never becomes the buyer's personal plan: the
-    // stored plan is `base`, returned verbatim (D34).
+    // An organization purchase never becomes the buyer's personal plan, and a
+    // manager has none to return: the endpoint answers NOT_FOUND.
     const personalBought = await planKey(personalPlanGet, boughtOrgId);
-    expect(personalBought.key).toBe('base');
+    expect(personalBought.status).toBe(404);
+    expect(personalBought.key).toBeUndefined();
     const personalOther = await planKey(personalPlanGet, otherOrgId);
-    expect(personalOther.key).toBe('base');
+    expect(personalOther.status).toBe(404);
   });
 
   it('resolves /me/plan to the personal plan for an org member without org.billing.manage (D34)', async () => {
@@ -188,7 +187,7 @@ describe('manager plan model (#228)', () => {
       const body = await json<{ data?: { key?: string } }>(res);
       expect(res.status).toBe(200);
       // No seat, no org.billing.manage → the personal plan (base for a student).
-      expect(body.data?.key).toBe('base');
+      expect(body.data?.key).toBe('free');
     } finally {
       await service.auth.admin.deleteUser(student.id).catch(() => {});
     }
@@ -205,11 +204,11 @@ describe('manager plan model (#228)', () => {
     expect(limits.max_flashcards).toBe(100);
     expect(sources.personal).toBeNull();
 
-    // The personal-plan read path returns the stored row verbatim (the
-    // migration backfill is what keeps such rows off profiles, D34).
+    // The read path returns the stored row verbatim; the manager rule lives on
+    // the write/checkout paths, which never mint such a row.
     const personal = await planKey(personalPlanGet, otherOrgId);
     expect(personal.key).toBe('campus');
 
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', manager.id);
+    await service.from('profiles').update({ personal_plan_key: null }).eq('id', manager.id);
   });
 });

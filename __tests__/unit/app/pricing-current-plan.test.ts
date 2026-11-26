@@ -18,12 +18,12 @@ import pl from '@/i18n/messages/pl.json';
  * org dashboard (#1493 follow-up).
  */
 const state = vi.hoisted(() => ({
-  audience: null as string | null,
   urls: [] as string[],
   plans: [] as PlanInfo[],
   currentPlan: undefined as PlanInfo | undefined,
   planPending: false,
   accountType: 'manager',
+  audience: null as 'individual' | 'organization' | null,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -37,7 +37,8 @@ vi.mock('@/hooks/use-orgs', () => ({
   useOrgs: () => ({ activeOrg: { id: 'org-1' } }),
 }));
 vi.mock('@/hooks/use-api', () => ({
-  useApiQuery: ({ url }: { url: string }) => {
+  useApiQuery: ({ url, enabled }: { url: string; enabled?: boolean }) => {
+    if (enabled === false) return { data: undefined, isSuccess: false, isError: false };
     state.urls.push(url);
     if (url === '/api/v1/subscription-plans') return { data: state.plans, isLoading: false };
     if (url.startsWith('/api/v1/me/')) {
@@ -65,7 +66,6 @@ function plan(key: string, scope: 'personal' | 'organization', priceMonthly = 0)
     sortOrder: 1,
     isActive: true,
     scope,
-    audience: null,
     seatEligible: false,
   };
 }
@@ -94,8 +94,19 @@ function render(input: {
 }
 
 describe('/pricing current-plan badge', () => {
-  it('reads the manager’s personal plan on the individual ladder', () => {
-    render({ plans: [plan('base', 'personal')] });
+  it('asks nothing for a manager on the individual ladder (ADR-0007)', () => {
+    const markup = render({ plans: [plan('free', 'personal'), plan('plus', 'personal', 1900)] });
+
+    // A manager holds no personal plan, so the endpoint would answer NOT_FOUND.
+    expect(state.urls).not.toContain('/api/v1/me/personal-plan');
+    expect(state.urls).not.toContain('/api/v1/me/plan');
+    // No purchase or change action either: the checkout refuses a personal plan.
+    expect(markup).not.toContain('href="/app/billing"');
+    expect(markup).not.toContain('Wybierz Plus');
+  });
+
+  it('reads the personal plan for a content subscriber on the individual ladder', () => {
+    render({ audience: 'individual', accountType: 'student', plans: [plan('free', 'personal')] });
 
     expect(state.urls).toContain('/api/v1/me/personal-plan');
     expect(state.urls).not.toContain('/api/v1/me/plan');
@@ -115,8 +126,9 @@ describe('/pricing change-plan destination', () => {
     // the destination follows the plan's scope, not the audience radios.
     const markup = render({
       audience: 'organization',
-      plans: [plan('spark', 'personal', 1900), plan('hub', 'organization', 4999)],
-      currentPlan: plan('solo', 'personal', 1999),
+      accountType: 'student',
+      plans: [plan('plus', 'personal', 1900), plan('hub', 'organization', 4999)],
+      currentPlan: plan('max', 'personal', 1999),
     });
 
     expect(markup).toContain('href="/app/billing"');
@@ -125,8 +137,8 @@ describe('/pricing change-plan destination', () => {
 
   it('sends an educator’s personal subscriber to the educator billing page', () => {
     const markup = render({
-      plans: [plan('base', 'personal'), plan('spark', 'personal', 1900)],
-      currentPlan: plan('solo', 'personal', 1999),
+      plans: [plan('free', 'personal'), plan('plus', 'personal', 1900)],
+      currentPlan: plan('max', 'personal', 1999),
       accountType: 'educator',
     });
 
@@ -146,8 +158,9 @@ describe('/pricing change-plan destination', () => {
 
   it('prints no action while the plan read is pending', () => {
     const markup = render({
-      plans: [plan('base', 'personal'), plan('spark', 'personal', 1900)],
+      plans: [plan('free', 'personal'), plan('plus', 'personal', 1900)],
       planPending: true,
+      accountType: 'student',
     });
 
     expect(markup).not.toContain('href="/app/billing"');

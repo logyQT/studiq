@@ -23,22 +23,11 @@ import { createServiceClient } from '#test/integration/helpers';
 
 const MIGRATION_FILE = path.join(
   process.cwd(),
-  'supabase/migrations/20261126160000_organization_plan_ladder.sql',
-);
-
-/**
- * `handle_new_user()` is #1193's: the individual migration mints `base` for every
- * persona. B2 does not touch it, so its guard replay reads that file rather than
- * the matrix this suite owns.
- */
-const NEW_USER_MIGRATION_FILE = path.join(
-  process.cwd(),
-  'supabase/migrations/20261126130000_individual_plan_ladder.sql',
+  'supabase/migrations/20261126170000_plan_key_rename_manager_plan.sql',
 );
 
 interface PlanMatrixEntry {
   scope: 'personal' | 'organization';
-  audience: 'student' | 'educator' | 'manager' | null;
   /** `price_monthly` in minor units; a typo here must not pass the guard. */
   price: number;
   entitlements: string[];
@@ -46,9 +35,8 @@ interface PlanMatrixEntry {
 }
 
 const MATRIX: Record<string, PlanMatrixEntry> = {
-  base: {
+  free: {
     scope: 'personal',
-    audience: null,
     price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
@@ -60,9 +48,8 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_ai_tokens_per_day: 0,
     },
   },
-  spark: {
+  plus: {
     scope: 'personal',
-    audience: null,
     price: 1999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'],
     limits: {
@@ -74,9 +61,8 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_ai_tokens_per_day: 100000,
     },
   },
-  ace: {
+  pro: {
     scope: 'personal',
-    audience: null,
     price: 3999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
@@ -88,9 +74,8 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_ai_tokens_per_day: 250000,
     },
   },
-  pro: {
+  max: {
     scope: 'personal',
-    audience: null,
     price: 7999,
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
@@ -104,7 +89,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   },
   launch: {
     scope: 'organization',
-    audience: null,
     price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
@@ -119,7 +103,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   },
   hub: {
     scope: 'organization',
-    audience: null,
     price: 29900,
     entitlements: ['flashcards', 'quiz'],
     limits: {
@@ -134,7 +117,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   },
   campus: {
     scope: 'organization',
-    audience: null,
     price: 69900,
     entitlements: ['flashcards', 'quiz'],
     limits: {
@@ -190,7 +172,6 @@ interface CatalogSnapshot {
   plans: Array<{
     key: string;
     scope: string;
-    audience: string | null;
     price_monthly: number | null;
   }>;
   entitlements: Array<{ plan_key: string; entitlement_key: string }>;
@@ -203,7 +184,7 @@ async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   return {
     plans: await sql<
       CatalogSnapshot['plans']
-    >`select key, scope, audience, price_monthly from public.subscription_plans order by key`,
+    >`select key, scope, price_monthly from public.subscription_plans order by key`,
     entitlements: await sql<
       CatalogSnapshot['entitlements']
     >`select plan_key, entitlement_key from public.plan_entitlements order by plan_key, entitlement_key`,
@@ -218,7 +199,6 @@ describe('plan catalogue is migration-owned (#1494)', () => {
   let planRows: Array<{
     key: string;
     scope: string;
-    audience: string | null;
     price_monthly: number | null;
   }>;
   let entitlementRows: Array<{ plan_key: string; entitlement_key: string }>;
@@ -228,9 +208,12 @@ describe('plan catalogue is migration-owned (#1494)', () => {
   beforeAll(async () => {
     service = createServiceClient();
 
+    // The full live table can hold an inactive fixture plan another suite
+    // created; the catalogue is the active set the product sells.
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope, audience, price_monthly')
+      .select('key, scope, price_monthly')
+      .eq('is_active', true)
       .order('key');
     if (plansError) throw new Error(`[plan-catalog] plan lookup failed: ${plansError.message}`);
     planRows = dbRows(plans);
@@ -279,7 +262,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     );
   }
 
-  it('is exactly the seven matrix plans, with the expected scope/audience/price', () => {
+  it('is exactly the seven matrix plans, with the expected scope/price', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
@@ -288,23 +271,38 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
       // `price` is pinned here because the closing guard covers it too: a
       // digit typo (`69900 → 6990`) must fail one of the two, not slip through.
-      expect({ scope: row.scope, audience: row.audience, price: row.price_monthly }, key).toEqual({
+      expect({ scope: row.scope, price: row.price_monthly }, key).toEqual({
         scope: expected.scope,
-        audience: expected.audience,
         price: expected.price,
       });
     }
   });
 
-  it('the replay guard rejects a manager branch in handle_new_user', async () => {
-    const migrationSql = readFileSync(NEW_USER_MIGRATION_FILE, 'utf8');
-    const managerBranch = `  if acct_type = 'manager' then
-    plan_key_val := 'solo';
-  else
-    plan_key_val := 'base';
-  end if;`;
-    const broken = migrationSql.replace("  plan_key_val := 'base';", managerBranch);
-    expect(broken, 'this test needs the base assignment in the migration').not.toBe(migrationSql);
+  it('the retired individual keys are absent from the catalogue', () => {
+    for (const retired of ['base', 'spark', 'ace']) {
+      expect(
+        planRows.map((row) => row.key),
+        retired,
+      ).not.toContain(retired);
+    }
+  });
+
+  it('subscription_plans carries no audience column (#1193 cleanup)', async () => {
+    const rows = await withDirect(
+      (sql) => sql<Array<{ n: number }>>`
+        select count(*)::int as n
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'subscription_plans'
+          and column_name = 'audience'`,
+    );
+    expect(rows[0]?.n).toBe(0);
+  });
+
+  it('the replay guard rejects a personal plan for a manager', async () => {
+    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+    const broken = migrationSql.replace('    plan_key_val := null;', "    plan_key_val := 'free';");
+    expect(broken, 'this test needs the null assignment in the migration').not.toBe(migrationSql);
 
     const rollback = new Error('guard replay: roll back');
     const outcome = await withDirect(async (sql) => {
@@ -322,24 +320,8 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     });
 
     // `42883` is the guard's exception; `ROLLED_BACK` would mean it let the
-    // manager branch through.
+    // branch mint a personal plan for a manager through.
     expect(outcome).toBe('42883');
-  });
-
-  it('rejects a plan that carries an audience at the database (#1193)', async () => {
-    const rejection = await withDirect(async (sql) => {
-      try {
-        await sql`insert into public.subscription_plans
-            (key, name, price_monthly, currency, sort_order, scope, audience)
-          values ('zz_audience_plan', 'Audience plan', 0, 'PLN', 99, 'personal', 'student')`;
-      } catch (error) {
-        if (error && typeof error === 'object' && 'code' in error) return String(error.code);
-        return null;
-      }
-      return null;
-    });
-
-    expect(rejection).toBe('23514');
   });
 
   it('each organization plan carries exactly the baseline keys (B2: capacity only)', () => {
@@ -354,48 +336,6 @@ describe('plan catalogue is migration-owned (#1494)', () => {
       if (expected.scope !== 'organization') continue;
       expect(limitsFor(key), key).not.toHaveProperty('max_ai_tokens_per_day');
     }
-  });
-
-  it('re-points an organization on the retired team plan to hub', async () => {
-    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
-    const rollback = new Error('team re-point: roll back');
-    const probeOrgId = '00000000-0000-4000-8000-0000000f1493';
-    let probePlan: string | undefined;
-    let teamRows: number | undefined;
-
-    const outcome = await withDirect(async (sql) => {
-      try {
-        await sql.begin(async (tx) => {
-          // The pre-B2 shape: the `team` plan exists and an organization uses it.
-          await tx`
-            insert into public.subscription_plans
-              (key, name, price_monthly, currency, sort_order, is_active, scope, audience)
-            values ('team', 'StudiQ Team', 9900, 'PLN', 99, true, 'organization', null)`;
-          await tx`
-            insert into public.organizations (id, name, plan)
-            values (${probeOrgId}, 'team re-point probe', 'team')`;
-
-          await tx.unsafe(migrationSql);
-
-          const [probe] = await tx<Array<{ plan: string }>>`
-            select plan from public.organizations where id = ${probeOrgId}`;
-          const [team] = await tx<Array<{ n: number }>>`
-            select count(*)::int as n from public.subscription_plans where key = 'team'`;
-          probePlan = probe?.plan;
-          teamRows = team?.n;
-
-          throw rollback;
-        });
-        return 'NO_ERROR';
-      } catch (error) {
-        if (error === rollback) return 'ROLLED_BACK';
-        throw error;
-      }
-    });
-
-    expect(outcome).toBe('ROLLED_BACK');
-    expect(probePlan, 'team folds into hub').toBe('hub');
-    expect(teamRows, 'the team plan is deleted').toBe(0);
   });
 
   it('each plan carries exactly its matrix entitlement set, and none is empty', () => {
@@ -418,41 +358,22 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(flagKeys).toEqual(expect.arrayContaining(EXPECTED_FLAGS));
   });
 
-  it('replaying the migration twice deletes rows outside the matrix, in a rolled-back transaction', async () => {
+  it('replaying the rename twice leaves the same matrix, in a rolled-back transaction', async () => {
     const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
     const before = await withDirect(readSnapshot);
 
     // The replay runs inside one transaction that ends by throwing, so this
     // test touches no shared row: the live database is compared with `before`
-    // below after the rollback. Running the file for real (the previous
-    // version) deleted every plan outside the matrix on each test run — which
-    // includes the org-pinned plans #1495 adds — and raced every other
-    // integration file that creates a plan or a seat pool.
+    // below after the rollback.
     const rollback = new Error('plan-catalog replay: roll back');
     let duringRun: CatalogSnapshot | undefined;
-    let survivors: { plans: number; entitlements: number; limits: number } | undefined;
 
     const replay = withDirect(async (sql) => {
       await sql.begin(async (tx) => {
-        await tx`insert into public.subscription_plans
-            (key, name, price_monthly, currency, sort_order, scope, audience)
-          values ('zz_rogue_plan', 'Rogue replay plan', 0, 'PLN', 99, 'personal', null)`;
-        await tx`insert into public.plan_entitlements (plan_key, entitlement_key)
-          values ('zz_rogue_plan', 'quiz')`;
-        await tx`insert into public.plan_limits (plan_key, limit_key, limit_value)
-          values ('zz_rogue_plan', 'max_flashcards', 1)`;
-
         await tx.unsafe(migrationSql);
         await tx.unsafe(migrationSql);
 
         duringRun = await readSnapshot(tx);
-        const [rogue] = await tx<
-          Array<{ plans: number; entitlements: number; limits: number }>
-        >`select
-            (select count(*) from public.subscription_plans where key = 'zz_rogue_plan')::int as plans,
-            (select count(*) from public.plan_entitlements where plan_key = 'zz_rogue_plan')::int as entitlements,
-            (select count(*) from public.plan_limits where plan_key = 'zz_rogue_plan')::int as limits`;
-        survivors = rogue;
 
         throw rollback;
       });
@@ -460,14 +381,9 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
     // A different error must not be mistaken for the rollback signal.
     await expect(replay).rejects.toBe(rollback);
-    if (!duringRun || !survivors) {
+    if (!duringRun) {
       throw new Error('the replay transaction never reached its assertions');
     }
-
-    // The rogue plan and both of its child rows are gone. `before`/`after`
-    // equality could not prove this: an additive-only file leaves a clean
-    // database unchanged, so it passed while proving nothing.
-    expect(survivors).toEqual({ plans: 0, entitlements: 0, limits: 0 });
 
     // The replayed catalogue is the matrix itself, row for row, after both
     // applications — not only the same row count.
@@ -476,7 +392,6 @@ describe('plan catalogue is migration-owned (#1494)', () => {
         .map(([key, plan]) => ({
           key,
           scope: plan.scope,
-          audience: plan.audience,
           price_monthly: plan.price,
         }))
         .toSorted((a, b) => a.key.localeCompare(b.key)),

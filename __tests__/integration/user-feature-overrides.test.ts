@@ -33,7 +33,7 @@ describe('User feature override expiry', () => {
     userId = student.id;
   });
 
-  // A fresh student: personal plan `base` (flashcards, quiz), no active org
+  // A fresh student: personal plan `free` (flashcards, quiz), no active org
   // in this ctx → the plan fallback is the only entitlement source.
   function ctx(): RequestContext {
     return {
@@ -87,7 +87,7 @@ describe('User feature override expiry', () => {
 
   // `quiz.templates` is the grant/revoke probe key here: it has no quota, so
   // the quota-0 exclusion never masks the override semantics. `ai.chat` on the
-  // `base` plan has `max_ai_tokens_per_day = 0` and is excluded regardless —
+  // `free` plan has `max_ai_tokens_per_day = 0` and is excluded regardless —
   // pinned separately below.
   const GRANT_KEY = 'quiz.templates';
 
@@ -150,7 +150,7 @@ describe('User feature override expiry', () => {
   });
 
   it('an override grant does not lift a quota-0 entitlement (ai.chat on base)', async () => {
-    // `base` carries `max_ai_tokens_per_day = 0`, so `ai.chat` is excluded by
+    // `free` carries `max_ai_tokens_per_day = 0`, so `ai.chat` is excluded by
     // the quota-0 filter even when an active override grants it (§6.1 order).
     await setOverride('ai.chat', true, null);
 

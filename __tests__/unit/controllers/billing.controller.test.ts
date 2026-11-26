@@ -22,10 +22,10 @@ const ctx: RequestContext = {
 
 const view: BillingSubscriptionView = {
   provider: 'mock',
-  planKey: 'spark',
-  planName: 'StudiQ Spark',
-  billedPlanKey: 'spark',
-  billedPlanName: 'StudiQ Spark',
+  planKey: 'plus',
+  planName: 'StudiQ Plus',
+  billedPlanKey: 'plus',
+  billedPlanName: 'StudiQ Plus',
   entitlementAppliedPlanKey: null,
   status: 'active',
   currentPeriodEnd: null,
@@ -126,22 +126,22 @@ describe('BillingController', () => {
     it('delegates only the target plan key', async () => {
       billing.changePlan.mockResolvedValueOnce(success({ status: 'scheduled' }));
 
-      const response = await controller.changePlan(ctx, { planKey: 'ace' });
+      const response = await controller.changePlan(ctx, { planKey: 'pro' });
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { status: 'scheduled' } });
-      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', false);
+      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'pro', false);
     });
 
     it('selects the caller’s own subscription when the change body names the personal scope', async () => {
       billing.changePlan.mockResolvedValueOnce(success({ status: 'applied' }));
 
-      await controller.changePlan(ctx, { planKey: 'ace', scope: 'personal' });
+      await controller.changePlan(ctx, { planKey: 'pro', scope: 'personal' });
 
-      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', true);
+      expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'pro', true);
     });
 
     it('rejects an unknown scope on the change body with 422', async () => {
-      const response = await controller.changePlan(ctx, { planKey: 'ace', scope: 'organization' });
+      const response = await controller.changePlan(ctx, { planKey: 'pro', scope: 'organization' });
 
       expect(response).toMatchObject({ success: false, statusCode: 422 });
       expect(billing.changePlan).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe('BillingController', () => {
       });
 
       billing.changePlan.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
-      await expect(controller.changePlan(ctx, { planKey: 'ace' })).resolves.toMatchObject({
+      await expect(controller.changePlan(ctx, { planKey: 'pro' })).resolves.toMatchObject({
         success: false,
         statusCode: 404,
       });

@@ -24,7 +24,7 @@ import {
  *    derived per request, so a plan that gains a key serves it on the next
  *    resolution — no row per org, no cache flush, no restart. Since #1493 the
  *    organization ladder is capacity only, so the probe is the personal plan
- *    (`spark`), whose portable keys reach the member inside the org.
+ *    (`plus`), whose portable keys reach the member inside the org.
  *
  * `entitlement_catalog` is deliberately not written here: `catalog-invariants`
  * asserts the DB set against `ENTITLEMENTS` and runs in a parallel file, so a
@@ -71,7 +71,7 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
   afterAll(async () => {
     await service.from('user_feature_overrides').delete().eq('feature_key', UNKNOWN_KEY);
     await service.from('entitlement_flags').delete().eq('key', UNKNOWN_KEY);
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', USER_ID);
+    await service.from('profiles').update({ personal_plan_key: 'free' }).eq('id', USER_ID);
     if (orgId) await cleanupOrganizationDeep(orgId);
   });
 
@@ -82,13 +82,13 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
 
     const { error } = await service
       .from('profiles')
-      .update({ personal_plan_key: 'spark' })
+      .update({ personal_plan_key: 'plus' })
       .eq('id', USER_ID);
     if (error) throw new Error(error.message);
 
-    const spark = await resolver.resolveEntitlements(ctx(adminRoleId));
-    expect(spark.entitlements).toEqual(PERSONAL_CEILING);
-    expect(spark.sources.personal).toEqual({ planKey: 'spark', origin: 'personal' });
+    const plus = await resolver.resolveEntitlements(ctx(adminRoleId));
+    expect(plus.entitlements).toEqual(PERSONAL_CEILING);
+    expect(plus.sources.personal).toEqual({ planKey: 'plus', origin: 'personal' });
   });
 
   it('ignores an unknown override key on a real row (cell F: DB ahead of code)', async () => {
@@ -98,7 +98,7 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
     await setOrgPlan(orgId, 'hub');
     const { error: personalError } = await service
       .from('profiles')
-      .update({ personal_plan_key: 'spark' })
+      .update({ personal_plan_key: 'plus' })
       .eq('id', USER_ID);
     if (personalError) throw new Error(personalError.message);
     // `entitlement_flags` has no FK to the catalog, so this row can exist for a

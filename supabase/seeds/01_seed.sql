@@ -179,14 +179,14 @@ ON CONFLICT DO NOTHING;
 
 -- Profiles
 INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
-  ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',  'M1',        'base'),
-  ('00000000-0000-4000-8001-000000000008', 'manager2@dev.local', 'M2',        'base'),
-  ('00000000-0000-4000-8001-000000000003', 'teacher1@dev.local', 'T1',        'base'),
-  ('00000000-0000-4000-8001-000000000004', 'teacher2@dev.local', 'T2',        'base'),
-  ('00000000-0000-4000-8001-000000000005', 'student1@dev.local', 'S1',        'base'),
-  ('00000000-0000-4000-8001-000000000006', 'student2@dev.local', 'S2',        'base'),
-  ('00000000-0000-4000-8001-000000000007', 'student3@dev.local', 'S3',        'base'),
-  ('00000000-0000-4000-8001-000000000009', 'test-student@dev.local', 'TestStudent', 'base')
+  ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',  'M1',        NULL),
+  ('00000000-0000-4000-8001-000000000008', 'manager2@dev.local', 'M2',        NULL),
+  ('00000000-0000-4000-8001-000000000003', 'teacher1@dev.local', 'T1',        'free'),
+  ('00000000-0000-4000-8001-000000000004', 'teacher2@dev.local', 'T2',        'free'),
+  ('00000000-0000-4000-8001-000000000005', 'student1@dev.local', 'S1',        'free'),
+  ('00000000-0000-4000-8001-000000000006', 'student2@dev.local', 'S2',        'free'),
+  ('00000000-0000-4000-8001-000000000007', 'student3@dev.local', 'S3',        'free'),
+  ('00000000-0000-4000-8001-000000000009', 'test-student@dev.local', 'TestStudent', 'free')
 ON CONFLICT DO NOTHING;
 
 -- Org memberships
@@ -416,8 +416,8 @@ ON CONFLICT DO NOTHING;
 
 -- Profiles
 INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
-  ('00000000-0000-4000-8001-00000000000A', 'teacher-classroom@dev.local', 'Classroom Teacher', 'base'),
-  ('00000000-0000-4000-8001-00000000000B', 'student-classroom@dev.local', 'Classroom Student', 'base')
+  ('00000000-0000-4000-8001-00000000000A', 'teacher-classroom@dev.local', 'Classroom Teacher', 'free'),
+  ('00000000-0000-4000-8001-00000000000B', 'student-classroom@dev.local', 'Classroom Student', 'free')
 ON CONFLICT DO NOTHING;
 
 -- User feature overrides for the Classroom teacher: the shared demo/e2e tenant must

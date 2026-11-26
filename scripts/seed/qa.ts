@@ -57,7 +57,7 @@
  * users (the profile field `personalPlan` does the same for the case's own
  * manifest). A paid surface inside an organization now comes from the member's
  * personal plan (`personalPortable`), so a case that needs `ai.chat`,
- * `quiz.templates` or `stats.insights` inside an org declares `spark`, `ace` or
+ * `quiz.templates` or `stats.insights` inside an org declares `plus`, `pro` or
  * `pro` here. `--personal-role manager|teacher|student` narrows the write to that
  * one tenant account; without it every seeded account gets the plan. The key
  * must exist and be `scope='personal'`; anything else fails the seed instead of

@@ -21,20 +21,19 @@ function plan(key: string, priceMonthly: number, currency = 'PLN'): PlanInfo {
     sortOrder: 0,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
   };
 }
 
-const personal = [plan('base', 0), plan('spark', 1999), plan('ace', 3999), plan('pro', 7999)];
+const personal = [plan('free', 0), plan('plus', 1999), plan('pro', 3999), plan('max', 7999)];
 const organization = [plan('launch', 0), plan('hub', 29900), plan('campus', 69900)];
 
 describe('pickLandingPlans', () => {
   it('picks the free personal plan, Plus as the paid tier and the cheapest paid org plan', () => {
     const picked = pickLandingPlans(personal, organization);
 
-    expect(picked.free?.key).toBe('base');
-    expect(picked.premium?.key).toBe('spark');
+    expect(picked.free?.key).toBe('free');
+    expect(picked.premium?.key).toBe('plus');
     expect(picked.organizationFrom?.key).toBe('hub');
   });
 
@@ -45,9 +44,9 @@ describe('pickLandingPlans', () => {
   });
 
   it('falls back to the cheapest paid personal plan when Plus is missing', () => {
-    const picked = pickLandingPlans([plan('base', 0), plan('pro', 7999), plan('ace', 3999)], []);
+    const picked = pickLandingPlans([plan('free', 0), plan('max', 7999), plan('pro', 3999)], []);
 
-    expect(picked.premium?.key).toBe('ace');
+    expect(picked.premium?.key).toBe('pro');
   });
 
   it('returns nulls while the plans are not loaded', () => {
@@ -61,7 +60,7 @@ describe('pickLandingPlans', () => {
 
 describe('formatPlanPrice', () => {
   it('formats in the plan currency, not in dollars', () => {
-    const price = formatPlanPrice(plan('ace', 1999), 'pl');
+    const price = formatPlanPrice(plan('pro', 1999), 'pl');
 
     expect(price).toContain('19,99');
     expect(price).toContain('zł');
@@ -69,11 +68,11 @@ describe('formatPlanPrice', () => {
   });
 
   it('drops the decimals for whole amounts', () => {
-    expect(formatPlanPrice(plan('base', 0), 'pl')).toMatch(/^0\s?zł$/);
+    expect(formatPlanPrice(plan('free', 0), 'pl')).toMatch(/^0\s?zł$/);
   });
 
   it('follows the visitor locale', () => {
-    expect(formatPlanPrice(plan('ace', 1999), 'en')).toContain('19.99');
+    expect(formatPlanPrice(plan('pro', 1999), 'en')).toContain('19.99');
   });
 });
 

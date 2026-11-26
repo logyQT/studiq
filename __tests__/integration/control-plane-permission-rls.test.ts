@@ -209,8 +209,8 @@ describe('control-plane permission RLS (2b-4)', () => {
         billing_customer_id: customer.id,
         organization_id: data.organizationId ?? null,
         user_id: data.userId ?? null,
-        plan_key: data.organizationId ? 'hub' : 'ace',
-        price_id: data.organizationId ? 'price_hub' : 'price_ace',
+        plan_key: data.organizationId ? 'hub' : 'pro',
+        price_id: data.organizationId ? 'price_hub' : 'price_pro',
         status: 'active',
         livemode: false,
       })
@@ -545,7 +545,7 @@ describe('control-plane permission RLS (2b-4)', () => {
         .is('organization_id', null);
 
       expect(ownRead.data).toHaveLength(1);
-      expect(ownRead.data?.[0]?.plan_key).toBe('ace');
+      expect(ownRead.data?.[0]?.plan_key).toBe('pro');
       expect(othersPersonal.data).toEqual([]);
       expect(memberOwn.data).toHaveLength(1);
     });

@@ -449,7 +449,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
     await service.from('payments').delete().eq('user_id', userId);
     await service.from('billing_subscriptions').delete().eq('user_id', userId);
     await service.from('billing_customers').delete().eq('user_id', userId);
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', userId);
+    await service.from('profiles').update({ personal_plan_key: 'free' }).eq('id', userId);
   }
 
   async function profilePlan(): Promise<string | null> {
@@ -697,7 +697,7 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
       );
       await replay(fixture.subscription.id, fixture.since);
 
-      expect(await profilePlan()).toBe('base');
+      expect(await profilePlan()).toBe('free');
       expect((await mirrorRow(fixture.subscription.id)).status).toBe('canceled');
     } finally {
       await cleanup(fixture.clock.id);

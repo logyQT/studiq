@@ -28,7 +28,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * `GET /api/v1/ai/usage` require the `ai.chat` entitlement. The organization
  * plan is capacity only since #1493, so the manager's **personal Plus plan**
  * carries `ai.chat` into the org (`personalPortable`; the profile declares
- * `personalPlan: "spark"`) and the manager *may* call the API. The intended manager
+ * `personalPlan: "plus"`) and the manager *may* call the API. The intended manager
  * menu is therefore „Główne: Przegląd” and the seven „Administracja” entries
  * below; the spec pins the absence of the dead link instead of reproducing it,
  * plus the positive entitlement path on the API.

@@ -8,21 +8,21 @@ import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
  *
  * The case was written for the legacy manual seed (`test-student@dev.local`,
  * password `pass`) and starts with a **global** `update plan_limits ... where
- * plan_key = 'base'` that lowers the Base limits to 2 so the whole check fits
+ * plan_key = 'free'` that lowers the Free limits to 2 so the whole check fits
  * two records. A QA-suite spec must not mutate the shared plan catalogue: every
- * tenant on the shared database reads `plan_limits`, so lowering Base would
- * change LIM-03 (buy Spark after the lowered Base) and every other case, and it
+ * tenant on the shared database reads `plan_limits`, so lowering Free would
+ * change LIM-03 (buy Plus after the lowered Free) and every other case, and it
  * only "works" until someone resets the DB.
  *
- * The tenant therefore reproduces the same starting point at the real Base cap
+ * The tenant therefore reproduces the same starting point at the real Free cap
  * that `/app/billing` shows:
  *
  *   bun scripts/qa-tenant.ts LIM-02 --fresh   # profile: __tests__/qa/profiles/LIM-02.json
  *
  * `bare`/`student` is the case's TS account: one student, no organization, no
- * group and the free `base` personal plan from `handle_new_user`. Outside an org
+ * group and the free `free` personal plan from `handle_new_user`. Outside an org
  * the personal plan governs the counters (#233), so the spec fills only this
- * student's own decks/cards/banks/questions up to the Base caps (10 / 100 / 5 /
+ * student's own decks/cards/banks/questions up to the Free caps (10 / 100 / 5 /
  * 50) and asserts that the next one is refused — the same enforcement path the
  * manual case exercises with the artificial "2".
  *
@@ -66,7 +66,7 @@ const UI = {
   create: 'Utwórz',
 } as const;
 
-/** The Base caps, as `/api/v1/me/personal-plan` reports them. */
+/** The Free caps, as `/api/v1/me/personal-plan` reports them. */
 const LIMIT = { decks: 10, flashcards: 100, banks: 5, questions: 50 } as const;
 
 /** Names of the deck/bank that hold the over-limit attempts. */
@@ -156,7 +156,7 @@ function waitForPost(page: Page, pathname: string) {
 }
 
 /**
- * Fill this tenant up to the Base caps through the product API. Only the missing
+ * Fill this tenant up to the Free caps through the product API. Only the missing
  * elements are created, so a retry on the same tenant is a no-op.
  */
 async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankId: string }> {
@@ -174,7 +174,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
 
   // The bank that will hold the 50 questions, for the same reason.
   let banks = await listBanks(page);
-  expect(banks.hasMore, 'five Base banks fit on one page').toBe(false);
+  expect(banks.hasMore, 'five Free banks fit on one page').toBe(false);
   let questionBank = banks.items.find((bank) => bank.name === QUESTION_BANK);
   if (!questionBank) {
     const created = await page.request.post('/api/v1/questions/banks', {
@@ -195,7 +195,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
     expect(res.status(), `deck ${total + 1} of ${LIMIT.decks} is created`).toBe(201);
   }
   decks = await listDecks(page);
-  expect(decks.total, 'the tenant owns exactly the Base deck quota').toBe(LIMIT.decks);
+  expect(decks.total, 'the tenant owns exactly the Free deck quota').toBe(LIMIT.decks);
 
   // Flashcards: the bulk create the import flow uses.
   let cardCount = (await deckDetail(page, cardDeck.id)).flashcard_count;
@@ -210,7 +210,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
     expect(res.status(), `fill the deck to ${LIMIT.flashcards} flashcards`).toBe(201);
     cardCount = (await deckDetail(page, cardDeck.id)).flashcard_count;
   }
-  expect(cardCount, 'the tenant owns exactly the Base flashcard quota').toBe(LIMIT.flashcards);
+  expect(cardCount, 'the tenant owns exactly the Free flashcard quota').toBe(LIMIT.flashcards);
 
   // Question banks: one at a time, like the UI.
   banks = await listBanks(page);
@@ -224,7 +224,7 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
     expect(res.status(), `bank ${total + 1} of ${LIMIT.banks} is created`).toBe(201);
   }
   banks = await listBanks(page);
-  expect(banks.items.length, 'the tenant owns exactly the Base bank quota').toBe(LIMIT.banks);
+  expect(banks.items.length, 'the tenant owns exactly the Free bank quota').toBe(LIMIT.banks);
 
   // Questions: one at a time, like the UI.
   let questions = await listQuestions(page, questionBank.id);
@@ -240,12 +240,12 @@ async function fillTenantToBaseCaps(page: Page): Promise<{ deckId: string; bankI
     expect(res.status(), `question ${total + 1} of ${LIMIT.questions} is created`).toBe(201);
   }
   questions = await listQuestions(page, questionBank.id);
-  expect(questions.length, 'the tenant owns exactly the Base question quota').toBe(LIMIT.questions);
+  expect(questions.length, 'the tenant owns exactly the Free question quota').toBe(LIMIT.questions);
 
   return { deckId: cardDeck.id, bankId: questionBank.id };
 }
 
-test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Base cap', () => {
+test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Free cap', () => {
   test('the next deck, flashcard, bank and question are refused with a readable error', async ({
     page,
   }) => {
@@ -268,13 +268,13 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Base cap', () 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
 
-    // --- Precondition: the case's standalone TS student on Base ----------
+    // --- Precondition: the case's standalone TS student on Free ----------
     const plan = await getJson<{ key: string; limits: Record<string, number> }>(
       page,
       '/api/v1/me/personal-plan',
     );
-    expect(plan.key, 'the tenant student is on the free Base plan').toBe('base');
-    expect(plan.limits, 'the Base caps').toMatchObject({
+    expect(plan.key, 'the tenant student is on the Free plan').toBe('free');
+    expect(plan.limits, 'the Free caps').toMatchObject({
       max_decks: LIMIT.decks,
       max_flashcards: LIMIT.flashcards,
       max_questions: LIMIT.questions,

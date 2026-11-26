@@ -2,11 +2,14 @@
 
 import { AccountType } from '@studiq/authz';
 import { BillingPage } from '@/components/billing/billing-page';
+import { useManagerRedirect } from '@/hooks/use-manager-redirect';
 
 /**
  * Educator billing (#662 §7.4): the same read model as the student app, scoped
  * to the educator's own subscription rather than their active organization's.
  */
 export default function EduBillingPage() {
+  const isManager = useManagerRedirect('/manage/billing');
+  if (isManager) return null;
   return <BillingPage accountType={AccountType.EDUCATOR} upgradePath="/edu/upgrade" personal />;
 }

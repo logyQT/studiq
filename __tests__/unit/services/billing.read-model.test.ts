@@ -50,8 +50,8 @@ const managerCtx: RequestContext = {
 function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
   return {
     id: 'plan-1',
-    key: 'spark',
-    name: 'StudiQ Spark',
+    key: 'plus',
+    name: 'StudiQ Plus',
     description: null,
     priceMonthly: 999,
     priceYearly: 0,
@@ -61,7 +61,6 @@ function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 1,
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     seatEligible: false,
     ...overrides,
   };
@@ -69,13 +68,12 @@ function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
 
 function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
   return {
-    key: 'spark',
-    name: 'StudiQ Spark',
+    key: 'plus',
+    name: 'StudiQ Plus',
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 1,
     ...overrides,
   };
@@ -84,8 +82,8 @@ function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
 function subscriptionRow(overrides: Partial<SubscriptionReadRow> = {}): SubscriptionReadRow {
   return {
     stripeSubscriptionId: 'sub_1',
-    planKey: 'spark',
-    entitlementAppliedPlanKey: 'spark',
+    planKey: 'plus',
+    entitlementAppliedPlanKey: 'plus',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -170,8 +168,8 @@ describe('BillingService.getSubscription', () => {
     expect(result).toEqual(
       success({
         provider: 'mock',
-        planKey: 'spark',
-        planName: 'StudiQ Spark',
+        planKey: 'plus',
+        planName: 'StudiQ Plus',
         billedPlanKey: null,
         billedPlanName: null,
         entitlementAppliedPlanKey: null,
@@ -195,14 +193,14 @@ describe('BillingService.getSubscription', () => {
 
   it('marks a free mock plan as free', async () => {
     gateway = createGateway('mock');
-    plans = createPlans(success(planInfo({ key: 'base', name: 'StudiQ Base', priceMonthly: 0 })));
+    plans = createPlans(success(planInfo({ key: 'free', name: 'StudiQ Base', priceMonthly: 0 })));
     service = new BillingService(gateway, repository, reads, plans);
 
     const result = await service.getSubscription(studentCtx);
 
     expect(result).toMatchObject({
       success: true,
-      data: { provider: 'mock', status: 'free', planKey: 'base', priceMonthly: 0 },
+      data: { provider: 'mock', status: 'free', planKey: 'free', priceMonthly: 0 },
     });
   });
 
@@ -235,7 +233,7 @@ describe('BillingService.getSubscription', () => {
       success: true,
       data: {
         provider: 'stripe',
-        planKey: 'spark',
+        planKey: 'plus',
         status: 'active',
         currentPeriodEnd: null,
         canManagePortal: false,
@@ -267,11 +265,11 @@ describe('BillingService.getSubscription', () => {
     expect(result).toEqual(
       success({
         provider: 'stripe',
-        planKey: 'spark',
-        planName: 'StudiQ Spark',
-        billedPlanKey: 'spark',
-        billedPlanName: 'StudiQ Spark',
-        entitlementAppliedPlanKey: 'spark',
+        planKey: 'plus',
+        planName: 'StudiQ Plus',
+        billedPlanKey: 'plus',
+        billedPlanName: 'StudiQ Plus',
+        entitlementAppliedPlanKey: 'plus',
         status: 'active',
         currentPeriodEnd: '2026-12-01T00:00:00.000Z',
         cancelAtPeriodEnd: false,
@@ -314,13 +312,13 @@ describe('BillingService.getSubscription', () => {
     reads = createReads({
       findSubscription: vi
         .fn()
-        .mockResolvedValue(success(subscriptionRow({ planKey: 'spark', pendingPlanKey: 'spark' }))),
+        .mockResolvedValue(success(subscriptionRow({ planKey: 'plus', pendingPlanKey: 'plus' }))),
     });
     service = new BillingService(gateway, repository, reads, plans);
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
-      data: { planKey: 'spark', pendingPlanKey: null },
+      data: { planKey: 'plus', pendingPlanKey: null },
     });
   });
 
@@ -364,31 +362,30 @@ describe('BillingService.getSubscription', () => {
     plans = createPlans(
       success(
         planInfo({
-          key: 'ace',
-          name: 'StudiQ Ace',
+          key: 'pro',
+          name: 'StudiQ Pro',
           priceMonthly: 4999,
           scope: 'organization',
-          audience: null,
         }),
       ),
     );
     reads = createReads({
-      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow({ planKey: 'spark' }))),
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow({ planKey: 'plus' }))),
     });
     service = new BillingService(gateway, repository, reads, plans);
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
       data: {
-        planKey: 'ace',
-        planName: 'StudiQ Ace',
-        billedPlanKey: 'spark',
-        billedPlanName: 'StudiQ Spark',
+        planKey: 'pro',
+        planName: 'StudiQ Pro',
+        billedPlanKey: 'plus',
+        billedPlanName: 'StudiQ Plus',
         priceMonthly: 4999,
         status: 'active',
       },
     });
-    expect(repository.getPlan).toHaveBeenCalledWith('spark');
+    expect(repository.getPlan).toHaveBeenCalledWith('plus');
   });
 
   it('falls back to the catalog row when the caller has no effective plan', async () => {
@@ -396,24 +393,24 @@ describe('BillingService.getSubscription', () => {
     reads = createReads({
       findSubscription: vi
         .fn()
-        .mockResolvedValue(success(subscriptionRow({ planKey: 'ace', status: 'active' }))),
+        .mockResolvedValue(success(subscriptionRow({ planKey: 'pro', status: 'active' }))),
     });
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(catalogPlan({ key: 'ace', name: 'StudiQ Ace', priceMonthly: 4999 })),
+      success(catalogPlan({ key: 'pro', name: 'StudiQ Pro', priceMonthly: 4999 })),
     );
     service = new BillingService(gateway, repository, reads, plans);
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
       data: {
-        planKey: 'ace',
-        planName: 'StudiQ Ace',
-        billedPlanKey: 'ace',
-        billedPlanName: 'StudiQ Ace',
+        planKey: 'pro',
+        planName: 'StudiQ Pro',
+        billedPlanKey: 'pro',
+        billedPlanName: 'StudiQ Pro',
         priceMonthly: 4999,
       },
     });
-    expect(repository.getPlan).toHaveBeenCalledWith('ace');
+    expect(repository.getPlan).toHaveBeenCalledWith('pro');
   });
 
   it('leaves the billed name null when the billed catalogue row is missing', async () => {
@@ -426,7 +423,7 @@ describe('BillingService.getSubscription', () => {
 
     await expect(service.getSubscription(studentCtx)).resolves.toMatchObject({
       success: true,
-      data: { billedPlanKey: 'spark', billedPlanName: null },
+      data: { billedPlanKey: 'plus', billedPlanName: null },
     });
   });
 
@@ -512,9 +509,8 @@ describe('BillingService.getSubscription', () => {
       name: 'Launch',
       priceMonthly: 0,
       scope: 'organization',
-      audience: null,
     });
-    const personalPlan = planInfo({ key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 });
+    const personalPlan = planInfo({ key: 'plus', name: 'StudiQ Plus', priceMonthly: 1999 });
     plans = createPlans(success(orgPlan), success(personalPlan));
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
@@ -526,7 +522,7 @@ describe('BillingService.getSubscription', () => {
     await expect(service.getSubscription(managerCtx, true)).resolves.toMatchObject({
       success: true,
       data: {
-        planKey: 'spark',
+        planKey: 'plus',
         planName: 'StudiQ Plus',
         priceMonthly: 1999,
         status: 'active',

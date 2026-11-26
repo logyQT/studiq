@@ -14,7 +14,7 @@ import {
 //        create a second group (429 USAGE_LIMIT_EXCEEDED). Raised to 3.
 // D1 hardening: a personal plan never carries max_students/max_groups. Since
 //        #1193 the one individual ladder has no org-scope rows at all, so the
-//        'base' plan cannot widen anything even before #233's read rule.
+//        'free' plan cannot widen anything even before #233's read rule.
 //        (Primary D1 fix is checkOrgLimit + invite-accept.test.ts.)
 describe(`Plan limit fixes`, () => {
   let fixture!: BeforeResult;
@@ -51,7 +51,7 @@ describe(`Plan limit fixes`, () => {
       const { data: limit } = await supabase
         .from('plan_limits')
         .select('limit_value')
-        .eq('plan_key', 'base')
+        .eq('plan_key', 'free')
         .eq('limit_key', key)
         .maybeSingle();
       expect(limit, `base must not carry ${key}`).toBeNull();

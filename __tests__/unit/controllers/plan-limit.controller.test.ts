@@ -37,10 +37,10 @@ describe('PlanLimitController', () => {
     it('returns limits by plan key', async () => {
       mockService.getByPlanKey.mockResolvedValueOnce({ success: true, data: [] });
 
-      const response = await controller.getAll('base');
+      const response = await controller.getAll('free');
 
       expect(response.success).toBe(true);
-      expect(mockService.getByPlanKey).toHaveBeenCalledWith('base');
+      expect(mockService.getByPlanKey).toHaveBeenCalledWith('free');
     });
 
     it('returns error on failure', async () => {
@@ -55,11 +55,11 @@ describe('PlanLimitController', () => {
 
   describe('create', () => {
     it('creates a limit', async () => {
-      const limit = { id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 };
+      const limit = { id: 'l-1', plan_key: 'free', limit_key: 'max_groups', limit_value: 3 };
       mockService.create.mockResolvedValueOnce({ success: true, data: limit });
 
       const response = await controller.create({
-        planKey: 'base',
+        planKey: 'free',
         limitKey: 'max_groups',
         limitValue: 3,
       });
@@ -83,7 +83,7 @@ describe('PlanLimitController', () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'CONFLICT' });
 
       const response = await controller.create({
-        planKey: 'base',
+        planKey: 'free',
         limitKey: 'max_groups',
         limitValue: 3,
       });

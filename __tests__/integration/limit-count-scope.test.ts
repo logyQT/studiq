@@ -45,7 +45,7 @@ describe(`Org-context limit count scope`, () => {
   let orgPlanKey!: string;
   let personalDeckId!: string;
   let orgDeckId!: string;
-  let originalPersonalPlan!: string;
+  let originalPersonalPlan: string | null = null;
 
   beforeAll(async () => {
     service = createServiceClient();
@@ -59,7 +59,6 @@ describe(`Org-context limit count scope`, () => {
       currency: 'PLN',
       sort_order: 998,
       scope: 'organization',
-      audience: null,
       is_active: false,
     });
     if (planError) throw new Error(`[count-scope] plan create failed: ${planError.message}`);
@@ -90,7 +89,8 @@ describe(`Org-context limit count scope`, () => {
       .eq('id', fixture.user.id)
       .single();
     if (profileError) throw new Error(`[count-scope] profile read failed: ${profileError.message}`);
-    originalPersonalPlan = String(profileRow.personal_plan_key);
+    originalPersonalPlan =
+      typeof profileRow.personal_plan_key === 'string' ? profileRow.personal_plan_key : null;
     const { error: personalError } = await service
       .from('profiles')
       .update({ personal_plan_key: orgPlanKey })

@@ -222,7 +222,7 @@ test.describe('AI assistant routes (#134)', () => {
 test.describe('AI assistant plan gate (#375)', () => {
   test('base-plan student sees the locked state, not a silent 429', async ({ page }) => {
     await login(page, STUDENT_EMAIL, /\/app/);
-    // Seed fixture: personal `base`, active org WSB Merito (`launch`) → no ai.chat.
+    // Seed fixture: personal `free`, active org WSB Merito (`launch`) → no ai.chat.
     expect(await aiChatEntitled(page), 'fixture account must not have ai.chat').toBe(false);
 
     const aiRequests: string[] = [];

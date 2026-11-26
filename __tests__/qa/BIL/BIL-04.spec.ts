@@ -110,10 +110,10 @@ async function readPlan(page: Page): Promise<PlanInfo> {
   return (await json<{ data: PlanInfo }>(res)).data;
 }
 
-async function readPersonalPlan(page: Page): Promise<PlanInfo> {
+/** A manager holds no personal plan (ADR-0007): the read answers NOT_FOUND. */
+async function expectNoPersonalPlan(page: Page, message: string): Promise<void> {
   const res = await page.request.get('/api/v1/me/personal-plan');
-  expect(res.status(), 'GET /api/v1/me/personal-plan').toBe(200);
-  return (await json<{ data: PlanInfo }>(res)).data;
+  expect(res.status(), message).toBe(404);
 }
 
 async function readFeatures(page: Page): Promise<string[]> {
@@ -154,7 +154,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await loginAs(page, tenant, 'manager', { locale: 'pl' });
     await expect(page).toHaveURL(/\/manage$/, { timeout: 20_000 });
 
-    const personalPlanBefore = await readPersonalPlan(page);
+    await expectNoPersonalPlan(page, 'the manager holds no personal plan before the purchase');
     const paymentsBefore = await readPayments(page);
     const orgBefore = await readOrganization(page, orgId);
     expect(orgBefore.name, 'the checkout targets the tenant organization').toBe(tenant.org!.name);
@@ -264,16 +264,9 @@ test.describe('BIL-04 — organization plan purchase', () => {
     expect(planAfter.limits.max_students, 'Hub raises the member capacity').toBe(50);
     expect(planAfter.limits.max_groups, 'Hub raises the group capacity').toBe(20);
 
-    // The organization purchase must not touch the buyer's personal plan: a
-    // manager's personal plan is the free tier and applies only outside an org.
-    const personalPlanAfter = await readPersonalPlan(page);
-    expect(personalPlanAfter.key, 'the organization purchase leaves the personal plan alone').toBe(
-      personalPlanBefore.key,
-    );
-    expect(personalPlanAfter.name, 'the personal plan name is unchanged').toBe(
-      personalPlanBefore.name,
-    );
-    expect(personalPlanAfter.key, 'the manager did not buy a personal plan').not.toBe('hub');
+    // The organization purchase must not give the buyer a personal plan: a
+    // manager holds none at all (ADR-0007).
+    await expectNoPersonalPlan(page, 'the organization purchase left the manager without one');
 
     // The purchase is recorded once, at the catalogue price, for this tenant.
     const paymentsAfter = await readPayments(page);

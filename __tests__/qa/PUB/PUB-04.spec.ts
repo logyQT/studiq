@@ -44,14 +44,13 @@ interface PlanInfo {
   sortOrder: number;
   isActive: boolean;
   scope: string;
-  audience: string | null;
 }
 
-/** The individual ladder the public pricing page documents (`base` … `pro`). */
-const INDIVIDUAL_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
+/** The individual ladder the public pricing page documents (`free` … `max`). */
+const INDIVIDUAL_PLAN_KEYS = ['free', 'plus', 'pro', 'max'] as const;
 
 /** The personal plan the page recommends to this ladder. */
-const RECOMMENDED_PLAN = 'ace';
+const RECOMMENDED_PLAN = 'pro';
 
 /** The individual FAQ, in the order the page asks it. */
 const FAQ_PAIRS = [

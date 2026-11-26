@@ -61,7 +61,7 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
   describe('getEffectiveLimit', () => {
     it('reads the composed limit from the resolver (personal plan outside an org)', async () => {
-      mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: PERSONAL_LIMITS } });
+      mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: PERSONAL_LIMITS } });
 
       await expect(getEffectiveLimit(freshCtx(), 'max_flashcards')).resolves.toBe(100);
       await expect(getEffectiveLimit(freshCtx(), 'max_students')).resolves.toBe(0);
@@ -71,8 +71,8 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
       mockResolverTables(mock, {
         orgPlan: 'hub',
         roleProfile: 'learner',
-        personalPlanKey: 'base',
-        planLimits: { hub: ORG_LIMITS, base: PERSONAL_LIMITS },
+        personalPlanKey: 'free',
+        planLimits: { hub: ORG_LIMITS, free: PERSONAL_LIMITS },
       });
       const ctx = freshCtx({ activeOrgId: 'org-1', orgRoleId: 'role-member' });
 
@@ -91,13 +91,13 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
   describe('checkLimit', () => {
     it('does not throw when under limit', async () => {
-      mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: PERSONAL_LIMITS } });
+      mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: PERSONAL_LIMITS } });
 
       await expect(checkLimit(freshCtx(), 'max_flashcards', 50)).resolves.toBeUndefined();
     });
 
     it('throws USAGE_LIMIT_EXCEEDED when over limit', async () => {
-      mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: PERSONAL_LIMITS } });
+      mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: PERSONAL_LIMITS } });
 
       await expect(checkLimit(freshCtx(), 'max_flashcards', 100)).rejects.toThrow(
         'USAGE_LIMIT_EXCEEDED',
@@ -109,8 +109,8 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
     it('does not throw when the composed limit is -1, unlimited', async () => {
       mockResolverTables(mock, {
-        personalPlanKey: 'pro',
-        planLimits: { pro: { ...PERSONAL_LIMITS, max_flashcards: -1 } },
+        personalPlanKey: 'max',
+        planLimits: { max: { ...PERSONAL_LIMITS, max_flashcards: -1 } },
       });
 
       await expect(checkLimit(freshCtx(), 'max_flashcards', 999_999)).resolves.toBeUndefined();
@@ -209,8 +209,8 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
       mockResolverTables(mock, {
         orgPlan: 'hub',
         roleProfile: 'learner',
-        personalPlanKey: 'base',
-        planLimits: { hub: ORG_LIMITS, base: PERSONAL_LIMITS },
+        personalPlanKey: 'free',
+        planLimits: { hub: ORG_LIMITS, free: PERSONAL_LIMITS },
       });
       const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
       mock.from.mockImplementation((table: string) =>
@@ -232,8 +232,8 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
     it('reports the personal plan as primary outside an org', async () => {
       mockResolverTables(mock, {
-        personalPlanKey: 'base',
-        planLimits: { base: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 5000 } },
+        personalPlanKey: 'free',
+        planLimits: { free: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 5000 } },
       });
       const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
       mock.from.mockImplementation((table: string) =>
@@ -244,7 +244,7 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
       expect(usage.current).toBe(0);
       expect(usage.limit).toBe(5000);
-      expect(usage.plan).toBe('base');
+      expect(usage.plan).toBe('free');
     });
   });
 
@@ -253,8 +253,8 @@ describe('limits wrappers over the single resolver (phase 3b)', () => {
 
     function mockTokenLimit(): void {
       mockResolverTables(mock, {
-        personalPlanKey: 'base',
-        planLimits: { base: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: TOKEN_LIMIT } },
+        personalPlanKey: 'free',
+        planLimits: { free: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: TOKEN_LIMIT } },
       });
     }
 

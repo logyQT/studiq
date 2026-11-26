@@ -8,16 +8,16 @@ import { describe, expect, it } from 'vitest';
 import { requiredValue } from '#test/mocks/recorded';
 
 const plans: PreflightPlan[] = [
-  { key: 'spark', priceMonthly: 999, currency: 'PLN', isActive: true },
+  { key: 'plus', priceMonthly: 999, currency: 'PLN', isActive: true },
   { key: 'hub', priceMonthly: 29900, currency: 'PLN', isActive: true },
-  { key: 'base', priceMonthly: 0, currency: 'PLN', isActive: true },
+  { key: 'free', priceMonthly: 0, currency: 'PLN', isActive: true },
 ];
 
 function row(overrides: Partial<PreflightPriceRow> = {}): PreflightPriceRow {
   return {
-    planKey: 'spark',
+    planKey: 'plus',
     billingCycle: 'monthly',
-    stripePriceId: 'price_spark',
+    stripePriceId: 'price_plus',
     currency: 'PLN',
     unitAmount: 999,
     interval: 'month',

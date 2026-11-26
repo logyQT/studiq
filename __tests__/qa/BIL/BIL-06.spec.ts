@@ -24,8 +24,8 @@ import { expect, loadTenant, test, type QaRole, type QaTenant } from '#test/qa/f
  * other than the caller's.
  *
  * Acceptance points confirmed during the walk on the shared app:
- * 1. `GET /checkout?plan_id=spark` without a session redirects to
- *    `/login?next=/checkout?plan_id=spark` (the deep link survives the login).
+ * 1. `GET /checkout?plan_id=plus` without a session redirects to
+ *    `/login?next=/checkout?plan_id=plus` (the deep link survives the login).
  * 2. `POST /api/v1/stripe/create-checkout-session` without a session answers 401
  *    `UNAUTHORIZED` — there is no way to start or finish a payment signed out.
  * 3. `POST /api/v1/stripe/webhook` without a session answers 401 `UNAUTHORIZED`
@@ -48,9 +48,9 @@ import { expect, loadTenant, test, type QaRole, type QaTenant } from '#test/qa/f
 const CASE = 'BIL-06';
 
 /** The tenant's student account — the victim of the case's webhook call. */
-const TARGET_PLAN = 'spark';
+const TARGET_PLAN = 'plus';
 /** Catalog plan the case's anonymous webhook call tries to grant. */
-const ATTACK_PLAN = 'pro';
+const ATTACK_PLAN = 'max';
 
 /** Polish copy from `CheckoutPage` (pl.json), the case's UI language. */
 const COPY = {
@@ -120,6 +120,15 @@ async function personalPlanKey(request: APIRequestContext): Promise<string> {
   return body.data.key;
 }
 
+/** A manager holds no personal plan (ADR-0007): the read answers NOT_FOUND. */
+async function expectNoPersonalPlan(
+  request: APIRequestContext,
+  message: string,
+): Promise<void> {
+  const response = await request.get('/api/v1/me/personal-plan');
+  expect(response.status(), message).toBe(404);
+}
+
 function webhookBody(userId: string, sessionSuffix: string, planId: string): WebhookBody {
   return {
     type: 'checkout.session.completed',
@@ -154,16 +163,16 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
     const managerApi = await apiSession(browser, base, 'manager');
     try {
       const studentBefore = await personalPlanKey(studentApi.request);
-      const managerBefore = await personalPlanKey(managerApi.request);
+      await expectNoPersonalPlan(managerApi.request, 'a manager holds no personal plan');
 
       // 1. The checkout deep link is not reachable without a session; the proxy
       //    keeps the plan in `next` so the visitor returns to the same checkout.
-      await page.goto('/checkout?plan_id=spark');
+      await page.goto('/checkout?plan_id=plus');
       await page.waitForURL(/\/login\?/);
       const redirect = new URL(page.url());
       expect(redirect.pathname, 'checkout redirects to the login page').toBe('/login');
       expect(redirect.searchParams.get('next'), 'login keeps the checkout deep link').toBe(
-        '/checkout?plan_id=spark',
+        '/checkout?plan_id=plus',
       );
 
       // 2. No checkout session can be opened signed out (there is no button to
@@ -193,17 +202,17 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
         await personalPlanKey(studentApi.request),
         'the anonymous webhook did not change the student plan',
       ).toBe(studentBefore);
-      expect(
-        await personalPlanKey(managerApi.request),
-        'the anonymous webhook did not change any other plan',
-      ).toBe(managerBefore);
+      await expectNoPersonalPlan(
+        managerApi.request,
+        'the anonymous webhook did not give the manager a personal plan',
+      );
 
       // 4. The visitor signs in from the redirect and lands back on the same
       //    checkout (the case's step 1 can only be finished with a session).
       await page.locator('#email').fill(student.email);
       await page.locator('#password').fill(student.password);
       await page.locator('form button[type=submit]').click();
-      await page.waitForURL(/\/checkout\?plan_id=spark/, { timeout: 15_000 });
+      await page.waitForURL(/\/checkout\?plan_id=plus/, { timeout: 15_000 });
       await expect(page.getByText(COPY.title, { exact: true })).toBeVisible();
       await expect(page.getByText(COPY.summary, { exact: true })).toBeVisible();
       await expect(page.getByText(COPY.plan, { exact: true }).first()).toBeVisible();
@@ -219,10 +228,10 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
         await personalPlanKey(studentApi.request),
         'the refused webhook did not change the caller plan',
       ).toBe(studentBefore);
-      expect(
-        await personalPlanKey(managerApi.request),
+      await expectNoPersonalPlan(
+        managerApi.request,
         "the refused webhook did not change the other user's plan",
-      ).toBe(managerBefore);
+      );
 
       // 6. Control: buying for yourself through the same endpoint still works,
       //    so the assertions above test the authorization gate, not a dead route.
@@ -235,10 +244,10 @@ test.describe('@case:BIL-06 @area:BIL @prio:P1 anonymous checkout and webhook', 
       expect(await personalPlanKey(studentApi.request), 'the own purchase applied').toBe(
         TARGET_PLAN,
       );
-      expect(
-        await personalPlanKey(managerApi.request),
+      await expectNoPersonalPlan(
+        managerApi.request,
         "the caller's purchase left the other user alone",
-      ).toBe(managerBefore);
+      );
     } finally {
       await studentApi.close();
       await managerApi.close();

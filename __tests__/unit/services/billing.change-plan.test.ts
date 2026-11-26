@@ -37,24 +37,22 @@ const managerCtx: RequestContext = {
 };
 
 const CATALOG: Record<string, CatalogPlan> = {
-  spark: {
-    key: 'spark',
-    name: 'StudiQ Spark',
+  plus: {
+    key: 'plus',
+    name: 'StudiQ Plus',
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 1,
   },
-  ace: {
-    key: 'ace',
-    name: 'StudiQ Ace',
+  pro: {
+    key: 'pro',
+    name: 'StudiQ Pro',
     priceMonthly: 2999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 2,
   },
   hub: {
@@ -64,7 +62,6 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     scope: 'organization',
-    audience: null,
     sortOrder: 3,
   },
   campus: {
@@ -74,17 +71,15 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     scope: 'organization',
-    audience: null,
     sortOrder: 4,
   },
-  solo: {
-    key: 'solo',
-    name: 'StudiQ Solo',
-    priceMonthly: 1999,
+  max: {
+    key: 'max',
+    name: 'StudiQ Max',
+    priceMonthly: 7999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'manager',
     sortOrder: 5,
   },
 };
@@ -104,7 +99,7 @@ function activeSubscription(overrides: Partial<ActiveSubscription> = {}): Active
   return {
     stripeSubscriptionId: 'sub_1',
     status: 'active',
-    planKey: 'spark',
+    planKey: 'plus',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     pendingPlanKey: null,
     ...overrides,
@@ -165,7 +160,7 @@ describe('BillingService.changePlan', () => {
   });
 
   it('applies an upgrade now with the anchor reset and idempotency key', async () => {
-    const result = await service.changePlan(studentCtx, 'ace');
+    const result = await service.changePlan(studentCtx, 'pro');
 
     expect(result).toEqual(success({ status: 'applied' }));
     expect(gateway.changePlan).toHaveBeenCalledWith(
@@ -173,39 +168,39 @@ describe('BillingService.changePlan', () => {
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
         customerId: 'cus_1',
         subscriptionId: 'sub_1',
-        currentPlanKey: 'spark',
-        targetPlanKey: 'ace',
-        targetPriceId: 'price_ace',
+        currentPlanKey: 'plus',
+        targetPlanKey: 'pro',
+        targetPriceId: 'price_pro',
         direction: 'upgrade',
       }),
     );
     const input = firstCall(vi.mocked(gateway.changePlan))[0];
-    expect(input.idempotencyKey).toBe('change-plan:sub_1:ace:price_ace:2026-12-01T00:00:00.000Z');
+    expect(input.idempotencyKey).toBe('change-plan:sub_1:pro:price_pro:2026-12-01T00:00:00.000Z');
     expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', null);
   });
 
   it('schedules a downgrade and stores the pending plan marker', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(
-      success(activeSubscription({ planKey: 'ace' })),
+      success(activeSubscription({ planKey: 'pro' })),
     );
     vi.mocked(gateway.changePlan).mockResolvedValueOnce(success({ status: 'scheduled' }));
 
-    const result = await service.changePlan(studentCtx, 'spark');
+    const result = await service.changePlan(studentCtx, 'plus');
 
     expect(result).toEqual(success({ status: 'scheduled' }));
     expect(gateway.changePlan).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentPlanKey: 'ace',
-        targetPlanKey: 'spark',
-        targetPriceId: 'price_spark',
+        currentPlanKey: 'pro',
+        targetPlanKey: 'plus',
+        targetPriceId: 'price_plus',
         direction: 'downgrade',
       }),
     );
-    expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', 'spark');
+    expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', 'plus');
   });
 
   it('rejects the current plan', async () => {
-    await expect(service.changePlan(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
     });
@@ -219,9 +214,9 @@ describe('BillingService.changePlan', () => {
     });
 
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success({ ...requiredValue(CATALOG.ace, 'ace plan'), isActive: false }),
+      success({ ...requiredValue(CATALOG.pro, 'pro plan'), isActive: false }),
     );
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
     });
@@ -238,7 +233,7 @@ describe('BillingService.changePlan', () => {
   });
 
   it('resolves a caller without org.billing.manage to the personal owner (org plans refused, personal targets bought for the user)', async () => {
-    const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
+    const memberCtx: RequestContext = { ...studentCtx, permissionScopes: {} };
 
     // An organization plan can never attach to the personal owner, so the
     // subscription is never read for this target.
@@ -249,16 +244,16 @@ describe('BillingService.changePlan', () => {
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(gateway.changePlan).not.toHaveBeenCalled();
 
-    // A personal plan of the caller's audience goes through on the user owner.
-    await service.changePlan(memberCtx, 'solo');
+    // A personal plan goes through on the user owner.
+    await service.changePlan(memberCtx, 'max');
 
     expect(repository.findActiveSubscription).toHaveBeenCalledWith(
-      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       false,
     );
     expect(gateway.changePlan).toHaveBeenCalledWith(
       expect.objectContaining({
-        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       }),
     );
   });
@@ -278,23 +273,35 @@ describe('BillingService.changePlan', () => {
   });
 
   it('changes the caller’s own plan in personal mode even when they may bill the org', async () => {
-    await service.changePlan(managerCtx, 'solo', true);
+    // A student persona that holds org.billing.manage (an Admin in this org)
+    // still changes their own personal subscription on a personal surface.
+    const studentAdminCtx: RequestContext = { ...managerCtx, accountType: AccountType.STUDENT };
+    await service.changePlan(studentAdminCtx, 'max', true);
 
     expect(repository.findActiveSubscription).toHaveBeenCalledWith(
-      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      { type: 'user', userId: 'u-9', accountType: AccountType.STUDENT },
       false,
     );
     expect(gateway.changePlan).toHaveBeenCalledWith(
       expect.objectContaining({
-        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.STUDENT },
       }),
     );
+  });
+
+  it('refuses a manager a personal plan, even in personal mode (ADR-0007)', async () => {
+    await expect(service.changePlan(managerCtx, 'max', true)).resolves.toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
+    expect(repository.findActiveSubscription).not.toHaveBeenCalled();
+    expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
   it('returns NOT_FOUND when the owner has no active subscription', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(success(null));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
@@ -304,7 +311,7 @@ describe('BillingService.changePlan', () => {
   it('returns NOT_FOUND when there is no customer mapping', async () => {
     vi.mocked(repository.findCustomer).mockResolvedValueOnce(success(null));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
@@ -313,10 +320,10 @@ describe('BillingService.changePlan', () => {
 
   it('fails closed when the target price does not match the catalog', async () => {
     vi.mocked(repository.findListedPrice).mockResolvedValueOnce(
-      success({ ...listedPrice(requiredValue(CATALOG.ace, 'ace plan')), unitAmount: 1000 }),
+      success({ ...listedPrice(requiredValue(CATALOG.pro, 'pro plan')), unitAmount: 1000 }),
     );
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -326,7 +333,7 @@ describe('BillingService.changePlan', () => {
   it('propagates a gateway failure without writing the marker', async () => {
     vi.mocked(gateway.changePlan).mockResolvedValueOnce(failure('SERVICE_UNAVAILABLE'));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -336,17 +343,17 @@ describe('BillingService.changePlan', () => {
   it('keeps the provider change when the display marker cannot be written', async () => {
     vi.mocked(repository.setPendingPlan).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual(
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual(
       success({ status: 'applied' }),
     );
   });
 
   it('rejects a free target plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success({ ...requiredValue(CATALOG.ace, 'ace plan'), priceMonthly: 0 }),
+      success({ ...requiredValue(CATALOG.pro, 'pro plan'), priceMonthly: 0 }),
     );
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
     });
@@ -356,7 +363,7 @@ describe('BillingService.changePlan', () => {
   it('propagates a catalog read failure for the target plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'INTERNAL_SERVER',
     });
@@ -364,10 +371,10 @@ describe('BillingService.changePlan', () => {
 
   it('returns NOT_FOUND when the current plan disappeared from the catalog', async () => {
     vi.mocked(repository.getPlan)
-      .mockResolvedValueOnce(success(requiredValue(CATALOG.ace, 'ace plan')))
+      .mockResolvedValueOnce(success(requiredValue(CATALOG.pro, 'pro plan')))
       .mockResolvedValueOnce(success(null));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
@@ -375,10 +382,10 @@ describe('BillingService.changePlan', () => {
 
   it('fails closed when price and sort order disagree on the direction', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success({ ...requiredValue(CATALOG.ace, 'ace plan'), sortOrder: 0 }),
+      success({ ...requiredValue(CATALOG.pro, 'pro plan'), sortOrder: 0 }),
     );
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -388,7 +395,7 @@ describe('BillingService.changePlan', () => {
   it('fails closed when the target price is not mapped', async () => {
     vi.mocked(repository.findListedPrice).mockResolvedValueOnce(success(null));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -397,7 +404,7 @@ describe('BillingService.changePlan', () => {
   it('propagates a subscription read failure', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'INTERNAL_SERVER',
     });
@@ -406,7 +413,7 @@ describe('BillingService.changePlan', () => {
   it('propagates a customer lookup failure', async () => {
     vi.mocked(repository.findCustomer).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'INTERNAL_SERVER',
     });
@@ -440,20 +447,20 @@ describe('BillingService.changePlan', () => {
       success({ status: 'pending_payment', hostedInvoiceUrl: 'https://invoice.stripe.com/i/1' }),
     );
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual(
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual(
       success({ status: 'pending_payment', hostedInvoiceUrl: 'https://invoice.stripe.com/i/1' }),
     );
-    expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', 'ace');
+    expect(repository.setPendingPlan).toHaveBeenCalledWith('sub_1', 'pro');
   });
 
   it('warns but keeps the provider change when the marker write fails', async () => {
     vi.mocked(repository.setPendingPlan).mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-    await service.changePlan(studentCtx, 'ace');
+    await service.changePlan(studentCtx, 'pro');
 
     expect(logWarn).toHaveBeenCalledWith(
       'billing.pending_plan_marker_failed',
-      expect.objectContaining({ subscriptionId: 'sub_1', planKey: 'ace' }),
+      expect.objectContaining({ subscriptionId: 'sub_1', planKey: 'pro' }),
     );
   });
 
@@ -461,7 +468,7 @@ describe('BillingService.changePlan', () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
 
-    await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
+    await expect(service.changePlan(studentCtx, 'pro')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
@@ -472,7 +479,7 @@ describe('BillingService.changePlan', () => {
     service = new BillingService(gateway, repository);
     const memberCtx: RequestContext = { ...managerCtx, permissionScopes: {} };
 
-    await expect(service.changePlan(memberCtx, 'solo')).resolves.toEqual({
+    await expect(service.changePlan(memberCtx, 'max')).resolves.toEqual({
       success: false,
       error: 'NOT_FOUND',
     });
@@ -482,13 +489,13 @@ describe('BillingService.changePlan', () => {
 
 describe('changePlanIdempotencyKey', () => {
   it('is derived from the exact mutation identity, not the clock', () => {
-    const key = changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01');
-    expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).toBe(key);
-    expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).not.toBe(
+    const key = changePlanIdempotencyKey('sub_1', 'pro', 'price_pro', '2026-12-01');
+    expect(changePlanIdempotencyKey('sub_1', 'pro', 'price_pro', '2026-12-01')).toBe(key);
+    expect(changePlanIdempotencyKey('sub_1', 'pro', 'price_pro', '2026-12-01')).not.toBe(
       changePlanIdempotencyKey('sub_1', 'hub', 'price_hub', '2026-12-01'),
     );
-    expect(changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2026-12-01')).not.toBe(
-      changePlanIdempotencyKey('sub_1', 'ace', 'price_ace', '2027-01-01'),
+    expect(changePlanIdempotencyKey('sub_1', 'pro', 'price_pro', '2026-12-01')).not.toBe(
+      changePlanIdempotencyKey('sub_1', 'pro', 'price_pro', '2027-01-01'),
     );
   });
 });

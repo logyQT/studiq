@@ -8,7 +8,7 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * Prerequisite (reconciled with the tenant seeder): the legacy manual account
  * `student1@…` (password `pass`) is never used. `__tests__/qa/profiles/SEC-05.json`
- * declares `{ "profile": "content", "plan": "hub", "personalPlan": "spark",
+ * declares `{ "profile": "content", "plan": "hub", "personalPlan": "plus",
  * "personalRole": "teacher" }`, which the suite runner seeds **once, before
  * Playwright starts**, under the case's own run suffix:
  *
