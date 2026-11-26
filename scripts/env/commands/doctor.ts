@@ -395,7 +395,7 @@ async function buildReport(): Promise<DoctorReport> {
   }
   if (slots && slots.stale) {
     warnings.push(
-      `${slots.stale} stale build slot(s): the next build kills the recorded group and frees the slot, and invalidates .next only for this checkout`,
+      `${slots.stale} stale build slot(s): the next build reclaims each one. It first tries to stop the recorded group, if its identity still matches. If that group still answers EPERM, no build starts, and the error gives the slot and the steps. A reclaim invalidates .next only for this checkout`,
     );
   }
   if (cacheRootProblem !== null) {

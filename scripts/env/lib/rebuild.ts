@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { reportBuildFailure, runProductionBuild, type BuildResult } from './build';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EnvFailure } from './exit';
-import { buildInProgress, buildInProgressFailure, pidAlive } from './locks';
+import { buildInProgress, buildInProgressFailure, pidAlive, UnconfirmedGroupError } from './locks';
 import { writeStderrLine } from './output';
 import { REPO_ROOT } from './repo';
 import { DEV_DIR, removeBuildState } from './state';
@@ -655,6 +655,25 @@ async function failWithRecovery(input: {
 }
 
 /**
+ * Fail a rebuild while a process can possibly still write `.next`: do not restore the
+ * previous build and do not start a web server. The handover record is removed, because
+ * the next command would restore the backup from it (`recoverHandover`). The backup stays.
+ */
+function failBlocked(
+  backup: string | null,
+  previousPid: number | null,
+  cause: UnconfirmedGroupError,
+): never {
+  removeHandover();
+  let message = `${cause.message}; the previous build was not restored and no web server was started`;
+  if (previousPid !== null) message += '; the previous web server stays stopped';
+  if (backup !== null) {
+    message += `; the previous build is kept at ${backup}. Restore it only after no process can write to .next`;
+  }
+  throw new EnvFailure(cause.exitCode, message, { cause });
+}
+
+/**
  * Abort a rebuild whose serve fence refused: the environment was taken away
  * (lease released or moved, stack stopped) while the build ran, so starting a
  * server would serve an environment another process now owns. The previous
@@ -744,6 +763,9 @@ export async function rebuildWithRecovery(
   try {
     result = await deps.build(request.envHash);
   } catch (error) {
+    if (error instanceof UnconfirmedGroupError && error.concernsCheckout()) {
+      return failBlocked(backup, previousPid, error);
+    }
     // A thrown build (not a `{ ok: false }` result) would otherwise skip
     // recovery entirely and leave the previous build stranded in the backup.
     // The build's own exit code is kept: a slot wait that expires is `7`, not a

@@ -213,6 +213,29 @@ export function reportBuildFailure(result: BuildResult, app: BuildApp = 'web'): 
 }
 
 /**
+ * Report the build when its process cleanup failed. The cleanup error is the result
+ * of the command, so the compiler output and the build status must not be lost.
+ */
+function reportCleanupFailure(
+  outcome: SpawnOutcome,
+  app: BuildApp,
+  invalidated: string | null,
+): void {
+  const lines = buildOutputLines(outcome.output, app);
+  let ended = `ended with exit code ${outcome.status}`;
+  if (outcome.signal !== null) ended = `was stopped by ${outcome.signal}`;
+  if (outcome.timedOut) ended = 'did not end in the time limit';
+  const status = `the build command ${ended}. Then the process cleanup failed. Full log: .dev/env.log`;
+  appendBuildLog([...lines, status]);
+  printBuildLines([...lines.slice(-FAILURE_TAIL_LINES), status]);
+  if (invalidated !== null) {
+    writeStderrLine(
+      `build: moved the artifact aside to ${relative(REPO_ROOT, invalidated)}; it is not served and not current`,
+    );
+  }
+}
+
+/**
  * Report a successful build: its warnings, then one line with the duration.
  *
  * `logBuildOutput` used to run only on failure, so a build with warnings looked
@@ -350,6 +373,9 @@ export interface ProductionBuildDeps {
 
 const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
 
+/** The result that `spawnBuild` had when its cleanup failed, by cleanup error. */
+const resultsBeforeCleanupError = new WeakMap<Error, SpawnOutcome>();
+
 /** Test seams of `spawnBuild`; production uses the defaults. */
 export interface SpawnBuildSeams {
   command?: BuildCommand;
@@ -410,13 +436,24 @@ export function spawnBuild(
     child.stderr?.on('data', collect);
 
     let timedOut = false;
+    const outcomeNow = (status: number | null, signal: NodeJS.Signals | null): SpawnOutcome => ({
+      status,
+      signal,
+      timedOut,
+      output: truncated ? `${output}\n[build output truncated]` : output,
+      durationMs: Date.now() - startedAt,
+    });
+    const failCleanup = (error: unknown, outcome: SpawnOutcome): void => {
+      if (error instanceof Error) resultsBeforeCleanupError.set(error, outcome);
+      reject(error);
+    };
     /** The cleanup of a build that ran too long failed: end without the child. */
     const abandon = (error: unknown): void => {
       clearInterval(progress);
       child.stdout?.destroy();
       child.stderr?.destroy();
       child.unref();
-      reject(error);
+      failCleanup(error, outcomeNow(null, null));
     };
     const timer = setTimeout(() => {
       timedOut = true;
@@ -438,15 +475,10 @@ export function spawnBuild(
     const finish = (status: number | null, signal: NodeJS.Signals | null): void => {
       clearTimeout(timer);
       clearInterval(progress);
-      killGroup(pgid ?? 0).then(() => {
-        resolve({
-          status,
-          signal,
-          timedOut,
-          output: truncated ? `${output}\n[build output truncated]` : output,
-          durationMs: Date.now() - startedAt,
-        });
-      }, reject);
+      killGroup(pgid ?? 0).then(
+        () => resolve(outcomeNow(status, signal)),
+        (error: unknown) => failCleanup(error, outcomeNow(status, signal)),
+      );
     };
     child.on('error', (error) => {
       clearTimeout(timer);
@@ -750,10 +782,13 @@ async function buildOnce(
     outcome = await deps.spawnBuild(slot, options);
   } catch (error) {
     // A spawn that threw still may have written part of `.next`.
+    let moved: string | null = null;
     if (web) {
-      invalidateFailedArtifact(deps);
+      moved = invalidateFailedArtifact(deps);
       deps.onInvalidate?.();
     }
+    const unfinished = error instanceof Error ? resultsBeforeCleanupError.get(error) : undefined;
+    if (unfinished) reportCleanupFailure(unfinished, options.app, moved);
     throw error;
   }
   const fingerprintAfter = web ? readTreeFingerprint(readFingerprint, input, 'after') : '';

@@ -1,10 +1,20 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadEnvModule } from '#test/unit/env/load';
+import { BUN, REPO_ROOT } from '#test/unit/env/support';
 
 // #1518: on macOS, `kill(-pgid)` can answer EPERM in the build cleanup. The cleanup must
 // not read that as "the group ended", and the build must always end.
@@ -16,9 +26,21 @@ interface Admission {
   failed: null;
 }
 
+interface HeldSlot {
+  slot: number;
+  path: string;
+  worktree: string;
+}
+
+interface UnconfirmedGroup extends Error {
+  exitCode: number;
+  concernsCheckout(root?: string): boolean;
+}
+
 interface LocksModule {
   killProcessGroup(pgid: number, graceMs?: number, reapMs?: number): Promise<boolean>;
-  UnconfirmedGroupError: new (pgid: number) => Error;
+  processStartTime(pid: number): string | null;
+  UnconfirmedGroupError: new (pgid: number, heldBy?: HeldSlot | null) => UnconfirmedGroup;
   withBuildSlots<T>(
     fn: () => Promise<T>,
     options: { decide: () => Admission; invalidate: () => void; waitMs?: number },
@@ -27,16 +49,57 @@ interface LocksModule {
 
 interface SpawnSeams {
   command: { file: string; args: string[]; oomAdjusted: boolean };
-  killGroup: (pgid: number) => Promise<boolean>;
+  killGroup?: (pgid: number) => Promise<boolean>;
   timeoutMs?: number;
 }
+
+interface BuildOptions {
+  app: 'web' | 'admin';
+  admission: 'no-slot';
+}
+
+type SpawnOutcome = { status: number | null; timedOut: boolean };
 
 interface BuildModule {
   spawnBuild(
     slot: { setProcessGroup(pgid: number): void; heartbeat(): void } | null,
-    options: { app: 'admin'; admission: 'no-slot' },
+    options: BuildOptions,
     seams: SpawnSeams,
-  ): Promise<{ status: number | null; timedOut: boolean }>;
+  ): Promise<SpawnOutcome>;
+  runProductionBuild(
+    envHash: string,
+    deps: {
+      readWebPid(): number | null;
+      spawnBuild(slot: null, options: BuildOptions): Promise<SpawnOutcome>;
+      artifactDir: string;
+      fingerprint(): string;
+    },
+    options: BuildOptions,
+  ): Promise<unknown>;
+}
+
+interface RebuildModule {
+  recoverHandover(): { status: string };
+  rebuildWithRecovery(
+    input: {
+      envHash: string;
+      appPort: number;
+      appUrl: string;
+      env: NodeJS.ProcessEnv;
+      serve: boolean;
+    },
+    deps: {
+      build(): Promise<unknown>;
+      startWeb(): number;
+      waitWeb(): Promise<{ ok: boolean; reason: string; http: number }>;
+      stopWeb(): { pid: number | null; stopped: boolean };
+      stopForReplacement(): { pid: number | null; stopped: boolean };
+      readPid(): number | null;
+      pidAlive(): boolean;
+      artifactDir: string;
+      backupDir: string;
+    },
+  ): Promise<unknown>;
 }
 
 const stateDir = mkdtempSync(join(tmpdir(), 'studiq-build-cleanup-state-'));
@@ -50,6 +113,7 @@ process.env.STUDIQ_DEV_REGISTRY = registryDir;
 
 const locks = await loadEnvModule<LocksModule>('lib/locks.ts');
 const build = await loadEnvModule<BuildModule>('lib/build.ts');
+const rebuild = await loadEnvModule<RebuildModule>('lib/rebuild.ts');
 
 const slotPath = join(registryDir, 'build-slots', '1');
 
@@ -69,6 +133,30 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+function captureStderr(): () => string {
+  const chunks: string[] = [];
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  return () => chunks.join('');
+}
+
+/** A group that accepts every signal until SIGKILL, then gives the `after` answers in turn. */
+function answersAfterSigkill(...after: Answer[]): Array<string | number | undefined> {
+  const signals: Array<string | number | undefined> = [];
+  let probes = 0;
+  vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
+    const killed = signals.includes('SIGKILL');
+    signals.push(signal);
+    if (!killed) return true;
+    const answer = after[Math.min(probes++, after.length - 1)];
+    if (answer === 'ok') return true;
+    throw Object.assign(new Error(`kill ${answer}`), { code: answer });
+  });
+  return signals;
+}
 
 type Answer = 'ok' | 'EPERM' | 'ESRCH' | 'EINVAL';
 
@@ -112,6 +200,21 @@ describe('killProcessGroup and EPERM (#1518)', () => {
     expect(signals).toContain('SIGKILL');
   });
 
+  it('waits after SIGKILL while the system still answers EPERM', async () => {
+    answersAfterSigkill('EPERM', 'EPERM', 'EPERM', 'ESRCH');
+
+    await expect(locks.killProcessGroup(4242, 150)).resolves.toBe(true);
+  });
+
+  // A known limit, older than #1518: only a lasting EPERM is an error.
+  it('reports success when the group still accepts a signal after SIGKILL', async () => {
+    const signals = answersAfterSigkill('ok');
+
+    await expect(locks.killProcessGroup(4242, 150, 100)).resolves.toBe(true);
+
+    expect(signals).toContain('SIGKILL');
+  });
+
   it('throws when EPERM stays after SIGKILL, and does not report that the group ended', async () => {
     const signals = groupAnswers('EPERM');
 
@@ -140,13 +243,25 @@ describe('killProcessGroup and EPERM (#1518)', () => {
 const admitOne = (): Admission => ({ admit: true, cap: 1, reason: 'memory', failed: null });
 const slots = { decide: admitOne, invalidate: () => {} };
 
+const concernsThisCheckout = (heldBy: HeldSlot | null) =>
+  new locks.UnconfirmedGroupError(4242, heldBy).concernsCheckout();
+const heldBy = (worktree: string): HeldSlot => ({ slot: 1, path: slotPath, worktree });
+
 describe('a build slot after a cleanup error (#1518)', () => {
   it('keeps the slot when the cleanup cannot confirm that the group ended', async () => {
     const failure = new locks.UnconfirmedGroupError(4242);
+    const stderr = captureStderr();
 
     await expect(locks.withBuildSlots(() => Promise.reject(failure), slots)).rejects.toBe(failure);
 
     expect(existsSync(slotPath)).toBe(true);
+    expect(stderr()).toContain(`build slot 1 stays in use: ${slotPath}`);
+  });
+
+  it('knows whether the group can write to the .next of a checkout', () => {
+    expect(
+      [null, heldBy(REPO_ROOT), heldBy(''), heldBy('/another/checkout')].map(concernsThisCheckout),
+    ).toEqual([true, true, true, false]);
   });
 
   it('releases the slot after another error', async () => {
@@ -168,10 +283,13 @@ describe('a build slot after a cleanup error (#1518)', () => {
     groupAnswers('EPERM');
     const admitted = vi.fn(() => Promise.resolve());
 
-    await expect(locks.withBuildSlots(admitted, slots)).rejects.toBeInstanceOf(
-      locks.UnconfirmedGroupError,
-    );
+    const admission = locks.withBuildSlots(admitted, slots);
 
+    await expect(admission).rejects.toBeInstanceOf(locks.UnconfirmedGroupError);
+    await expect(admission).rejects.toThrow(
+      `The new build did not start. Build slot 1 stays in use: ${slotPath} (worktree: unknown).`,
+    );
+    await expect(admission).rejects.toThrow(`awk '$3 == ${endedPid}'`);
     expect(admitted).not.toHaveBeenCalled();
     expect(existsSync(slotPath)).toBe(true);
   }, 20_000);
@@ -209,6 +327,47 @@ describe('spawnBuild always ends (#1518)', () => {
     expect(outcome).toMatchObject({ status: 0, timedOut: false });
   });
 
+  it('stops the whole group with its default cleanup', async () => {
+    // The command ends at once and leaves a child of its own in the same group.
+    const leaveAChild = [
+      "require('node:child_process')",
+      ".spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], { stdio: 'ignore' })",
+      '.unref()',
+    ].join('');
+
+    await build.spawnBuild(slot, options, { command: nodeCommand(leaveAChild) });
+
+    const [pgid] = groups;
+    expect(pgid).toBeGreaterThan(1);
+    expect(() => process.kill(-Number(pgid), 0)).toThrow('ESRCH');
+  });
+
+  it('lets its process end after a failed cleanup, while the child still runs', () => {
+    const script = join(stateDir, 'abandon.ts');
+    const buildUrl = pathToFileURL(join(REPO_ROOT, 'scripts', 'env', 'lib', 'build.ts')).href;
+    writeFileSync(
+      script,
+      [
+        `const { spawnBuild } = await import(${JSON.stringify(buildUrl)});`,
+        'const slot = { setProcessGroup: (id) => console.log(`group ${id}`), heartbeat() {} };',
+        "const args = ['-e', 'setTimeout(() => {}, 30_000)'];",
+        'await spawnBuild(slot, { app: "admin", admission: "no-slot" }, {',
+        '  command: { file: process.execPath, args, oomAdjusted: true },',
+        "  killGroup: () => Promise.reject(new Error('cleanup failed')),",
+        '  timeoutMs: 200,',
+        '}).catch((error) => console.log(`rejected: ${error.message}`));',
+      ].join('\n'),
+    );
+
+    // Without the release, the pipes of the running child keep this process alive.
+    const run = spawnSync(BUN, [script], { encoding: 'utf8', timeout: 10_000 });
+    const group = /group (\d+)/.exec(run.stdout)?.[1];
+    if (group) groups.push(Number(group));
+
+    expect(run.stdout).toContain('rejected: cleanup failed');
+    expect(run.status).toBe(0);
+  }, 15_000);
+
   it('rejects when the cleanup fails after the build ended', async () => {
     await expect(
       build.spawnBuild(slot, options, { command: nodeCommand(''), killGroup: failingCleanup }),
@@ -225,6 +384,148 @@ describe('spawnBuild always ends (#1518)', () => {
       }),
     ).rejects.toBe(cleanupError);
   }, 3_000);
+});
+
+const artifactRoot = join(stateDir, 'artifact');
+const artifactDir = join(artifactRoot, '.next');
+
+function writeArtifact(buildId: string): void {
+  mkdirSync(artifactDir, { recursive: true });
+  writeFileSync(join(artifactDir, 'BUILD_ID'), buildId);
+}
+
+/** A whole production build whose spawn is the real `spawnBuild` with these seams. */
+function productionBuild(app: 'web' | 'admin', seams: SpawnSeams): Promise<unknown> {
+  return build.runProductionBuild(
+    'env-hash',
+    {
+      readWebPid: () => null,
+      spawnBuild: (slot, buildOptions) => build.spawnBuild(slot, buildOptions, seams),
+      artifactDir,
+      fingerprint: () => 'fingerprint',
+    },
+    { app, admission: 'no-slot' },
+  );
+}
+
+const compilerError = "console.log('error TS2322: not assignable'); process.exitCode = 1";
+
+describe('the build result after a cleanup error (#1518)', () => {
+  beforeEach(() => {
+    rmSync(artifactRoot, { recursive: true, force: true });
+    rmSync(join(stateDir, 'env.log'), { force: true });
+  });
+
+  it('keeps the compiler output and the exit code of a failed build', async () => {
+    const stderr = captureStderr();
+
+    const result = productionBuild('admin', {
+      command: nodeCommand(compilerError),
+      killGroup: failingCleanup,
+    });
+
+    await expect(result).rejects.toBe(cleanupError);
+    expect(stderr()).toContain('error TS2322: not assignable');
+    expect(stderr()).toContain('the build command ended with exit code 1');
+    const log = readFileSync(join(stateDir, 'env.log'), 'utf8');
+    expect(log).toContain('error TS2322: not assignable');
+    expect(log).toContain('the build command ended with exit code 1');
+  });
+
+  it('says where it moved the artifact of a web build that had ended well', async () => {
+    writeArtifact('new-build');
+    const stderr = captureStderr();
+
+    await expect(
+      productionBuild('web', { command: nodeCommand(''), killGroup: failingCleanup }),
+    ).rejects.toBe(cleanupError);
+
+    expect(stderr()).toContain('the build command ended with exit code 0');
+    expect(stderr()).toMatch(/moved the artifact aside to \S*\.next\.failed-/);
+    expect(existsSync(artifactDir)).toBe(false);
+  });
+
+  it('keeps the output of a build over its time limit', async () => {
+    const stderr = captureStderr();
+
+    await expect(
+      productionBuild('admin', {
+        command: nodeCommand("console.log('still compiling'); setTimeout(() => {}, 5_000)"),
+        killGroup: failingCleanup,
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toBe(cleanupError);
+
+    expect(stderr()).toContain('still compiling');
+    expect(stderr()).toContain('the build command did not end in the time limit');
+  });
+});
+
+/** An `env:ensure` rebuild over a served build, with a build that this test supplies. */
+function ensureRebuild(failingBuild: () => Promise<unknown>) {
+  const backupDir = join(artifactRoot, '.dev');
+  writeArtifact('old-build');
+  const startWeb = vi.fn(() => 5151);
+  const result = rebuild.rebuildWithRecovery(
+    { envHash: 'h', appPort: 3999, appUrl: 'http://localhost:3999', env: {}, serve: true },
+    {
+      build: failingBuild,
+      startWeb,
+      waitWeb: () => Promise.resolve({ ok: true, reason: '', http: 200 }),
+      stopWeb: () => ({ pid: null, stopped: true }),
+      stopForReplacement: () => ({ pid: 4242, stopped: true }),
+      readPid: () => 4242,
+      pidAlive: () => false,
+      artifactDir,
+      backupDir,
+    },
+  );
+  const backups = () =>
+    existsSync(backupDir)
+      ? readdirSync(backupDir).map((name) =>
+          readFileSync(join(backupDir, name, 'BUILD_ID'), 'utf8'),
+        )
+      : [];
+  return { result, startWeb, backups };
+}
+
+const servedBuild = () =>
+  existsSync(artifactDir) ? readFileSync(join(artifactDir, 'BUILD_ID'), 'utf8') : null;
+
+describe('env:ensure after a cleanup error (#1518)', () => {
+  beforeEach(() => {
+    rmSync(artifactRoot, { recursive: true, force: true });
+    rmSync(join(stateDir, 'handover.json'), { force: true });
+  });
+
+  it('does not restore or serve while a process can write to .next', async () => {
+    const { result, startWeb, backups } = ensureRebuild(() =>
+      Promise.reject(new locks.UnconfirmedGroupError(4242)),
+    );
+
+    await expect(result).rejects.toMatchObject({ exitCode: 6 });
+    await expect(result).rejects.toThrow(
+      /the previous build was not restored and no web server was started; the previous web server stays stopped; the previous build is kept at /,
+    );
+    expect(startWeb).not.toHaveBeenCalled();
+    expect(backups()).toEqual(['old-build']);
+    // The next command must not restore the backup on its own.
+    expect(rebuild.recoverHandover()).toEqual({ status: 'none' });
+    expect(servedBuild()).toBeNull();
+  });
+
+  it('restores and serves when the stuck group belongs to another checkout', async () => {
+    const elsewhere = { slot: 1, path: slotPath, worktree: '/another/checkout' };
+    const { result, startWeb } = ensureRebuild(() =>
+      Promise.reject(new locks.UnconfirmedGroupError(4242, elsewhere)),
+    );
+
+    await expect(result).rejects.toThrow(
+      'restored the previous build; previous web server restarted',
+    );
+    expect(startWeb).toHaveBeenCalledOnce();
+    expect(servedBuild()).toBe('old-build');
+  });
 });
 
 /**
@@ -277,6 +578,45 @@ describe.skipIf(process.platform !== 'darwin')('a real zombie group on macOS (#1
 
     await expect(result).resolves.toBe(true);
   });
+
+  it('keeps the compiler output when a real EPERM stays', async () => {
+    const { pgid } = await zombieGroup();
+    const stderr = captureStderr();
+
+    const result = productionBuild('admin', {
+      command: nodeCommand(compilerError),
+      killGroup: () => locks.killProcessGroup(pgid, 300, 200),
+    });
+
+    await expect(result).rejects.toBeInstanceOf(locks.UnconfirmedGroupError);
+    expect(stderr()).toContain('error TS2322: not assignable');
+  });
+
+  // The real path: the slot of this checkout records a real zombie group, and the
+  // reclaim waits the full 10 s before SIGKILL.
+  it('blocks env:ensure and names the slot while a real zombie holds it', async () => {
+    const { pgid } = await zombieGroup();
+    mkdirSync(slotPath, { recursive: true, mode: 0o700 });
+    const record = {
+      pid: spawnSync(process.execPath, ['-e', '']).pid,
+      pgid,
+      pgidStart: locks.processStartTime(pgid),
+      worktree: REPO_ROOT,
+      token: 'old',
+    };
+    for (const [field, value] of Object.entries(record)) {
+      writeFileSync(join(slotPath, field), String(value));
+    }
+
+    const { result, startWeb } = ensureRebuild(() =>
+      locks.withBuildSlots(() => Promise.resolve({ ok: true }), slots),
+    );
+
+    await expect(result).rejects.toThrow(`The new build did not start. Build slot 1 stays in use`);
+    await expect(result).rejects.toThrow('no web server was started');
+    expect(startWeb).not.toHaveBeenCalled();
+    expect(existsSync(slotPath)).toBe(true);
+  }, 25_000);
 
   it('throws while no parent collects the zombie', async () => {
     const { pgid } = await zombieGroup();

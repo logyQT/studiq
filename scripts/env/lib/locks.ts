@@ -534,12 +534,32 @@ function groupAlive(pgid: number): boolean {
  * @public Exercised by the unit tests, which load this module by computed URL.
  */
 export class UnconfirmedGroupError extends EnvFailure {
-  constructor(pgid: number) {
+  /** `heldBy` is the stale slot that records the group. Null means a build of this process. */
+  constructor(
+    readonly pgid: number,
+    readonly heldBy: HeldSlot | null = null,
+  ) {
     super(
       EXIT_CONFLICT,
-      `cannot confirm that process group ${pgid} ended: the system still answers EPERM after SIGKILL. A build process can still write to .next.`,
+      `cannot confirm that process group ${pgid} ended: the system still answers EPERM after SIGKILL. A build process can possibly still write to .next.${heldBy === null ? '' : heldSlotSteps(pgid, heldBy)}`,
     );
   }
+
+  /** True when the group can write to the `.next` of `root`. An unknown owner counts as true. */
+  concernsCheckout(root: string = REPO_ROOT): boolean {
+    const owner = this.heldBy?.worktree ?? '';
+    return owner === '' || canon(owner) === canon(root);
+  }
+}
+
+interface HeldSlot {
+  slot: number;
+  path: string;
+  worktree: string;
+}
+
+function heldSlotSteps(pgid: number, held: HeldSlot): string {
+  return ` The new build did not start. Build slot ${held.slot} stays in use: ${held.path} (worktree: ${held.worktree || 'unknown'}). To examine the group, run: ps -axo pid,ppid,pgid,stat,command | awk '$3 == ${pgid}'. A process with state Z ends when its parent collects it or when the parent ends. Delete the slot directory only after you confirm that no process of this group can write to .next.`;
 }
 
 function groupDenied(pgid: number): boolean {
@@ -1097,6 +1117,16 @@ function groupIdentityHolds(record: SlotRecord): boolean {
   return current === null || current === record.pgidStart;
 }
 
+/** Stops the group of a stale slot. If it cannot, the error names the slot. */
+async function stopRecordedGroup(record: SlotRecord): Promise<void> {
+  try {
+    await killProcessGroup(record.pgid);
+  } catch (error) {
+    if (!(error instanceof UnconfirmedGroupError)) throw error;
+    throw new UnconfirmedGroupError(record.pgid, record);
+  }
+}
+
 async function reclaimSlot(record: SlotRecord, context: SlotContext): Promise<void> {
   const launcherDead =
     !pidAlive(record.pid) || (record.start !== null && startDiffers(record.pid, record.start));
@@ -1104,7 +1134,7 @@ async function reclaimSlot(record: SlotRecord, context: SlotContext): Promise<vo
   // orphan still writing `.next`. The group is only signalled while its recorded
   // identity holds, so a recycled pgid cannot hit an unrelated group.
   if (record.pgid > 1) {
-    if (groupIdentityHolds(record)) await killProcessGroup(record.pgid);
+    if (groupIdentityHolds(record)) await stopRecordedGroup(record);
     else
       writeStderrLine(
         `warning: build: not signalling process group ${record.pgid} of stale slot ${record.slot}; its recorded identity no longer matches`,
@@ -1461,9 +1491,14 @@ export async function withBuildSlots<T>(
       keepSlot = error instanceof UnconfirmedGroupError;
       throw error;
     } finally {
-      // A kept slot becomes stale when this process ends. The next admission must then
-      // stop the recorded group before it can take the slot (`reclaimSlot`).
-      if (!keepSlot) releaseDirMutex(held.path, held.token);
+      // A kept slot becomes stale when this process ends, and the next admission
+      // reclaims it (`reclaimSlot`). That tries to stop the group first, but only
+      // while the recorded identity of the group still matches.
+      if (keepSlot) {
+        writeStderrLine(`build: build slot ${held.slot} stays in use: ${held.path}`);
+      } else {
+        releaseDirMutex(held.path, held.token);
+      }
     }
   } finally {
     rmSync(waiter, { recursive: true, force: true });
