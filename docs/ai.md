@@ -1,178 +1,142 @@
 # AI System
 
-> Unified reference for the StudiQ AI subsystem. Covers architecture, current tools, extension guide, and security posture.
+> Reference for the StudiQ AI chat subsystem: architecture, tools, transport, auth, configuration, testing and debugging.
 
 ---
 
 ## Architecture
 
-Agent Q is a runtime AI chat session built with [Vercel AI SDK](https://sdk.vercel.ai) (`streamText()`). It is **not** a persistent database entity — it exists only within a single HTTP request.
+Agent Q is a runtime AI chat session built with the [Vercel AI SDK](https://sdk.vercel.ai) (`streamText()`). It is **not** a persistent database entity: it exists only within one HTTP request.
 
 ```
 POST /api/v1/ai/chat
-  → withAuth() + ai.chat entitlement
-  → streamText(model, systemPrompt, tools)
-    → ReAct loop:
-        1. LLM decides: tool call, question, or finish
-        2. Tool executes server-side → result fed back
-        3. Loop until finish or 30 steps
-  → AI SDK UI message stream (no reasoning parts)
+  → withAuth() builds the RequestContext
+  → requireEntitlement(ctx, 'ai.chat')        — 403 without the entitlement
+  → rate limit: 20 requests / 60 s per user
+  → parse and validate UI messages
+  → daily token budget (max_ai_tokens_per_day) — 429 USAGE_LIMIT_EXCEEDED when spent
+  → streamText(chatModel, systemPrompt, tools)
+      stop when the model calls finish or ask_user, or after 30 steps
+  → AI SDK UI message stream (reasoning is not sent)
 ```
 
-### Two pipelines (legacy vs agent)
-
-| Pipeline                                | When                      | Speed                  | Status                            |
-| --------------------------------------- | ------------------------- | ---------------------- | --------------------------------- |
-| **Agent** (`FEATURE_FLAG_AGENTIC=true`) | All requests when enabled | 2–5 min (ReAct loop)   | Primary, live                     |
-| **Legacy** (tool calling)               | Fallback when flag off    | 15–30s (3–4 LLM calls) | Maintenance mode, will be removed |
-
-Both share `POST /api/v1/ai/chat`. The feature flag `FEATURE_FLAG_AGENTIC` dispatches between them.
-
-> **Enforcement (ADR-0015 §7):** `POST /api/v1/ai/chat` and `GET /api/v1/ai/usage`
-> require the `ai.chat` entitlement — `requireEntitlement(ctx, 'ai.chat')` is the
-> first statement of each handler. The routes no longer admit by account type.
+The route stores `{ conversationId, requestContext }` in `AsyncLocalStorage` for the whole tool-call stack. `conversationId` is the first message id, or a new UUID.
 
 ### Key files
 
-| File                                         | Role                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------- |
-| `src/app/(backend)/api/v1/ai/chat/route.ts`  | Entry point — auth, streamText, tool registration                    |
-| `src/server/agents/core/base.agent.ts`       | Abstract ReAct loop                                                  |
-| `src/server/agents/general.agent.ts`         | Agent Q orchestrator (8 generic tools)                               |
-| `src/server/agents/flashcard.agent.ts`       | Flashcard sub-agent (5 tools)                                        |
-| `src/server/agents/agent-registry.ts`        | Singleton — maps agent names to instances                            |
-| `src/server/agents/system.ts`                | Agent Q system prompt                                                |
-| `src/server/services/agent.service.ts`       | Entry point — constructs ToolContext, calls GeneralAgent             |
-| `src/server/ai/model.ts`                     | LLM model config (provider-agnostic via `@ai-sdk/openai-compatible`) |
-| `src/server/config/agent-models.config.ts`   | Per-agent model overrides                                            |
-| `src/server/services/agent-trace.service.ts` | In-memory + SQLite trace storage                                     |
-| `src/lib/conversation-context.ts`            | `AsyncLocalStorage` for conversation ID                              |
-| `src/hooks/use-ai-chat.ts`                   | Client hook — SSE parsing, message state                             |
-| `src/components/ai/*.tsx`                    | UI: ChatScreen, FlashcardBlock, QuestionBlock                        |
+| File                                                    | Role                                                             |
+| ------------------------------------------------------- | ---------------------------------------------------------------- |
+| `apps/web/src/app/(backend)/api/v1/ai/chat/route.ts`    | Entry point: auth, entitlement, rate limit, budget, `streamText` |
+| `packages/server/src/agents/system.ts`                  | Agent Q system prompt                                            |
+| `packages/server/src/agents/tools/generic/*.tool.ts`    | The seven registered tools                                       |
+| `packages/server/src/agents/tools/generic/url-guard.ts` | SSRF guard used by `webfetch`                                    |
+| `packages/server/src/ai/model.ts`                       | The single chat model and the `x-opencode-session` header        |
+| `packages/server/src/lib/conversation-context.ts`       | `AsyncLocalStorage` for conversation id and `RequestContext`     |
+| `packages/server/src/lib/trace-queue.ts`                | Fire-and-forget trace write                                      |
+| `packages/server/src/services/agent-trace.service.ts`   | Trace storage in SQLite (`.dev/traces.db`)                       |
+| `packages/server/src/lib/entitlements.ts`               | `requireEntitlement()`                                           |
+| `packages/server/src/services/limits.ts`                | Daily token budget: `getUsage`, `trackTokenUsage`                |
+| `apps/web/src/hooks/use-ai-chat.ts`                     | Client hook: `useChat`, transport, part-to-transcript mapping    |
+| `apps/web/src/components/ai/`                           | Chat screen, flashcard block, question block, tool-call block    |
 
 ---
 
 ## Tools
 
-### GeneralAgent (Agent Q) — 8 tools
+The chat route registers these seven tools:
 
-| Tool               | Description                                       | Side Effects            | DB Access |
-| ------------------ | ------------------------------------------------- | ----------------------- | --------- |
-| `ask_user`         | Ask clarifying question (SSE `question` event)    | Trace log, stream pause | None      |
-| `fetch_material`   | Generate educational content via nested LLM call  | `generateText()`        | None      |
-| `webfetch`         | Fetch content from URL                            | External HTTP           | None      |
-| `extract_concepts` | Extract key terms from material                   | Trace log               | None      |
-| `evaluate_quality` | Review output quality                             | No-op (always passes)   | None      |
-| `call_agent`       | Delegate to sub-agent                             | Trace log               | None      |
-| `batch_call_agent` | Parallel sub-agent dispatch (concurrency control) | Trace log               | None      |
-| `finish`           | Complete and return results                       | Trace log               | None      |
-
-### FlashcardAgent — 5 tools
-
-| Tool                  | Description                                    |
-| --------------------- | ---------------------------------------------- |
-| `brainstorm_concepts` | Generate topic concepts for flashcard creation |
-| `flashcard_create`    | Generate flashcards from concepts              |
-| `flashcard_review`    | Review generated flashcards for quality        |
-| `flashcard_revise`    | Revise flashcards based on feedback            |
-| `finish`              | Return final flashcard collection              |
+| Tool                  | Behavior                                                                  | Side effect     |
+| --------------------- | ------------------------------------------------------------------------- | --------------- |
+| `ask_user`            | Returns a question object with optional options. Stops the stream.        | Trace row       |
+| `fetch_material`      | Calls `generateText()` with `GENERATE_MATERIAL_PROMPT` to create content. | Nested LLM call |
+| `webfetch`            | Checks the URL with `assertSafeExternalUrl()`, then fetches it.           | Outbound HTTP   |
+| `extract_concepts`    | Returns the `terms` array that the model supplies in the tool input.      | Trace row       |
+| `evaluate_quality`    | No-op placeholder: always returns `{ passed: true }`.                     | Trace row       |
+| `generate_flashcards` | Validates cards with `parseFlashcards()` and returns them.                | Trace row       |
+| `finish`              | Returns chat text or the final flashcard list. Stops the stream.          | Trace row       |
 
 ### Design rule: tools never touch the database
 
-All tools are **stateless processors**. They receive input from the LLM, process it, and return results. Flashcard saving happens **client-side** through normal authenticated API routes (`POST /api/v1/flashcards/decks`, `POST /api/v1/flashcards/batch/create`), which go through full RBAC.
+No tool imports a Supabase client and no tool reads or writes a table. Tools receive input from the model, validate or transform it, and return a result. Flashcard saving happens **client-side** through authenticated routes (`POST /api/v1/flashcards/decks`, `POST /api/v1/flashcards/batch/create`), which apply the normal RBAC checks.
 
-This is an intentional architectural constraint — see [Security](#security).
+The route puts the caller's `RequestContext` in `conversationStorage`, so a future tool that needs the database has the org and permission scope available. The current tools read only `conversationId`.
 
 ---
 
-## Agent lifecycle
+## Adding a tool
 
-### Adding a new sub-agent
-
-1. Create `src/server/agents/{name}.agent.ts` — extends `BaseAgent`
+1. Create `packages/server/src/agents/tools/generic/<name>.tool.ts`:
 
 ```typescript
-import { BaseAgent } from '@/server/agents/core/base.agent';
+import { z } from '@studiq/server/lib/zod';
+import { tool } from 'ai';
 
-export class QuestionAgent extends BaseAgent {
-  name = 'question';
-  systemPrompt = QUESTION_SYSTEM_PROMPT;
-  tools = [questionCreate, questionReview, finish];
-  // llmConfig? — optional model override
-}
+export const myTool = tool({
+  description: 'What the tool does',
+  inputSchema: z.object({ input: z.string() }),
+  execute: async ({ input }) => ({ result: input }),
+});
 ```
 
-2. Create tool files in `src/server/agents/tools/{name}/`
+2. Import it in `apps/web/src/app/(backend)/api/v1/ai/chat/route.ts` and add it to the `tools` object.
+3. If the tool must end the turn, add `hasToolCall('<name>')` to `stopWhen`.
+4. Add a test in `__tests__/unit/agents/tools/`.
 
-```typescript
-import { z } from '@/lib/zod';
-import type { Tool } from '@/server/agents/tools/types';
-
-export const questionCreate: Tool = {
-  name: 'question_create',
-  description: 'Generate a quiz question',
-  parameters: z.object({ /* ... */ }),
-  async execute(args, ctx) {
-    // Process — no DB access
-    return { question: /* ... */ };
-  },
-};
-```
-
-3. Add barrel export in `src/server/agents/tools/{name}/index.ts`
-4. Add entry in `src/server/config/agent-models.config.ts`
-5. Register in `src/server/agents/agent-registry.ts`
-
-The `call_agent` tool auto-discovers agents from the registry.
-
-### Adding a new generic tool
-
-1. Create `src/server/agents/tools/generic/{name}.tool.ts`
-2. Add to the tools array in `src/server/agents/general.agent.ts`
-3. Add barrel export in `src/server/agents/tools/generic/index.ts`
+There is no sub-agent registry and no barrel file. The chat route is the only place that assembles the tool set.
 
 ---
 
 ## Stream transport
 
-The route returns an AI SDK **UI message stream** (`toUIMessageStreamResponse()`), not SSE. Text, tool calls and their results arrive as message parts; `apps/web/src/hooks/use-ai-chat.ts` maps them to the transcript.
+The route returns an AI SDK **UI message stream** through `toUIMessageStreamResponse({ sendReasoning: false })`. It is not hand-written SSE. Text and tool parts arrive as message parts.
 
-The model's reasoning is never part of that stream: the route passes `sendReasoning: false` (#1210). Reasoning stays server-side, so prompt text and its jailbreak surface never reach the browser. The fake inference server still emits `reasoning_content` so a spec can prove the client drops it.
+`apps/web/src/hooks/use-ai-chat.ts` uses `useChat` with `DefaultChatTransport({ api: '/api/v1/ai/chat' })` and maps parts to the transcript:
+
+- `text` parts become assistant text messages.
+- `tool-<name>` parts become tool-call rows with a label. A `dynamic-tool` part is folded into `tool-<name>`.
+- A completed `generate_flashcards` result is buffered and rendered as a read-only preview.
+- `ask_user` renders a question block. If a preview is buffered, the preview is emitted first.
+- `finish` renders the final flashcard block or the chat text.
+
+The model's reasoning never reaches the browser. The route sets `sendReasoning: false`, so prompt text and its jailbreak surface stay server-side. The fake inference server still emits `reasoning_content` so a spec can prove that the client drops it.
 
 ---
 
-## Auth & security
+## Auth and security
 
-### Current auth flow
+### Request gate
 
-`POST /api/v1/ai/chat` is wrapped in `withAuth()`, so the handler receives the full `RequestContext` (user, account type, active org, permission scopes). The handler then:
+`POST /api/v1/ai/chat` is wrapped in `withAuth()`, so the handler receives the full `RequestContext`. The handler then:
 
-1. calls `requireEntitlement(ctx, 'ai.chat')` before anything else, so authority is the first gate (ADR-0015 §7);
-2. applies a per-user rate limit (`20` requests per minute);
-3. rejects the request with `USAGE_LIMIT_EXCEEDED` when the daily token budget is spent;
-4. streams the answer and records the turn's token usage.
+1. calls `requireEntitlement(ctx, 'ai.chat')` first, so a caller without the entitlement gets 403 before any other check;
+2. applies a per-user rate limit of 20 requests per 60 seconds (`createRateLimiter`, in-memory, per server process);
+3. validates the request body and the UI messages;
+4. rejects the request with `USAGE_LIMIT_EXCEEDED` when the daily token budget is spent;
+5. streams the answer and records the turn's token usage in `onFinish`.
 
-The account type is not a gate: access is the `ai.chat` entitlement, so no persona is admitted or refused by type.
+`GET /api/v1/ai/usage` has the same `ai.chat` gate and returns the caller's current usage.
 
-### Security posture
+The account type is not a gate. Access is the `ai.chat` entitlement, so no persona is admitted or refused by type.
 
-| Aspect                             | Status                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| Agent tools access DB              | ❌ No — tools are stateless                                               |
-| Flashcard saving goes through RBAC | ✅ Yes — client-side API calls                                            |
-| RLS enabled                        | ❌ No — disabled system-wide, app-layer auth only                         |
-| SSRF protection on `webfetch`      | ❌ No — arbitrary URLs allowed                                            |
-| Account access gated               | ✅ Yes — on the `ai.chat` entitlement, not the account type (ADR-0015 §7) |
+### Posture
 
-**Full audit and hardening plan:** [`docs/plans/agent-security.md`](plans/agent-security.md)
+| Aspect                             | Status                                                                                       |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| Agent tools access the database    | No. Tools are stateless.                                                                     |
+| Flashcard saving goes through RBAC | Yes. The client calls the normal flashcard routes.                                           |
+| RLS                                | Enabled on every public table. New tables enable RLS in their own migration.                 |
+| SSRF protection on `webfetch`      | Yes. `assertSafeExternalUrl()` blocks non-HTTP(S), private, loopback and link-local targets. |
+| Account access                     | Gated by the `ai.chat` entitlement, not by account type.                                     |
 
-### Architectural constraints (enforced)
+`webfetch` resolves DNS itself and fails closed when resolution fails. It blocks a public hostname that resolves to a private address. There is no domain allowlist.
 
-1. **Tools never touch the database.** All data access goes through client-side API calls with proper RBAC.
-2. **Agent sessions are stateless.** No persistent state beyond conversation `AsyncLocalStorage`.
-3. **Every tool validates its inputs.** Zod schemas on all tool parameters.
-4. **Network calls require allowlists.** (Not yet implemented — see security doc.)
-5. **The agent route must build a `RequestContext`.** (Not yet implemented — see security doc.)
+### Architectural constraints
+
+1. Tools never touch the database. Data access goes through client-side API calls with RBAC.
+2. Agent sessions are stateless. The only request state is the `AsyncLocalStorage` entry.
+3. Every tool declares a Zod `inputSchema`.
+4. The chat route runs inside `withAuth()` and passes the `RequestContext` to the tool stack.
+5. Both AI endpoints use the `ai.chat` entitlement gate.
 
 ---
 
@@ -180,100 +144,52 @@ The account type is not a gate: access is the `ai.chat` entitlement, so no perso
 
 ### LLM model
 
-Configured via environment variables (`src/server/ai/model.ts`):
+`packages/server/src/ai/model.ts` defines one `chatModel` for every AI call. There are no per-agent model overrides.
 
-| Variable               | Default                                      | Purpose                    |
-| ---------------------- | -------------------------------------------- | -------------------------- |
-| `LLM_PROVIDER`         | `opencode-go`                                | Provider name              |
-| `LLM_API_KEY`          | —                                            | API key                    |
-| `LLM_MODEL_NAME`       | `mimo-v2.6-flash`                            | Model identifier           |
-| `LLM_BASE_URL`         | `https://opencode.ai/inference/go/openai/v1` | OpenAI-compatible endpoint |
-| `LLM_REASONING_EFFORT` | provider default (unset)                     | `low` / `medium` / `high`  |
+| Variable               | Default                                      | Purpose                                             |
+| ---------------------- | -------------------------------------------- | --------------------------------------------------- |
+| `LLM_PROVIDER`         | `opencode-go`                                | Provider name                                       |
+| `LLM_API_KEY`          | —                                            | API key                                             |
+| `LLM_MODEL_NAME`       | `mimo-v2.6-flash`                            | Model identifier                                    |
+| `LLM_BASE_URL`         | `https://opencode.ai/inference/go/openai/v1` | OpenAI-compatible endpoint                          |
+| `LLM_REASONING_EFFORT` | unset (provider default)                     | `low`, `medium` or `high`; other values are ignored |
 
-Every inference call also carries `x-opencode-session` (the chat conversation id
-when there is one, a process-scoped id otherwise) — OpenCode Go routes and
-caches on it and rejects calls without it (`400 MissingSessionID`).
+`LLM_BASE_URL` drops a trailing `/chat/completions`.
 
-### Per-agent model overrides
+Every inference call carries `x-opencode-session`: the chat conversation id when there is one, a process-scoped id otherwise. OpenCode Go routes and caches on this header and rejects calls without it (`400 MissingSessionID`). A conversation id that is not a plain token is replaced by a stable FNV-1a digest.
 
-`src/server/config/agent-models.config.ts`:
-
-```typescript
-export const agentModels = {
-  general: { provider: 'opencode-go', model: 'mimo-v2.6-flash', reasoningEffort: 'medium' },
-  flashcard: {
-    provider: 'opencode-go',
-    model: 'mimo-v2.6-flash',
-    maxTokens: 8192,
-    reasoningEffort: 'high',
-  },
-};
-```
-
-### Feature flag
-
-`FEATURE_FLAG_AGENTIC` (env var) — when `true`, all `/api/v1/ai/chat` requests use the agent pipeline.
-
----
-
-## Known issues & planned work
-
-| Priority | Issue                                        | Status                                                                                      |
-| -------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| P0       | No account type enforcement on agent route   | ✅ Closed — phase 5a replaced the persona gate with the `ai.chat` entitlement (ADR-0015 §7) |
-| P0       | No URL allowlist for `webfetch` (SSRF risk)  | 🔴 Open                                                                                     |
-| P0       | No token budget enforcement on agent route   | 🔴 Open                                                                                     |
-| P1       | No `RequestContext` in agent execution       | 🔴 Open                                                                                     |
-| P1       | No rate limiting on `/api/v1/ai/chat`        | 🟡 Open                                                                                     |
-| P2       | `evaluate_quality` is a no-op                | 🟡 Open                                                                                     |
-| P2       | Per-sub-agent timeout in `batch_call_agent`  | 📋 Planned                                                                                  |
-| P2       | Per-task error isolation in batch            | 📋 Planned                                                                                  |
-| P3       | Conversation state persistence to PostgreSQL | 💤 Deferred                                                                                 |
-| P3       | Trace viewer UI                              | 💤 Deferred                                                                                 |
-
-### Dead code removed ✅
-
-The legacy pipeline was fully replaced by the agent pipeline. These files were removed in `refactor/remove-legacy-ai-pipeline` (PR #56):
-
-| File                                                                                                             | Status                                                  |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `src/server/controllers/ai-chat.controller.ts`                                                                   | ✅ Removed — orphaned, no route imports                 |
-| `src/server/services/ai-chat.service.ts`                                                                         | ✅ Removed — orphaned, no route imports                 |
-| `src/server/models/ai-chat.model.ts`                                                                             | ✅ Removed — only used by deleted controller/service    |
-| `src/components/ai/flashcard-generation-status.tsx`                                                              | ✅ Removed — was used by deprecated `frompdf` SSE hook  |
-| `src/hooks/use-flashcard-generation.ts`                                                                          | ✅ Removed — deprecated SSE hook for `frompdf` endpoint |
-| `src/app/(frontend)/app/flashcards/ai/page.tsx`                                                                  | ✅ Removed — deprecated PDF upload page                 |
-| Barrel re-exports in `services/index.ts` + `controllers/index.ts` + `models/index.ts` + `components/ai/index.ts` | ✅ Cleaned                                              |
-
-**Kept** (still used by agent tools):
-
-- `src/server/services/ai-prompts.ts` — imported by `fetch-material.tool.ts`
-- `src/server/services/ai-utils.ts` — imported by `generate-flashcards.tool.ts`
-
-**Security hardening plan:** [`docs/plans/agent-security.md`](plans/agent-security.md)
+`model.ts` reads the `LLM_*` values at import time, so set them before the server starts.
 
 ---
 
 ## Testing
 
-| Type            | Location                                | Status                                                                             |
-| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
-| Unit            | `__tests__/unit/agents/`                | ✅ `generic.test.ts` exists                                                        |
-| Integration     | `__tests__/integration/`                | No agent-specific suites yet                                                       |
-| E2E             | `__tests__/e2e/`                        | Not yet planned                                                                    |
-| QA (fake model) | `__tests__/qa/AI/`, `scripts/fake-llm/` | ✅ STU-47, STU-48 against the [fake inference server](ai/fake-inference-server.md) |
+| Type        | Location                                                                   | Contents                                                |
+| ----------- | -------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Unit        | `__tests__/unit/agents/tools/`, `__tests__/unit/api/ai-chat-route.test.ts` | Tool behavior, URL guard, route budget and wire options |
+| Integration | `__tests__/integration/`                                                   | No AI-specific suites                                   |
+| E2E         | `__tests__/e2e/ai-assistant.spec.ts`                                       | Routes, reset, plan gate, deck context                  |
+| QA          | `__tests__/qa/AI/`                                                         | `STU-47`, `STU-48` against the fake inference server    |
 
-Run agent tests: `bunx vitest run __tests__/unit/agents/`
+```bash
+bunx vitest run __tests__/unit/agents/
+bun run test:e2e __tests__/e2e/ai-assistant.spec.ts
+```
 
-A new AI feature is tested without a provider: add a fixture
-(`scripts/fake-llm/cases/<CASE>.<slug>.json`) that scripts what the model says
-and a spec under `__tests__/qa/AI/`; the engine does not change. Run it with
-`bun run mock:llm` and `bun run test:qa __tests__/qa/AI`.
+The QA cases use the fake inference server. Add a fixture in `scripts/fake-llm/cases/<CASE>.<slug>.json` and a spec in `__tests__/qa/AI/`; the engine does not change. Then run:
+
+```bash
+bun run mock:llm
+bun run test:qa __tests__/qa/AI
+```
+
+The engine, fixture format and fault cases are described in [`docs/ai/fake-inference-server.md`](ai/fake-inference-server.md).
 
 ---
 
 ## Debugging
 
-- **Trace events:** In-memory store + SQLite in dev (`.dev/traces.db`)
-- **Dev endpoint:** `GET /api/v1/dev/traces?conversationId=xxx` (403 in production; requires a session in development)
-- **Logs:** Consola structured logging (`log.ai`, `log.providers`)
+- **Trace storage:** `packages/server/src/services/agent-trace.service.ts` writes each event to SQLite at `.dev/traces.db` (`bun:sqlite`). `enqueueTrace()` calls it fire-and-forget; `agentTraceService.log()` returns `null` when the write fails.
+- **Dev endpoint:** `GET /api/v1/dev/traces`. It returns 403 unless `NODE_ENV=development`, and it requires a session. Filters: `serverSessionId` (`current` by default, `all` for every session), `conversationId`, `eventType`, `label`, `agentName`, `limit`, `offset`, `sort`.
+- **Trace events:** `streamText start`, each step start, each tool call, each step response, `streamText finish`, and `trackTokenUsage failed`. Rows carry the conversation id, agent name, token counts and finish reason.
+- **Logs:** the OTel logger in `packages/server/src/lib/log.ts` (`log`/`warn`/`error`). Records carry the active trace id and fall back to `console` when the OTel pipeline is off.
