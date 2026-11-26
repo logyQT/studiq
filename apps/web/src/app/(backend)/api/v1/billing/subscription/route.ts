@@ -5,9 +5,13 @@ import type { NextRequest } from 'next/server';
 
 // The shared billing read model (#662 §7.4). The proxy returns for every
 // `/api/*` request before it reaches a handler, so `withAuth` below is the only
-// gate.
+// gate. `?scope=personal` reads the caller's own row on a personal surface.
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) =>
-    toNoStoreNextResponse(await billingController.getSubscription(ctx)),
+    toNoStoreNextResponse(
+      await billingController.getSubscription(ctx, {
+        scope: req.nextUrl.searchParams.get('scope') ?? undefined,
+      }),
+    ),
   );
 }

@@ -56,9 +56,8 @@ describe('POST /api/v1/billing/release-scheduled-plan', () => {
 
     expect(response.status).toBe(200);
     expect(withAuthMock).toHaveBeenCalledTimes(1);
-    // The route never reads or forwards a body: owner/customer/subscription
-    // come from the authenticated context and the mirror.
-    expect(releaseScheduledPlan).toHaveBeenCalledWith(ctx);
+    // The route never reads a body; it forwards only the optional owner scope.
+    expect(releaseScheduledPlan).toHaveBeenCalledWith(ctx, { scope: undefined });
   });
 
   it('maps a controller failure to its HTTP status', async () => {

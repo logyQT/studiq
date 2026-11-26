@@ -160,3 +160,73 @@ export function invoiceHistoryPath(accountType: AccountType): string | null {
   if (accountType === AccountType.EDUCATOR) return '/edu/account/payments';
   return null;
 }
+
+/**
+ * The `/app/billing` and `/edu/billing` surfaces read and act on the caller's
+ * own subscription, even when they may bill the active organization
+ * (#1493 follow-up). `/manage/billing` asks for no scope and keeps the
+ * org-first owner.
+ */
+export function billingScopeUrl(url: string, personal: boolean): string {
+  if (!personal) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}scope=personal`;
+}
+
+/** A billing action body that selects the caller's own subscription. */
+export function withPersonalScope<T extends object>(
+  body: T,
+  personal: boolean,
+): T & { scope?: 'personal' } {
+  return personal ? { ...body, scope: 'personal' } : body;
+}
+
+export type BillingCardAction =
+  | { type: 'portal'; locale: string }
+  | { type: 'cancel'; cancel: boolean }
+  | { type: 'release' }
+  | { type: 'change'; planKey: string };
+
+export interface BillingCardRequest {
+  method: 'GET' | 'POST';
+  url: string;
+  body?: Record<string, unknown>;
+}
+
+/**
+ * The one request builder behind the billing card's four provider actions.
+ *
+ * The read and the portal/release actions carry the personal scope in the URL;
+ * cancel and change carry it in the JSON body. Keeping the decision here pins
+ * every call site: a card that renders on a personal surface must never send
+ * one of the four without `scope=personal`.
+ */
+export function billingCardRequest(
+  action: BillingCardAction,
+  personal: boolean,
+): BillingCardRequest {
+  if (action.type === 'portal') {
+    return {
+      method: 'GET',
+      url: billingScopeUrl(`/api/v1/stripe/portal?locale=${action.locale}`, personal),
+    };
+  }
+  if (action.type === 'cancel') {
+    return {
+      method: 'POST',
+      url: '/api/v1/billing/cancel',
+      body: withPersonalScope({ cancel: action.cancel }, personal),
+    };
+  }
+  if (action.type === 'release') {
+    return {
+      method: 'POST',
+      url: billingScopeUrl('/api/v1/billing/release-scheduled-plan', personal),
+      body: {},
+    };
+  }
+  return {
+    method: 'POST',
+    url: '/api/v1/billing/change-plan',
+    body: withPersonalScope({ planKey: action.planKey }, personal),
+  };
+}

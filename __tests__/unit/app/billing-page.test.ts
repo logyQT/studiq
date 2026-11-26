@@ -17,19 +17,35 @@ import pl from '@/i18n/messages/pl.json';
  */
 interface QueryData {
   plan: PlanInfo | undefined;
+  personalPlan: PlanInfo | undefined;
   plans: PlanInfo[] | undefined;
   subscription: BillingSubscriptionView | undefined;
 }
 
 const data = vi.hoisted((): QueryData => ({
   plan: undefined,
+  personalPlan: undefined,
   plans: undefined,
   subscription: undefined,
 }));
 
+const reads = vi.hoisted(() => ({ urls: [] as string[], keys: [] as unknown[][] }));
+
+const card = vi.hoisted(() => ({ personal: null as boolean | null }));
+
+vi.mock('@/components/billing/BillingSubscriptionCard', () => ({
+  BillingSubscriptionCard: ({ personal }: { personal?: boolean }) => {
+    card.personal = personal ?? false;
+    return null;
+  },
+}));
+
 vi.mock('@/hooks/use-api', () => ({
-  useApiQuery: ({ url }: { url: string }) => {
+  useApiQuery: ({ url, queryKey }: { url: string; queryKey: unknown[] }) => {
+    reads.urls.push(url);
+    reads.keys.push(queryKey);
     if (url === '/api/v1/me/plan') return { data: data.plan, isLoading: false };
+    if (url === '/api/v1/me/personal-plan') return { data: data.personalPlan, isLoading: false };
     if (url === '/api/v1/subscription-plans') return { data: data.plans };
     return { data: data.subscription, isError: false, refetch: () => {} };
   },
@@ -63,7 +79,10 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key' | 'limits'>): 
   };
 }
 
-function render(): string {
+function render(personal = false): string {
+  reads.urls = [];
+  reads.keys = [];
+  card.personal = null;
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
@@ -71,6 +90,7 @@ function render(): string {
       createElement(BillingPage, {
         accountType: AccountType.EDUCATOR,
         upgradePath: '/edu/upgrade',
+        personal,
       }),
     ),
   );
@@ -85,6 +105,13 @@ describe('BillingPage current-plan card', () => {
       name: 'Pro effective',
       features: ['flashcards', 'branding'],
       limits: { max_flashcards: 100, max_decks: 0, max_questions: 0 },
+    });
+    data.personalPlan = plan({
+      key: 'spark',
+      name: 'Spark personal',
+      priceMonthly: 4900,
+      features: ['flashcards'],
+      limits: { max_flashcards: 50, max_decks: 2, max_questions: 0 },
     });
     data.plans = [
       plan({
@@ -125,5 +152,41 @@ describe('BillingPage current-plan card', () => {
     expect(markup).toContain('Pro effective');
     expect(markup).not.toContain('tabular-nums');
     expect(markup).not.toContain(pt('feature_branding'));
+  });
+
+  it('reads the caller’s own plan, not the org-first /me/plan, on the personal surface', () => {
+    const markup = render(true);
+
+    expect(reads.urls).toContain('/api/v1/me/personal-plan');
+    expect(reads.urls).not.toContain('/api/v1/me/plan');
+    expect(reads.keys).toContainEqual(['me', 'personal-plan']);
+    expect(reads.keys).not.toContainEqual(['me', 'plan']);
+    expect(markup).toContain('Spark personal');
+    expect(markup).toContain('49,00');
+  });
+
+  it('keeps the org-first plan read off the personal surface', () => {
+    const markup = render();
+
+    expect(reads.urls).toContain('/api/v1/me/plan');
+    expect(reads.urls).not.toContain('/api/v1/me/personal-plan');
+    expect(reads.keys).toContainEqual(['me', 'plan']);
+    // The org-first row's 19,00 price, not the personal plan's.
+    expect(markup).toContain('19,00');
+  });
+
+  it('reads the caller’s own subscription on the personal surface', () => {
+    render(true);
+
+    expect(reads.urls).toContain('/api/v1/billing/subscription?scope=personal');
+    expect(card.personal).toBe(true);
+  });
+
+  it('keeps the org-first read off the personal surface', () => {
+    render();
+
+    expect(reads.urls).toContain('/api/v1/billing/subscription');
+    expect(reads.urls).not.toContain('/api/v1/billing/subscription?scope=personal');
+    expect(card.personal).toBe(false);
   });
 });
