@@ -158,7 +158,7 @@ The account type is not a gate. Access is the `ai.chat` entitlement, so no perso
 
 Every inference call carries `x-opencode-session`: the chat conversation id when there is one, a process-scoped id otherwise. OpenCode Go routes and caches on this header and rejects calls without it (`400 MissingSessionID`). A conversation id that is not a plain token is replaced by a stable FNV-1a digest.
 
-The `LLM_*` values are read at import time. Set them before the build and before `next start`.
+`model.ts` reads the `LLM_*` values at import time, so set them before the server starts.
 
 ---
 
@@ -189,7 +189,7 @@ The engine, fixture format and fault cases are described in [`docs/ai/fake-infer
 
 ## Debugging
 
-- **Trace storage:** `packages/server/src/services/agent-trace.service.ts` writes each event to SQLite at `.dev/traces.db` (`bun:sqlite`). Writes are fire-and-forget through `enqueueTrace()`; a failed write returns `null`.
+- **Trace storage:** `packages/server/src/services/agent-trace.service.ts` writes each event to SQLite at `.dev/traces.db` (`bun:sqlite`). `enqueueTrace()` calls it fire-and-forget; `agentTraceService.log()` returns `null` when the write fails.
 - **Dev endpoint:** `GET /api/v1/dev/traces`. It returns 403 unless `NODE_ENV=development`, and it requires a session. Filters: `serverSessionId` (`current` by default, `all` for every session), `conversationId`, `eventType`, `label`, `agentName`, `limit`, `offset`, `sort`.
 - **Trace events:** `streamText start`, each step start, each tool call, each step response, `streamText finish`, and `trackTokenUsage failed`. Rows carry the conversation id, agent name, token counts and finish reason.
 - **Logs:** the OTel logger in `packages/server/src/lib/log.ts` (`log`/`warn`/`error`). Records carry the active trace id and fall back to `console` when the OTel pipeline is off.
