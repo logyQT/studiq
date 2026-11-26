@@ -40,11 +40,10 @@ call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
 **Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
-#1502 (#1503), #1484 (#1506) and #1482 (#1510) have merged; next are #1478 and #1492,
-then the plans, then the shell, then the `/app` decision, then onboarding.
-**Open follow-ups (owned):** **#1483** notify org admins when a new
-entitlement is grantable; **#1478** the merge queue cannot land a docs-only PR;
-row 14 (per-user personal default permission set) still defers. A
+#1502 (#1503), #1484 (#1506), #1482 (#1510) and #1478 (#1474) have merged; next is #1492
+(A6, pending PR), then the plans, then the shell, then the `/app` decision, then onboarding.
+**Open follow-ups (owned):** **#1483** notify org admins when a new entitlement
+is grantable; row 14 (per-user personal default permission set) still defers. A
 default-outside-any-plan layer is **proposed** as D37 and needs an ADR-0015
 amendment before anyone builds it.
 Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**

@@ -24,11 +24,20 @@
  *
  * Usage:
  *   bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \
- *                         --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
+ *                         --test <test file> (--name "<exact title>" | --name-regex <pattern>) \
+ *                         [--all] [--json] [--keep]
  *   bun scripts/mutate.ts --spec <mutations.json> [--json]
  *
- * `--spec` reads a JSON array of `{ "file", "find", "replace", "test", "name", "all"? }`
- * — one PR's mutation table, reproducible from the body. The spec file must be
+ * `--name` is the test's exact title. vitest treats `-t` as a regex, so the
+ * title is escaped and anchored before it reaches vitest: a title with
+ * parentheses, brackets or `+` is a literal, and it cannot match a longer
+ * title. `--name-regex` passes a raw `-t` pattern through unchanged, for a
+ * family of titles; pass exactly one of the two.
+ *
+ * `--spec` reads a JSON array of
+ * `{ "file", "find", "replace", "test", "name" | "nameRegex", "all"? }` — one
+ * PR's mutation table, reproducible from the body. A row's `name` is the exact
+ * title; `nameRegex` is the pattern escape hatch. The spec file must be
  * committed, git-ignored, or outside the worktree: a dirty tree is refused, by
  * design. A row that comes back `ERROR` does not stop the table (its value is
  * the whole table); a row whose `--find` is malformed does, because the table is
@@ -49,6 +58,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { exactTitleFilter } from './lib/test-title-filter';
 
 const CWD = process.cwd();
 /** The worktree with symlinks resolved, so a link cannot smuggle a path out. */
@@ -59,12 +69,15 @@ const DETAIL_LIMIT = 240;
 
 type Outcome = 'KILLED' | 'SURVIVED' | 'ERROR';
 
+/** How the one named test is selected: its exact title, or a raw `-t` pattern. */
+type Selector = { exact: string } | { regex: string };
+
 interface Mutation {
   file: string;
   find: string;
   replace: string;
   test: string;
-  name: string;
+  selector: Selector;
   all: boolean;
 }
 
@@ -106,10 +119,14 @@ interface RunResult {
 const HELP = `mutate — break one line, run one named test, revert
 
   bun scripts/mutate.ts --file <path> --find <exact text> --replace <text> \\
-                        --test <test file> --name "<exact test title>" [--all] [--json] [--keep]
+                        --test <test file> (--name "<exact title>" | --name-regex <pattern>) \\
+                        [--all] [--json] [--keep]
   bun scripts/mutate.ts --spec <mutations.json> [--json]
 
   --find must match exactly once in the file, or pass --all.
+  --name is the exact test title: regex metacharacters are literal, and the
+  title is anchored, so it cannot match a longer title or a title that contains
+  it. --name-regex is a raw vitest -t pattern. Pass exactly one of the two.
   The mutated file must be tracked by git: a mutation needs a pre-image to revert.
   After a KILLED the test is re-run unmutated; a red re-run is ERROR (a flake).
   In --spec mode a row that comes back ERROR does not stop the table.
@@ -133,7 +150,15 @@ function usage(message: string): never {
 function parseArgs(argv: string[]): { values: Map<string, string>; boolean: Set<string> } {
   const values = new Map<string, string>();
   const boolean = new Set<string>();
-  const takesValue = new Set(['--file', '--find', '--replace', '--test', '--name', '--spec']);
+  const takesValue = new Set([
+    '--file',
+    '--find',
+    '--replace',
+    '--test',
+    '--name',
+    '--name-regex',
+    '--spec',
+  ]);
   const switches = new Set(['--json', '--keep', '--all']);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
@@ -166,6 +191,34 @@ function required(name: string): string {
   const value = flags.values.get(name);
   if (value === undefined || value === '') usage(`${name} is required`);
   return value;
+}
+
+/** The vitest `-t` filter: an escaped, anchored title, or a raw pattern. */
+function selectorFilter(selector: Selector): string {
+  return 'exact' in selector ? exactTitleFilter(selector.exact) : selector.regex;
+}
+
+/** What a report calls the selector; for a pattern, the pattern itself. */
+function selectorTitle(selector: Selector): string {
+  return 'exact' in selector ? selector.exact : selector.regex;
+}
+
+/** `--name` (exact title) and `--name-regex` (raw pattern) are mutually exclusive. */
+function selectorFromFlags(): Selector {
+  const exact = flags.values.get('--name');
+  const regex = flags.values.get('--name-regex');
+  if (exact !== undefined && regex !== undefined) {
+    usage('--name and --name-regex are mutually exclusive: pass exactly one');
+  }
+  if (exact !== undefined) {
+    if (exact === '') usage('--name is required');
+    return { exact };
+  }
+  if (regex !== undefined) {
+    if (regex === '') usage('--name-regex is required');
+    return { regex };
+  }
+  usage('pass --name "<exact title>" or --name-regex <pattern>');
 }
 
 function git(args: string[]): { code: number; out: string; err: string } {
@@ -224,12 +277,12 @@ function firstLine(text: string): string {
   return line.length > DETAIL_LIMIT ? `${line.slice(0, DETAIL_LIMIT)}…` : line;
 }
 
-function runTest(bin: string, test: string, name: string): RunResult {
+function runTest(bin: string, test: string, filter: string): RunResult {
   const dir = mkdtempSync(join(tmpdir(), 'studiq-mutate-'));
   const out = join(dir, 'vitest.json');
   try {
     const result = Bun.spawnSync({
-      cmd: [bin, 'run', test, '-t', name, '--reporter=json', `--outputFile=${out}`],
+      cmd: [bin, 'run', test, '-t', filter, '--reporter=json', `--outputFile=${out}`],
       cwd: CWD,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -425,7 +478,9 @@ function confirmFlake(result: RunResult, test: string): string | null {
 
 function mutate(bin: string, planned: Planned): { report: Report; reverted: boolean } {
   const { rel, abs, test, mutation } = planned;
-  const base = { file: rel, find: mutation.find, test, title: mutation.name };
+  const title = selectorTitle(mutation.selector);
+  const filter = selectorFilter(mutation.selector);
+  const base = { file: rel, find: mutation.find, test, title };
   const report = (outcome: Outcome, executed: number, detail: string): Report => ({
     ...base,
     outcome,
@@ -447,17 +502,17 @@ function mutate(bin: string, planned: Planned): { report: Report; reverted: bool
   }
 
   // The mutated run can only be read against a green baseline: a test that was
-  // already red would "kill" every mutant, and a name that matches nothing
+  // already red would "kill" every mutant, and a title that matches nothing
   // would "survive" all of them.
-  const before = runTest(bin, test, mutation.name);
-  const blocker = baselineError(before, mutation.name, test);
+  const before = runTest(bin, test, filter);
+  const blocker = baselineError(before, title, test);
   if (blocker) return error(before.executed, `baseline: ${blocker}; an error is never proof`);
 
   writeFileSync(abs, original.split(mutation.find).join(mutation.replace));
   let after: RunResult | null = null;
   let revertFailure: string | null = null;
   try {
-    after = runTest(bin, test, mutation.name);
+    after = runTest(bin, test, filter);
   } finally {
     if (keep) {
       process.stderr.write(
@@ -483,7 +538,7 @@ function mutate(bin: string, planned: Planned): { report: Report; reverted: bool
   if (after === null)
     return error(0, 'the mutated run produced no result; an error is never proof');
 
-  const { outcome, detail } = classify(after, mutation.name, test);
+  const { outcome, detail } = classify(after, title, test);
   if (outcome !== 'KILLED')
     return { report: report(outcome, after.executed, detail), reverted: !keep };
   if (keep) {
@@ -497,7 +552,7 @@ function mutate(bin: string, planned: Planned): { report: Report; reverted: bool
     };
   }
 
-  const confirm = runTest(bin, test, mutation.name);
+  const confirm = runTest(bin, test, filter);
   const flake = confirmFlake(confirm, test);
   if (flake) return error(confirm.executed, `flake suspected: ${flake}; an error is never proof`);
   return { report: report('KILLED', after.executed, detail), reverted: true };
@@ -532,10 +587,27 @@ function loadSpec(path: string): Mutation[] {
       find: field('find'),
       replace: typeof record.replace === 'string' ? record.replace : '',
       test: field('test'),
-      name: field('name'),
+      selector: selectorOfSpec(record, index, field),
       all: record.all === true,
     };
   });
+}
+
+/** A spec row names its test exactly (`name`) or by pattern (`nameRegex`), never both. */
+function selectorOfSpec(
+  record: Record<string, unknown>,
+  index: number,
+  field: (key: string) => string,
+): Selector {
+  const hasName = record.name !== undefined;
+  const hasRegex = record.nameRegex !== undefined;
+  if (hasName && hasRegex) {
+    usage(`spec[${index}]: name and nameRegex are mutually exclusive`);
+  }
+  if (!hasName && !hasRegex) {
+    usage(`spec[${index}] needs name (exact title) or nameRegex (pattern)`);
+  }
+  return hasName ? { exact: field('name') } : { regex: field('nameRegex') };
 }
 
 function main(): void {
@@ -551,7 +623,7 @@ function main(): void {
           find: required('--find'),
           replace: flags.values.get('--replace') ?? '',
           test: required('--test'),
-          name: required('--name'),
+          selector: selectorFromFlags(),
           all: flags.boolean.has('--all'),
         },
       ];
@@ -579,11 +651,12 @@ function main(): void {
 
   for (const [index, row] of planned.entries()) {
     const { mutation, rel, test } = row;
+    const selector = mutation.selector;
     say(`\n[${index + 1}/${planned.length}] ${rel}`);
     say(`  find:    ${mutation.find.split('\n')[0]}`);
     say(`  replace: ${mutation.replace.split('\n')[0]}`);
     say(`  test:    ${test}`);
-    say(`  title:   ${mutation.name}`);
+    say(`  ${'exact' in selector ? 'title' : 'pattern'}:   ${selectorTitle(selector)}`);
     const result = mutate(bin, row);
     const { report } = result;
     reports.push(report);
@@ -605,7 +678,7 @@ function main(): void {
           file: rest.rel,
           find: rest.mutation.find,
           test: rest.test,
-          title: rest.mutation.name,
+          title: selectorTitle(rest.mutation.selector),
           outcome: 'ERROR',
           executed: 0,
           detail: 'not run: a previous row left the worktree dirty',
