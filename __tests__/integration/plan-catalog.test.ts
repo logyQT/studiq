@@ -142,7 +142,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_questions: -1,
       max_decks: -1,
       max_question_banks: -1,
-      max_groups: 1000,
+      max_groups: 100,
       max_students: 1000,
       max_quiz_attempts_per_day: -1,
     },

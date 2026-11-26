@@ -69,7 +69,7 @@ const catalogue = [
   }),
   plan('campus', 'organization', 7, {
     features: ['flashcards', 'quiz'],
-    limits: { max_students: 1000, max_groups: 1000 },
+    limits: { max_students: 1000, max_groups: 100 },
     priceMonthly: 69900,
   }),
 ];

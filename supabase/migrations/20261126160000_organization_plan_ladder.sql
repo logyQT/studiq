@@ -111,7 +111,7 @@ insert into plan_catalog_limits (plan_key, limit_key, limit_value) values
   ('hub', 'max_quiz_attempts_per_day', -1),
   ('campus', 'max_flashcards', -1), ('campus', 'max_questions', -1),
   ('campus', 'max_decks', -1), ('campus', 'max_question_banks', -1),
-  ('campus', 'max_groups', 1000), ('campus', 'max_students', 1000),
+  ('campus', 'max_groups', 100), ('campus', 'max_students', 1000),
   ('campus', 'max_quiz_attempts_per_day', -1);
 
 -- ==========================================================
@@ -366,7 +366,7 @@ begin
       ('pro', '{"max_flashcards":25000,"max_questions":10000,"max_decks":2000,"max_question_banks":1000,"max_quiz_attempts_per_day":200,"max_ai_tokens_per_day":500000}'::jsonb),
       ('launch', '{"max_flashcards":100,"max_questions":50,"max_decks":10,"max_question_banks":5,"max_groups":3,"max_students":5,"max_quiz_attempts_per_day":10}'::jsonb),
       ('hub', '{"max_flashcards":2000,"max_questions":1000,"max_decks":200,"max_question_banks":100,"max_groups":20,"max_students":50,"max_quiz_attempts_per_day":-1}'::jsonb),
-      ('campus', '{"max_flashcards":-1,"max_questions":-1,"max_decks":-1,"max_question_banks":-1,"max_groups":1000,"max_students":1000,"max_quiz_attempts_per_day":-1}'::jsonb)
+      ('campus', '{"max_flashcards":-1,"max_questions":-1,"max_decks":-1,"max_question_banks":-1,"max_groups":100,"max_students":1000,"max_quiz_attempts_per_day":-1}'::jsonb)
     ) as m(key, expected_limits)
   loop
     select coalesce(jsonb_object_agg(limit_key, limit_value), '{}'::jsonb)
