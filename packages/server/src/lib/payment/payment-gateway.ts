@@ -77,7 +77,12 @@ export interface PortalSessionResult {
   url: string;
 }
 
-export interface ChangePlanInput {
+/**
+ * The plan change resolved from the owner, catalog and mirror. The preview and
+ * the confirmed change share this shape, so the two cannot resolve a different
+ * subscription, price or direction.
+ */
+export interface ChangePlanSelection {
   /** Resolved from `RequestContext` by `BillingService`, never a request body. */
   owner: PaymentOwner;
   customerId: string;
@@ -86,7 +91,32 @@ export interface ChangePlanInput {
   targetPlanKey: string;
   targetPriceId: string;
   direction: 'upgrade' | 'downgrade';
+  /** The subscription has a scheduled cancellation; a confirmed change resumes it. */
+  resume: boolean;
+}
+
+export interface ChangePlanInput extends ChangePlanSelection {
   idempotencyKey: string;
+}
+
+export type PreviewChangeInput = ChangePlanSelection;
+
+/**
+ * Read-only result of `invoices.createPreview`: what the confirmed change would
+ * charge today and when the target plan starts. Never persisted.
+ */
+export interface ChangePlanPreview {
+  direction: 'upgrade' | 'downgrade';
+  currentPlanKey: string;
+  targetPlanKey: string;
+  /** Minor units charged today; 0 for a downgrade. */
+  amountDue: number;
+  /** Uppercase ISO currency code, e.g. `PLN`. */
+  currency: string;
+  /** ISO date the target plan starts. */
+  effectiveAt: string;
+  /** The change clears a scheduled cancellation. */
+  resumesAtPeriodEnd: boolean;
 }
 
 export interface ChangePlanResult {
@@ -174,6 +204,12 @@ export interface PaymentGateway {
 
   /** Upgrade (apply now) or downgrade (schedule at period end). */
   changePlan(input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>>;
+
+  /**
+   * Read-only amount/date preview for the same change. It never writes the
+   * mirror and never mutates the provider subscription.
+   */
+  previewChange(input: PreviewChangeInput): Promise<ServiceResult<ChangePlanPreview>>;
 
   cancelAtPeriodEnd(
     input: CancelAtPeriodEndInput,

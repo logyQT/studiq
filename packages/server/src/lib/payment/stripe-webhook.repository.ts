@@ -597,17 +597,13 @@ export class SupabaseStripeWebhookRepository implements StripeWebhookRepository 
     livemode: boolean,
   ): Promise<ServiceResult<ActiveSubscriptionRef | null>> {
     const supabase = this.createAdminClient();
-    const base = supabase
+    const { data, error } = await supabase
       .from('billing_subscriptions')
       .select('stripe_subscription_id, plan_key')
       .eq('livemode', livemode)
-      .in('status', ACTIVE_SUBSCRIPTION_STATUSES);
-
-    const { data, error } = await (
-      owner.type === 'user'
-        ? base.eq('user_id', owner.userId)
-        : base.eq('organization_id', owner.orgId)
-    ).maybeSingle();
+      .in('status', ACTIVE_SUBSCRIPTION_STATUSES)
+      .match(owner.type === 'user' ? { user_id: owner.userId } : { organization_id: owner.orgId })
+      .maybeSingle();
 
     if (error) return toDbFailure(error);
     if (!data) return success(null);

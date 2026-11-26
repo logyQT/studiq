@@ -43,6 +43,7 @@ function createMockBilling() {
   return {
     getSubscription: vi.fn(),
     changePlan: vi.fn(),
+    previewChange: vi.fn(),
     cancelSubscription: vi.fn(),
     reconcileCheckout: vi.fn(),
     releaseScheduledChange: vi.fn(),
@@ -158,6 +159,56 @@ describe('BillingController', () => {
       await expect(controller.changePlan(ctx, { planKey: 'ace' })).resolves.toMatchObject({
         success: false,
         statusCode: 404,
+      });
+    });
+  });
+
+  describe('previewChange', () => {
+    const preview = {
+      direction: 'upgrade' as const,
+      currentPlanKey: 'spark',
+      targetPlanKey: 'ace',
+      amountDue: 3999,
+      currency: 'PLN',
+      effectiveAt: '2026-11-26T00:00:00.000Z',
+      resumesAtPeriodEnd: false,
+    };
+
+    it('returns 422 without a plan key', async () => {
+      const response = await controller.previewChange(ctx, {});
+
+      expect(response).toMatchObject({
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
+      expect(billing.previewChange).not.toHaveBeenCalled();
+    });
+
+    it('delegates the target plan key and returns the preview', async () => {
+      billing.previewChange.mockResolvedValueOnce(success(preview));
+
+      const response = await controller.previewChange(ctx, { planKey: 'ace' });
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: preview });
+      expect(billing.previewChange).toHaveBeenCalledWith(ctx, 'ace', false);
+    });
+
+    it('selects the caller’s own subscription when the body names the personal scope', async () => {
+      billing.previewChange.mockResolvedValueOnce(success(preview));
+
+      await controller.previewChange(ctx, { planKey: 'ace', scope: 'personal' });
+
+      expect(billing.previewChange).toHaveBeenCalledWith(ctx, 'ace', true);
+    });
+
+    it('maps a service failure to its status code', async () => {
+      billing.previewChange.mockResolvedValueOnce({ success: false, error: 'SERVICE_UNAVAILABLE' });
+
+      await expect(controller.previewChange(ctx, { planKey: 'ace' })).resolves.toMatchObject({
+        success: false,
+        statusCode: 503,
+        error: 'SERVICE_UNAVAILABLE',
       });
     });
   });
