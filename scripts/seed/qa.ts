@@ -551,12 +551,12 @@ async function seedTwoOrg(
   };
 
   // `personalRole` names the role, not the tenant key: a two-org tenant spells
-  // its keys `studentA` / `teacherA`, so a direct key match would silently pick
-  // no one. `student` is the primary student in org A.
+  // its student and teacher keys `studentA` / `teacherA`, and a solo account has
+  // its own key. The content and org-limit shapes use the plain role names.
   const personalRoleKeys: Record<'manager' | 'teacher' | 'student', string[]> = {
     manager: ['manager'],
-    teacher: ['teacherA'],
-    student: ['studentA'],
+    teacher: ['teacher', 'teacherA'],
+    student: ['student', 'studentA'],
   };
   const personalTargets = personalRole ? personalRoleKeys[personalRole] : Object.keys(tenantUsers);
 

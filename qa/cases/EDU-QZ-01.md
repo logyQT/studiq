@@ -26,12 +26,14 @@ TC.
   (`active_org_id`). The legacy prerequisite account (`teacher-classroom@dev.local`, `pass`) is
   never used.
 - Organization: `qa-edu-qz-01-<suffix>` with a manager, an educator and a student, plus the
-  default group `G1`. The tenant org sits on the **hub** plan (`{ "profile": "content",
-"plan": "hub" }` in `__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's
-  `--plan`): the saved-quiz library is the `quiz.templates` entitlement (phase 5d), which the
-  educator's personal Plus plan carries, so the educator passes the gate on
-  `POST /api/v1/teacher/quizzes`. No content is needed: the case starts from the empty quiz
-  list („Brak quizów”).
+  default group `G1`. The tenant org sits on the **hub** plan
+  (`{ "profile": "content", "plan": "hub", "personalPlan": "spark" }` in
+  `__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's `--plan`). Hub is
+  capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
+  (phase 5d) comes from the personal Plus plan, which every seeded account carries: the
+  educator passes the gate on `POST /api/v1/teacher/quizzes`, and so does the org admin
+  who mints the foreign quiz for the own-only list check (acceptance point 6). No content
+  is needed: the case starts from the empty quiz list („Brak quizów”).
 - Quiz name: the case's „Quiz próbny” carries the run suffix („Quiz próbny <suffix>”) so two
   runs on the same tenant never share a card; the spec addresses the quiz by the id the create
   response returns, never by name alone.

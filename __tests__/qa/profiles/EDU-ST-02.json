@@ -1,1 +1,6 @@
-{ "profile": "org-limit", "plan": "campus" }
+{
+  "profile": "org-limit",
+  "plan": "campus",
+  "personalPlan": "ace",
+  "personalRole": "teacher"
+}

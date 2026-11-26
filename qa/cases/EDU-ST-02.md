@@ -14,12 +14,17 @@ Po kilku próbach quizów/fiszek studenta SC.
 ## Prereqs / Seed (reconciled with the tenant seeder)
 
 - Tenant: `bun scripts/qa-tenant.ts EDU-ST-02 --fresh`, declared in
-  `__tests__/qa/profiles/EDU-ST-02.json` as `{ "profile": "org-limit", "plan": "campus" }`.
+  `__tests__/qa/profiles/EDU-ST-02.json` as
+  `{ "profile": "org-limit", "plan": "campus", "personalPlan": "ace", "personalRole": "teacher" }`.
 - Organization `qa-edu-st-02-<suffix>` with an admin, two educators (`teacher`,
   `teacher2`) and one student, plus the default group `G1`.
 - The legacy manual accounts (`teacher-classroom@dev.local`,
   `student-classroom@dev.local`, password `pass`) are **not** used; the case's `SC`
   maps to the tenant's `student`.
+- `teacher` creates a quiz through `POST /api/v1/teacher/quizzes` (`quiz.templates`) and
+  the `/edu` group chart is a diagnostic (`stats.insights`). Campus is capacity only
+  since #1493, so both keys come from the teacher's personal **Pro** plan
+  (`personalPlan: "ace"`), not the org plan.
 - The „kilka prób quizów/fiszek” is built by the spec through the product API on
   every execution, with a per-execution tag:
   - `teacher` creates a deck of four cards, a bank of three multiple-choice

@@ -19,9 +19,10 @@ Edytor quizu.
 
 Legacy accounts (`teacher-classroom@dev.local`, password `pass`) are never used.
 The case runs in its own deterministic tenant, declared in
-`__tests__/qa/profiles/EDU-QZ-02.json` (`{ "profile": "content", "plan": "hub" }` — the hub
-plan is the library prerequisite: the saved-quiz library is the `quiz.templates` entitlement
-(phase 5d), which the educator's personal Plus plan carries, so the educator passes the write gates):
+`__tests__/qa/profiles/EDU-QZ-02.json`
+(`{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "teacher" }` —
+hub is capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
+(phase 5d) comes from the educator's personal Plus plan, and the educator passes the write gates):
 
 ```bash
 bun scripts/qa-tenant.ts EDU-QZ-02 --fresh

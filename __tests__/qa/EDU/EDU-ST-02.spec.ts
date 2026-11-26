@@ -22,7 +22,10 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * for both branches of the case: `teacher` owns the content the spec creates,
  * and `teacher2` is an educator of the same organization who never creates any
  * content, so the „no problematic questions” state is reachable on every run
- * (including a retry against an already-used tenant).
+ * (including a retry against an already-used tenant). The teacher's personal
+ * Pro plan supplies `quiz.templates` for `POST /api/v1/teacher/quizzes` and
+ * `stats.insights` for the `/edu` group chart; the campus org plan is capacity
+ * only since #1493.
  *
  * Every execution creates its own deck/cards/bank/questions/quiz/assignment
  * through the product API with a per-execution tag, and the student runs its
