@@ -27,11 +27,9 @@ interface ComparisonTableProps {
  * plan carries is printed once above the table and a limit whose value is the
  * same everywhere is not a row, so no fact appears twice (N-06).
  *
- * Measured at 320px on `/pricing?audience=organization`, the tightest ladder:
- * five columns fill the 288px gutter exactly (label 94px, plans 47/44/50/53px),
- * no cell clips and the region does not scroll. The region is still focusable,
- * because a fifth plan would overflow it and a truncated reading has to stay
- * navigable (N-02).
+ * The organization ladder prints three plan columns. The region is still
+ * focusable, because a fourth plan would overflow it and a truncated reading
+ * has to stay navigable (N-02).
  */
 export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
   const t = useTranslations('PricingPage');
@@ -58,7 +56,7 @@ export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
 
       {/*
        * A `<section>` with a name *is* the region role, which is why this is not
-       * a div carrying one. It is focusable because it scrolls: a fifth plan
+       * a div carrying one. It is focusable because it scrolls: a fourth plan
        * would overflow, and the region is what a keyboard reader moves sideways
        * with (WCAG 2.1.1).
        */}

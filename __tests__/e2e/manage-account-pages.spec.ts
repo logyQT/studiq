@@ -72,6 +72,6 @@ test.describe('Manager account and plan pages (#178)', () => {
     // The manager plan grid loaded. Assert on the cheapest paid CTA (a seeded
     // manager plan) rather than plan names/order. Never click it: checkout
     // applies the org plan.
-    await expect(page.getByRole('button', { name: t('PricingPage.cta_team') })).toBeVisible();
+    await expect(page.getByRole('button', { name: t('PricingPage.cta_hub') })).toBeVisible();
   });
 });

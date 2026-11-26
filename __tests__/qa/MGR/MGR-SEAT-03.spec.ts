@@ -6,8 +6,13 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * MGR-SEAT-03 — zwolnienie miejsca (`/manage/seats`).
  *
  * Case step: „Zwolnij miejsce przyciskiem przy przydziale.”
- * Expected: the toast „Miejsce zwolnione pomyślnie”, the member returns to the
- * base plan and the pool's available counter grows.
+ * Expected: the member returns to the base plan and the pool's available
+ * counter grows.
+ *
+ * Seats are frozen at the UI since #1493: `/manage/seats` keeps the pools and
+ * assignments tables and every `GET`, and hides the purchase, assign and release
+ * entries. The release is therefore driven through the product API, the same
+ * `DELETE` the retired button sent.
  *
  * Tenant (deterministic, fresh run suffix per independent run):
  *
@@ -18,10 +23,9 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * plus two org members, `users.student` (the member under test) and
  * `users.student2` (the untouched control). A fresh organization has **no** seat
  * pools — `plan_seat_allocations` was dropped — so the spec buys one personal-plan
- * pool (`pro`, 2 seats) and assigns both members through the product's own API,
- * the same requests the „Przydziel miejsce” dialog makes, and then exercises the
- * release button in the UI. That setup is idempotent, so a repeated run in the
- * same tenant starts from the case's prerequisite state again.
+ * pool (`pro`, 2 seats) and assigns both members through the product's own API.
+ * That setup is idempotent, so a repeated run in the same tenant starts from the
+ * case's prerequisite state again.
  *
  * Every id comes from the tenant fixture (`tenantKey`/`tenantId`); the spec reads
  * and writes only its own tenant's org, members and seat rows. The plan catalog is
@@ -41,8 +45,7 @@ const COPY = {
   purchasedColumn: 'Wykupione',
   assignedColumn: 'Przydzielone',
   availableColumn: 'Dostępne',
-  releaseSeat: 'Zwolnij miejsce',
-  released: 'Miejsce zwolnione pomyślnie',
+  frozenNote: 'Sprzedaż miejsc jest wstrzymana do czasu wprowadzenia licencji organizacji.',
 } as const;
 
 const POOLS_URL = '/api/v1/organization/seats/pools';
@@ -149,7 +152,7 @@ function rowLabel(assignment: Assignment): string {
   return assignment.userFullName || assignment.userEmail;
 }
 
-test('releasing a seat shows the toast, frees the pool counter and returns the member to the base plan', async ({
+test('releasing a seat through the API frees the pool counter and returns the member to the base plan', async ({
   page,
   browser,
 }) => {
@@ -268,54 +271,56 @@ test('releasing a seat shows the toast, frees the pool counter and returns the m
   const controlRow = assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(untouched) });
   await expect(controlRow, 'the control assignment').toHaveCount(1);
 
-  // --- Step 1: „Zwolnij miejsce” przy przydziale ---------------------------
-  const releaseButton = targetRow.getByRole('button', { name: COPY.releaseSeat, exact: true });
-  await expect(releaseButton, 'the release button sits on the assignment row').toBeVisible();
+  // The B2 freeze: the release control is gone, the data stays.
+  await expect(page.getByText(COPY.frozenNote)).toBeVisible();
+  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
+  for (const label of ['Kup miejsca', 'Przydziel miejsce']) {
+    await expect(page.getByRole('button', { name: label }), `${label} is hidden`).toHaveCount(0);
+  }
 
-  const deleteResponse = page.waitForResponse(
-    (response) =>
-      response.url().endsWith(`${ASSIGNMENTS_URL}/${target.id}`) &&
-      response.request().method() === 'DELETE',
-  );
-  await releaseButton.click();
-  const deleted = await deleteResponse;
-  expect(deleted.status(), `DELETE ${ASSIGNMENTS_URL}/${target.id}`).toBe(200);
+  // --- Step 1: release through the API the page no longer exposes ----------
+  await call<undefined>(page, `${ASSIGNMENTS_URL}/${target.id}`, { method: 'DELETE' });
 
-  // --- Expected result: toast, member back to base, available counter up ----
-  await expect(
-    page.locator('[data-sonner-toast]').filter({ hasText: COPY.released }),
-    'success toast',
-  ).toBeVisible();
+  // --- Expected result: member back to base, available counter up -----------
+  const assignmentsAfterRelease = await call<Assignment[]>(page, ASSIGNMENTS_URL);
+  expect(
+    assignmentsAfterRelease.some((assignment) => assignment.id === target.id),
+    'the released assignment row is deleted',
+  ).toBe(false);
+  expect(
+    assignmentsAfterRelease.some((assignment) => assignment.id === untouched.id),
+    'the control assignment row is kept',
+  ).toBe(true);
+  expect(assignmentsAfterRelease, 'the tenant keeps exactly one seat assignment').toHaveLength(1);
 
-  await expect(targetRow, 'the released assignment is gone from the table').toHaveCount(0);
-  await expect(controlRow, 'the other member keeps their seat').toHaveCount(1);
-
-  await expect(poolRow.locator('td').nth(1), 'purchased seats are unchanged').toHaveText(
-    String(POOL_SEATS),
-  );
-  await expect(poolRow.locator('td').nth(2), 'assigned seats after the release').toHaveText('1');
-  await expect(
-    poolRow.locator('td').nth(3).locator('span').first(),
-    'available seats after the release',
-  ).toHaveText('1');
-
-  // The counters come from persisted state, not from a stale optimistic list.
+  // The counters come from persisted state, so a reload reads them back.
   await page.reload();
   await expect(page).toHaveURL(/\/manage\/seats$/, { timeout: 20_000 });
-  const poolRowAfterReload = poolsCard.locator('tbody tr').filter({ hasText: seatPlanName });
+  const poolRowAfterReload = page
+    .locator('[data-slot="card"]')
+    .filter({ hasText: COPY.poolsTitle })
+    .locator('tbody tr')
+    .filter({ hasText: seatPlanName });
+  await expect(poolRowAfterReload.locator('td').nth(1), 'purchased seats are unchanged').toHaveText(
+    String(POOL_SEATS),
+  );
   await expect(poolRowAfterReload.locator('td').nth(2), 'persisted assigned seats').toHaveText('1');
   await expect(
     poolRowAfterReload.locator('td').nth(3).locator('span').first(),
     'persisted available seats',
   ).toHaveText('1');
+  const assignmentsCardAfterReload = page
+    .locator('[data-slot="card"]')
+    .filter({ hasText: COPY.assignmentsTitle });
   await expect(
-    assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(target) }),
+    assignmentsCardAfterReload.locator('tbody tr').filter({ hasText: rowLabel(target) }),
     'the released assignment stays gone after a reload',
   ).toHaveCount(0);
   await expect(
-    assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(untouched) }),
+    assignmentsCardAfterReload.locator('tbody tr').filter({ hasText: rowLabel(untouched) }),
     'the control assignment persists after a reload',
   ).toHaveCount(1);
+  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
 
   // --- API cross-check: exactly the control assignment remains -------------
   const poolsAfter = await call<Pool[]>(page, POOLS_URL);

@@ -20,9 +20,11 @@ import {
  *    (cell F) is ignored exactly like the plan-row case the unit suite covers
  *    (`entitlement.resolver.test.ts`): every reader filters through
  *    `isEntitlementKey`, so nothing reaches `ENTITLEMENTS[key]`.
- *  - **A plan change backfills with no prune job** (cell D). The org layer is
+ *  - **A plan change backfills with no prune job** (cell D). Each layer is
  *    derived per request, so a plan that gains a key serves it on the next
- *    resolution — no row per org, no cache flush, no restart.
+ *    resolution — no row per org, no cache flush, no restart. Since #1493 the
+ *    organization ladder is capacity only, so the probe is the personal plan
+ *    (`spark`), whose portable keys reach the member inside the org.
  *
  * `entitlement_catalog` is deliberately not written here: `catalog-invariants`
  * asserts the DB set against `ENTITLEMENTS` and runs in a parallel file, so a
@@ -34,14 +36,7 @@ const UNKNOWN_KEY = 'test.deploy.unknown';
 /** A shipped seed account with no org membership of its own: `student3@dev.local`. */
 const USER_ID = '00000000-0000-4000-8001-000000000007';
 
-const HUB_CEILING = [
-  'ai.chat',
-  'flashcards',
-  'quiz',
-  'quiz.templates',
-  'stats.insights',
-  'branding',
-];
+const PERSONAL_CEILING = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
 
 describe('entitlement deploy order (phase 8 matrix)', () => {
   let service: SupabaseClient<Database>;
@@ -76,6 +71,7 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
   afterAll(async () => {
     await service.from('user_feature_overrides').delete().eq('feature_key', UNKNOWN_KEY);
     await service.from('entitlement_flags').delete().eq('key', UNKNOWN_KEY);
+    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', USER_ID);
     if (orgId) await cleanupOrganizationDeep(orgId);
   });
 
@@ -84,11 +80,15 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
     expect(launch.entitlements).toEqual(['flashcards', 'quiz']);
     expect(launch.sources.org).toEqual({ planKey: 'launch', origin: 'org' });
 
-    await setOrgPlan(orgId, 'hub');
+    const { error } = await service
+      .from('profiles')
+      .update({ personal_plan_key: 'spark' })
+      .eq('id', USER_ID);
+    if (error) throw new Error(error.message);
 
-    const hub = await resolver.resolveEntitlements(ctx(adminRoleId));
-    expect(hub.entitlements).toEqual(HUB_CEILING);
-    expect(hub.sources.org).toEqual({ planKey: 'hub', origin: 'org' });
+    const spark = await resolver.resolveEntitlements(ctx(adminRoleId));
+    expect(spark.entitlements).toEqual(PERSONAL_CEILING);
+    expect(spark.sources.personal).toEqual({ planKey: 'spark', origin: 'personal' });
   });
 
   it('ignores an unknown override key on a real row (cell F: DB ahead of code)', async () => {
@@ -96,6 +96,11 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
     // runs this test alone), and the assertion below is about the unknown row, not
     // about which plan the seeded org happens to carry.
     await setOrgPlan(orgId, 'hub');
+    const { error: personalError } = await service
+      .from('profiles')
+      .update({ personal_plan_key: 'spark' })
+      .eq('id', USER_ID);
+    if (personalError) throw new Error(personalError.message);
     // `entitlement_flags` has no FK to the catalog, so this row can exist for a
     // key the TS catalog has never heard of — the shape an early deploy leaves.
     const { error: flagError } = await service
@@ -108,7 +113,7 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
     if (overrideError) throw new Error(overrideError.message);
 
     const resolved = await resolver.resolveEntitlements(ctx(adminRoleId));
-    expect(resolved.entitlements).toEqual(HUB_CEILING);
+    expect(resolved.entitlements).toEqual(PERSONAL_CEILING);
     expect(resolved.entitlements).not.toContain(UNKNOWN_KEY);
     expect(resolved.sources.overrides).toEqual([]);
   });

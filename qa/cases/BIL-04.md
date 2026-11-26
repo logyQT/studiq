@@ -7,6 +7,13 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only: after the purchase the organization plan is `hub` (50 members, 20 groups),
+but the org ceiling adds no paid feature. `/manage/settings` keeps the „Własny branding” lock
+card, the logo/colour controls stay hidden, and `branding`/`quiz.templates` stay absent. The
+purchase, the payment row and the untouched personal plan are unchanged.
+
 ## Prerequisite (verbatim)
 
 manager@dev.local, organizacja WSB Merito (Launch).

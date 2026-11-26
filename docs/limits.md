@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-25 (phase 7: atomic AI-token accounting, legacy role-feature surface removed).
+> Last updated: 2026-11-26 (B2: three capacity-only organization plans, no organization entitlements).
 
 ## Summary
 
@@ -24,20 +24,24 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                                             |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                       |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                        |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                        |
-| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; every persona, a manager included, starts there — #1193). An organization purchase never writes it (#228). |
-| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                     |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence.    |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                  |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                           |
+| Table / column                                                          | Meaning                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                                                                                                      |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                                                                                                       |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                                                                                                       |
+| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; every persona, a manager included, starts there — #1193). An organization purchase never writes it (#228).                                                                                |
+| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                                                                                                    |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. The UI no longer sells or assigns seats (#1493); the data path is kept for #1511. |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                                                                                                 |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                                                                                                          |
 
 The `base` / `launch` defaults come from the plan-catalogue migration
 (`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` →
-`ALTER TABLE … SET DEFAULT`), not from the original table migrations.
+`ALTER TABLE … SET DEFAULT`), not from the original table migrations. The
+current matrix is `20261126130000_individual_plan_ladder.sql` (Free / Plus / Pro /
+Max) plus `20261126160000_organization_plan_ladder.sql` (Launch / Hub / Campus):
+every organization plan carries only `flashcards` + `quiz`, its capacity rows,
+and no `max_ai_tokens_per_day` row (AI is an organization licence in #1511).
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -144,7 +148,9 @@ a wrapper over the single resolver's composed `limits`
 > **2026-11-21 (phase 3b, ADR-0015 §6.2):** the seat is no longer exclusive
 > (#233 Q1/Q3 reversed for user-scope keys): per-member keys now take
 > `max(org, seat, personal)` with `-1` short-circuiting, so a `base` seat in a
-> `hub` org keeps the hub allowance instead of the seat's `0`. Membership is
+> `hub` org keeps the hub flashcard allowance (2000) instead of the seat's 100.
+> `max_ai_tokens_per_day` now comes from the personal plan: no organization plan
+> carries an AI quota (#1493). Membership is
 > verified before the seat plan is consulted, so a forged `active_org_id`
 > plus a stale seat row resolves the personal plan (user keys) / `0` (org
 > keys), never the seat's values. The resolution is batched — one

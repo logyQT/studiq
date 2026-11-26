@@ -104,11 +104,9 @@ const ABSENT = '—';
  * "unlimited", a cap of `0` is "not offered" — printing `0 / dzień` reads as a
  * rendering bug (N-14) — and a missing key means the same thing as `0`.
  *
- * Numbers are grouped in the reader's locale (`200 000` / `200,000`). Measured
- * at 320px on `/pricing?audience=organization`: the five columns fill the 288px
- * gutter exactly, the label column at its 94px minimum and the widest numeric
- * column (`200 000` under Hub) at 50px, with no cell clipping and no horizontal
- * scroll — so the exact figure fits and nothing is abbreviated away.
+ * Numbers are grouped in the reader's locale (`200 000` / `200,000`). The
+ * organization ladder prints three plan columns, so the exact figure fits the
+ * narrowest gutter; nothing is abbreviated away.
  */
 export function formatLimitValue(value: number | undefined, locale: string): string {
   if (value === undefined || value === 0) return ABSENT;

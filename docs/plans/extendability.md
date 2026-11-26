@@ -55,13 +55,14 @@ The migration applied to the live database with no restart; `/me/entitlements`
 gained the key after the app rebuild only, because the DB row alone is inert
 until the TS catalog knows the key (step 12 is not optional).
 
-The plan catalogue is migration-owned code (#1494): the eight plans, their
-entitlement sets, their limits and the flag rows live only in
-`supabase/migrations/20261126130000_individual_plan_ladder.sql`, and
-`supabase/seeds/00_plans.sql` writes no plan data. A new key's plan rows go into
-that migration's declarative matrix; `__tests__/integration/plan-catalog.test.ts`
-mirrors the matrix literally, so it fails until the test is updated in the same
-PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
+The plan catalogue is migration-owned code (#1494): the seven plans, their
+entitlement sets, their limits and the flag rows live in two declarative
+matrices — `supabase/migrations/20261126130000_individual_plan_ladder.sql` (the
+four personal plans) and `20261126160000_organization_plan_ladder.sql` (the three
+organization plans) — and `supabase/seeds/00_plans.sql` writes no plan data. A
+new key's plan rows go into the matrix that owns those plans;
+`__tests__/integration/plan-catalog.test.ts` mirrors the matrix literally, so it
+fails until the test is updated in the same PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
 next migration re-asserts.
 
 ### Retrofitting a gate onto a free read is a breaking change
@@ -136,16 +137,19 @@ that, from the code as it stands — design only, nothing here is implemented.
 ### Today: derived
 
 A new entitlement key that should reach **everyone** already entitled costs
-catalog rows, not entity rows. Resolution is a per-request composition
+catalog rows, not entity rows. Since #1493 the organization ladder is capacity
+only: every organization plan carries the two baseline keys and nothing else, so
+a new paid key needs a personal plan (or, from #1511, an organization licence),
+not a hub/campus row. Resolution is a per-request composition
 (`entitlement.resolver.ts`), so the write set is:
 
-| Table                 | Rows per new default  | Multiplier                                             |
-| --------------------- | --------------------- | ------------------------------------------------------ |
-| `entitlement_catalog` | 1                     | —                                                      |
-| `entitlement_flags`   | 1                     | surface keys only (baseline keys are never gated, D9)  |
-| `plan_entitlements`   | one per carrying plan | 4 today (`stats.insights` is on ace, pro, hub, campus) |
-| `limit_catalog`       | 0–1                   | only a key with a **new** quota limit                  |
-| `plan_limits`         | one per carrying plan | only that new limit key                                |
+| Table                 | Rows per new default  | Multiplier                                            |
+| --------------------- | --------------------- | ----------------------------------------------------- |
+| `entitlement_catalog` | 1                     | —                                                     |
+| `entitlement_flags`   | 1                     | surface keys only (baseline keys are never gated, D9) |
+| `plan_entitlements`   | one per carrying plan | 2 today (`stats.insights` is on `ace` and `pro`)      |
+| `limit_catalog`       | 0–1                   | only a key with a **new** quota limit                 |
+| `plan_limits`         | one per carrying plan | only that new limit key                               |
 
 **Zero** rows in `profiles`, `org_members`, `org_roles`,
 `org_roles`-adjacent stores or `org_seat_assignments`. The row populations those

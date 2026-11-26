@@ -9,6 +9,7 @@
  *   bun scripts/qa-tenant.ts ONB-04 --profile bare --role manager --fresh
  *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
  *   bun scripts/qa-tenant.ts MGR-ROL-02 --plan hub --fresh
+ *   bun scripts/qa-tenant.ts MGR-02 --plan hub --personal-plan spark --fresh
  *
  * Security runs (see `qa/security/ROE.md`) must seed their own local stack:
  *
@@ -48,9 +49,19 @@
  * between cases.
  *
  * `--plan <key>` puts the tenant's own organization on that plan through the same
- * `change_org_plan` RPC the billing webhook calls, so a case whose prerequisite
- * is a paid entitlement (e.g. `branding` on Hub) gets it inside its own tenant
- * instead of depending on the global plan catalogue or another org's purchase.
+ * `change_org_plan` RPC the billing webhook calls. Since #1493 an organization
+ * plan is capacity only, so this sets the organization's limits, not a feature
+ * ceiling.
+ *
+ * `--personal-plan <key>` sets `profiles.personal_plan_key` for the tenant's
+ * users (the profile field `personalPlan` does the same for the case's own
+ * manifest). A paid surface inside an organization now comes from the member's
+ * personal plan (`personalPortable`), so a case that needs `ai.chat`,
+ * `quiz.templates` or `stats.insights` inside an org declares `spark`, `ace` or
+ * `pro` here. `--personal-role manager|teacher|student` narrows the write to that
+ * one tenant account; without it every seeded account gets the plan. The key
+ * must exist and be `scope='personal'`; anything else fails the seed instead of
+ * silently granting nothing. This is fixture data, not a product change.
  *
  * Profiles:
  * - `content` (default) — org + manager/teacher/student + a default group.
@@ -219,10 +230,18 @@ interface ProfileShape {
   orgs?: { owner: MemberSpec; members?: MemberSpec[] }[];
 }
 
-type ProfileEntry = string | ({ profile?: string; role?: string; plan?: string } & ProfileShape);
+type ProfileEntry =
+  | string
+  | ({
+      profile?: string;
+      role?: string;
+      plan?: string;
+      personalPlan?: string;
+      personalRole?: 'manager' | 'teacher' | 'student';
+    } & ProfileShape);
 
 const USAGE =
-  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--fresh] [--run <suffix>] [--attempts 3] [--repeats 1] [--dedicated] [--json] [--reset]';
+  'usage: bun scripts/qa-tenant.ts <CASEID>|--all [--areas STU,LIM,NFR] [--profile content|bare|org-limit] [--role teacher|manager|student] [--plan <key>] [--personal-plan <key>] [--personal-role manager|teacher|student] [--fresh] [--run <suffix>] [--attempts 3] [--repeats 1] [--dedicated] [--json] [--reset]';
 
 /**
  * The CI seed contract: `__tests__/qa/profiles/<CASE>.json` declares the tenant shape
@@ -249,6 +268,16 @@ function declaredRole(entry: ProfileEntry | undefined): string | undefined {
 
 function declaredPlan(entry: ProfileEntry | undefined): string | undefined {
   return typeof entry === 'string' ? undefined : entry?.plan;
+}
+
+function declaredPersonalPlan(entry: ProfileEntry | undefined): string | undefined {
+  return typeof entry === 'string' ? undefined : entry?.personalPlan;
+}
+
+function declaredPersonalRole(
+  entry: ProfileEntry | undefined,
+): 'manager' | 'teacher' | 'student' | undefined {
+  return typeof entry === 'string' ? undefined : entry?.personalRole;
 }
 
 function declaredShape(entry: ProfileEntry | undefined): ProfileShape {
@@ -368,6 +397,8 @@ async function seedTwoOrg(
   fileSuffix = '',
   quiet = false,
   jsonOnly = false,
+  personalPlan?: string | null,
+  personalRole?: 'manager' | 'teacher' | 'student' | null,
 ) {
   const base = `${tenantKey(`qa/cases/${caseId}.md`, `${caseId}#${runSuffix}`, 'qa-shared')}::${runSuffix}`;
   const keyA = `${base}::org-a`;
@@ -503,29 +534,52 @@ async function seedTwoOrg(
       )[0]
     : undefined;
 
+  const tenantUsers: Record<string, { id: string; email: string; password: string }> = {
+    manager: { id: manager.id, email: manager.email, password: manager.password },
+    studentA: { id: studentA.id, email: studentA.email, password: studentA.password },
+    teacherA: { id: teacherA.id, email: teacherA.email, password: teacherA.password },
+    studentB: { id: studentB.id, email: studentB.email, password: studentB.password },
+    ...(soloAccount
+      ? {
+          [solo!.key]: {
+            id: soloAccount.id,
+            email: soloAccount.email,
+            password: soloAccount.password,
+          },
+        }
+      : {}),
+  };
+
+  // `personalRole` names the role, not the tenant key: a two-org tenant spells
+  // its student and teacher keys `studentA` / `teacherA`, and a solo account has
+  // its own key. The content and org-limit shapes use the plain role names.
+  const personalRoleKeys: Record<'manager' | 'teacher' | 'student', string[]> = {
+    manager: ['manager'],
+    teacher: ['teacher', 'teacherA'],
+    student: ['student', 'studentA'],
+  };
+  const personalTargets = personalRole ? personalRoleKeys[personalRole] : Object.keys(tenantUsers);
+
+  await applyPersonalPlan(
+    db,
+    caseId,
+    Object.entries(tenantUsers)
+      .filter(([key]) => personalTargets.includes(key))
+      .map(([, user]) => user.id),
+    personalPlan,
+  );
+
   const tenant = {
     case: caseId,
     profile: 'two-org',
     runSuffix: runSuffix || null,
     key: base,
+    personalPlan: personalPlan ?? null,
+    personalRole: personalRole ?? null,
     manager,
     orgA,
     orgB,
-    users: {
-      manager: { id: manager.id, email: manager.email, password: manager.password },
-      studentA: { id: studentA.id, email: studentA.email, password: studentA.password },
-      teacherA: { id: teacherA.id, email: teacherA.email, password: teacherA.password },
-      studentB: { id: studentB.id, email: studentB.email, password: studentB.password },
-      ...(soloAccount
-        ? {
-            [solo!.key]: {
-              id: soloAccount.id,
-              email: soloAccount.email,
-              password: soloAccount.password,
-            },
-          }
-        : {}),
-    },
+    users: tenantUsers,
     // `org` mirrors org A so generic tooling (and `loadTenant`) still sees a tenant.
     org: { id: orgA.id, name: orgA.name },
     group: { id: tenantId(keyA, 'group:default'), name: `O1G1-${runSuffix}` },
@@ -548,6 +602,10 @@ interface CaseOptions {
   profile?: string;
   role?: string;
   plan?: string;
+  /** A paid surface inside the org comes from the member's personal plan. */
+  personalPlan?: string;
+  /** Narrow `personalPlan` to one seeded account; omitted = every account. */
+  personalRole?: 'manager' | 'teacher' | 'student';
   /** Shared batch suffix; one batch = one suite run. */
   runSuffix: string;
   /** `''` for the base file, `.r<repeat>e<retry>` for every other attempt. */
@@ -580,11 +638,68 @@ async function applyPlan(
   if (error) throw new Error(`seed ${caseId}: change_org_plan(${plan}) ${error.message}`);
 }
 
+/**
+ * Put the tenant's users on a personal plan. Since #1493 an organization plan
+ * carries no paid surface, so a case whose prerequisite is `ai.chat`,
+ * `quiz.templates` or `stats.insights` inside an org buys it on the personal
+ * layer. The catalogue decides: a missing key or an organization-scope key is a
+ * seed error, never a silent no-op.
+ */
+async function applyPersonalPlan(
+  db: ReturnType<typeof createSeedDb>,
+  caseId: string,
+  userIds: readonly string[],
+  planKey: string | null | undefined,
+): Promise<void> {
+  if (!planKey) return;
+  if (userIds.length === 0) {
+    throw new Error(`seed ${caseId}: personal plan ${planKey} matched no tenant user`);
+  }
+
+  const { data: plan, error: planError } = await db
+    .from('subscription_plans')
+    .select('key, scope, is_active')
+    .eq('key', planKey)
+    .maybeSingle();
+  if (planError) {
+    throw new Error(`seed ${caseId}: read personal plan ${planKey} ${planError.message}`);
+  }
+  if (!plan) throw new Error(`seed ${caseId}: personal plan "${planKey}" does not exist`);
+  if (plan.scope !== 'personal') {
+    throw new Error(
+      `seed ${caseId}: "${planKey}" is a ${plan.scope} plan; --personal-plan needs a personal plan`,
+    );
+  }
+
+  const { error: writeError } = await db
+    .from('profiles')
+    .update({ personal_plan_key: planKey })
+    .in('id', userIds);
+  if (writeError) {
+    throw new Error(`seed ${caseId}: set personal plan ${planKey} ${writeError.message}`);
+  }
+
+  const { data: rows, error: readError } = await db
+    .from('profiles')
+    .select('id, personal_plan_key')
+    .in('id', userIds);
+  if (readError) {
+    throw new Error(`seed ${caseId}: verify personal plan ${planKey} ${readError.message}`);
+  }
+  if ((rows ?? []).length !== userIds.length) {
+    throw new Error(
+      `seed ${caseId}: personal plan ${planKey} covered ${(rows ?? []).length} of ${userIds.length} profiles`,
+    );
+  }
+}
+
 async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opts: CaseOptions) {
   const entry = manifestEntry(caseId);
   const profile = (opts.profile ?? declaredProfile(entry)) as Profile;
   const role = opts.role ?? declaredRole(entry) ?? 'teacher';
   const plan = opts.plan ?? declaredPlan(entry);
+  const personalPlan = opts.personalPlan ?? declaredPersonalPlan(entry);
+  const personalRole = opts.personalRole ?? declaredPersonalRole(entry);
   const runSuffix = opts.runSuffix;
   const shape = declaredShape(entry);
 
@@ -599,6 +714,12 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     throw new Error('cannot combine --plan with the bare profile (no organization exists yet)');
   }
   if (plan && !/^[a-z][a-z0-9_]*$/.test(plan)) throw new Error(`invalid plan "${plan}"`);
+  if (personalPlan && !/^[a-z][a-z0-9_]*$/.test(personalPlan)) {
+    throw new Error(`invalid personal plan "${personalPlan}"`);
+  }
+  if (personalRole && !['manager', 'teacher', 'student'].includes(personalRole)) {
+    throw new Error(`invalid personal role "${personalRole}"`);
+  }
   if (!existsSync(join(CASES, `${caseId}.md`))) {
     throw new Error(`unknown case ${caseId}: qa/cases/${caseId}.md is missing`);
   }
@@ -655,7 +776,19 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     return account;
   }
 
-  function writeTenant(tenant: Record<string, unknown>): void {
+  async function writeTenant(tenant: Record<string, unknown>): Promise<void> {
+    const tenantUsers = tenant.users as
+      Record<string, { id: string; email: string; password: string }> | undefined;
+    await applyPersonalPlan(
+      db,
+      caseId,
+      Object.entries(tenantUsers ?? {})
+        .filter(([key]) => !personalRole || key === personalRole)
+        .map(([, user]) => user.id),
+      personalPlan,
+    );
+    tenant.personalPlan = personalPlan ?? null;
+    tenant.personalRole = personalRole ?? null;
     mkdirSync(OUT, { recursive: true });
     writeFileSync(tenantFile(caseId, fileSuffix), JSON.stringify(tenant, null, 2));
 
@@ -723,6 +856,8 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       fileSuffix,
       opts.quiet,
       opts.jsonOnly,
+      personalPlan,
+      personalRole,
     );
     return;
   }
@@ -745,7 +880,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     );
     await db.from('org_members').delete().eq('user_id', seeded.owner.id);
 
-    writeTenant({
+    await writeTenant({
       case: caseId,
       profile,
       role,
@@ -831,7 +966,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     const [primaryOrg] = seededOrgs;
     if (!primaryOrg) throw new Error(`seed ${key}: the orgs profile seeded no organization`);
 
-    writeTenant({
+    await writeTenant({
       case: caseId,
       profile,
       runSuffix: runSuffix || null,
@@ -974,7 +1109,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
       shapeUsers[shape.solo.key] = { id: solo.id, email: solo.email, password: solo.password };
     }
 
-    writeTenant({
+    await writeTenant({
       case: caseId,
       profile,
       runSuffix: runSuffix || null,
@@ -1040,7 +1175,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
     }
   }
 
-  writeTenant({
+  await writeTenant({
     case: caseId,
     profile,
     runSuffix: runSuffix || null,
@@ -1059,9 +1194,17 @@ export async function runQaSeed(): Promise<void> {
   const caseArg = args.find(
     (arg, index) =>
       !arg.startsWith('--') &&
-      !['--profile', '--role', '--run', '--plan', '--areas', '--attempts', '--repeats'].includes(
-        args[index - 1] ?? '',
-      ),
+      ![
+        '--profile',
+        '--role',
+        '--run',
+        '--plan',
+        '--personal-plan',
+        '--personal-role',
+        '--areas',
+        '--attempts',
+        '--repeats',
+      ].includes(args[index - 1] ?? ''),
   );
   const jsonOnly = flag(args, 'json');
   const reset = resetRequested(args);
@@ -1202,6 +1345,9 @@ export async function runQaSeed(): Promise<void> {
           profile: option(args, 'profile'),
           role: option(args, 'role'),
           plan: option(args, 'plan'),
+          personalPlan: option(args, 'personal-plan'),
+          personalRole: option(args, 'personal-role') as
+            'manager' | 'teacher' | 'student' | undefined,
           runSuffix: attemptRunSuffix(runSuffix, repeat, retry),
           fileSuffix: spec.fileSuffix,
           quiet: spec.quiet,

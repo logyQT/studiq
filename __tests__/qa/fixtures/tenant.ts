@@ -29,8 +29,12 @@ export interface QaTenant {
   /** Account type of the single user in a `bare` tenant. */
   role?: 'teacher' | 'manager' | 'student';
   runSuffix?: string | null;
-  /** Organization plan the seeder applied (`--plan`), e.g. `hub` for `branding`. */
+  /** Organization plan the seeder applied (`--plan`). */
   plan?: string | null;
+  /** Personal plan the seeder applied (`--personal-plan`), e.g. `spark`. */
+  personalPlan?: string | null;
+  /** The one account `--personal-role` narrowed the personal plan to. */
+  personalRole?: 'manager' | 'teacher' | 'student' | null;
   org: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
   /**

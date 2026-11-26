@@ -8,6 +8,11 @@ import { createServiceClient } from '#test/integration/helpers';
 // so a gap in the seed would silently disable a plan. These tests make the gap
 // loud: every active plan must define every catalog key its scope uses, and
 // the DB may not contain keys the resolver ignores.
+//
+// One absence is deliberate: no organization plan carries
+// `max_ai_tokens_per_day` since #1493. AI is an organization licence built in
+// #1511, and a stale org quota would silently fund it, so the key is required
+// on every personal plan and forbidden on every organization plan.
 interface PlanRow {
   key: string;
   scope: string;
@@ -46,13 +51,25 @@ describe('plan limit catalog (#233)', () => {
     );
   }
 
-  it('every active plan defines every per-member limit key', () => {
+  it('every active plan defines every per-member limit key it sells', () => {
     const missing = activePlans.flatMap((plan) => {
       const keys = keysFor(plan.key);
-      return USER_LIMIT_KEYS.filter((key) => !keys.has(key)).map((key) => `${plan.key}.${key}`);
+      const required = USER_LIMIT_KEYS.filter(
+        (key) => !(plan.scope === 'organization' && key === 'max_ai_tokens_per_day'),
+      );
+      return required.filter((key) => !keys.has(key)).map((key) => `${plan.key}.${key}`);
     });
 
     expect(missing).toEqual([]);
+  });
+
+  it('no active organization plan carries an AI quota (#1493 → #1511)', () => {
+    const withQuota = activePlans
+      .filter((plan) => plan.scope === 'organization')
+      .filter((plan) => keysFor(plan.key).has('max_ai_tokens_per_day'))
+      .map((plan) => plan.key);
+
+    expect(withQuota).toEqual([]);
   });
 
   it('every active organization plan defines every org-scope limit key', () => {

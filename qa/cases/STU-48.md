@@ -18,8 +18,9 @@ AI włączone.
   flow it covers what a model sometimes does wrong: truncated or unknown tool
   calls, prose instead of a tool call, a runaway tool loop (capped at 30 steps), a
   stream that breaks, a cut connection and a provider that is down.
-- Tenant: `bun scripts/qa-tenant.ts STU-48 --fresh` (`content` on the `hub` plan).
-  The spec signs in as the tenant's `users.student`.
+- Tenant: `bun scripts/qa-tenant.ts STU-48 --fresh` (`content` on the `hub` plan with
+  `personalPlan: "spark"`, so the student's personal Plus plan carries `ai.chat` into
+  the capacity-only organization). The spec signs in as the tenant's `users.student`.
 - The model's answers are the fixtures `scripts/fake-llm/cases/STU-48.*.json`.
 - UI notes (walk 2026-11-15): the statuses „Analizuję tematy… / Generuję fiszki… /
   Organizuję w talie…" exist as messages but no component renders them, so they are

@@ -181,22 +181,40 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     );
   });
 
-  it('a base seat in a hub org keeps the hub allowance (phase-3 exit case: never 0 tokens)', async () => {
+  it('a base seat does not zero the personal AI allowance in a hub org (phase-3 exit case)', async () => {
     await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
     await seatUser(fixture.orgId!, fixture.user.id, 'base');
+    // The organization ladder carries no AI quota since #1493; the member's
+    // paid personal plan supplies it (`personalPortable`).
+    const { data: profile } = await service
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', fixture.user.id)
+      .single();
+    const originalPlan = profile!.personal_plan_key;
+    await service.from('profiles').update({ personal_plan_key: 'spark' }).eq('id', fixture.user.id);
 
-    // max(org hub 200000, seat base 0) = 200000 — the seat's 0 must not win.
-    await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(200000);
-    // max(hub 2000, base 100) = 2000.
-    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
-    // Org-scope capacity stays the org plan's: hub max_students = 50, never
-    // the seat plan's -1.
-    await expect(effectiveLimit(memberCtx(), 'max_students')).resolves.toBe(50);
+    try {
+      // max(org hub 0, seat base 0, personal spark 100000) = 100000 — the
+      // seat's 0 must not win, and the org no longer funds AI.
+      await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(100000);
+      // max(hub 2000, base 100, spark 1000) = 2000.
+      await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
+      // Org-scope capacity stays the org plan's: hub max_students = 50, never
+      // the seat plan's -1.
+      await expect(effectiveLimit(memberCtx(), 'max_students')).resolves.toBe(50);
 
-    const { entitlements, sources } = await resolver.resolveEntitlements(memberCtx());
-    // ai.chat is in the hub ceiling and its quota is 200000 ≠ 0 → effective.
-    expect(entitlements).toContain('ai.chat');
-    expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+      const { entitlements, sources } = await resolver.resolveEntitlements(memberCtx());
+      // ai.chat arrives through the personal plan, with a non-zero quota.
+      expect(entitlements).toContain('ai.chat');
+      expect(sources.personal).toEqual({ planKey: 'spark', origin: 'personal' });
+      expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+    } finally {
+      await service
+        .from('profiles')
+        .update({ personal_plan_key: originalPlan })
+        .eq('id', fixture.user.id);
+    }
   });
 
   it('a forged active_org_id with a stale seat row resolves the personal plan for user keys and 0 for org keys', async () => {

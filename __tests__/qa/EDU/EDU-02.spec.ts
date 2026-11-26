@@ -28,7 +28,9 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  * `/edu` is navigation and the spec opens it explicitly.
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
- * `change_org_plan` (the same RPC the billing webhook calls), so no global plan,
+ * `change_org_plan` (the same RPC the billing webhook calls), and
+ * `personalPlan: "spark"` gives the members the portable `ai.chat` key; since
+ * #1493 the organization plan itself is capacity only, so no global plan,
  * flag, setting or platform row is written and no other worker's tenant is
  * touched.
  *
@@ -170,7 +172,7 @@ test.describe('@case:EDU-02 @area:EDU @prio:P2 teacher sidebar', () => {
     const enabled = (await json<{ data: { entitlements: string[] } }>(entitlementsResponse)).data
       .entitlements;
     expect(enabled, 'the teacher is entitled to the menu items under test').toEqual(
-      expect.arrayContaining(['ai.chat', 'branding']),
+      expect.arrayContaining(['ai.chat']),
     );
 
     // `group.manage` is a permission since 2b-7 (the entitlement marker is

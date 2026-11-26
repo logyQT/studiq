@@ -273,21 +273,23 @@ Preconditions:
 - This release's migrations are applied to the production database **before**
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
-- The approved ladder is applied by the plan-catalogue migration
-  (`20261126130000_individual_plan_ladder.sql`); the catalogue is migration-owned
-  since #1494 and `supabase/seeds/00_plans.sql` no longer writes plan rows. After
-  the migrations are applied, confirm the live ladder with this read-only query —
-  it returns the 6 paid plans only while their amounts match. **Pass condition:
-  exactly 6 rows.** The migration inserts those 6 paid keys, so fewer rows means
-  the migration did not apply (or a price differs from the ladder) — stop and fix
-  the catalog before continuing; an empty result is not a timing artefact:
+- The approved ladder is applied by the plan-catalogue migrations
+  (`20261126130000_individual_plan_ladder.sql` for the four personal plans,
+  `20261126160000_organization_plan_ladder.sql` for the three organization
+  plans); the catalogue is migration-owned since #1494 and
+  `supabase/seeds/00_plans.sql` no longer writes plan rows. After the migrations
+  are applied, confirm the live ladder with this read-only query — it returns the
+  5 paid plans only while their amounts match. **Pass condition: exactly 5
+  rows.** The migrations insert those 5 paid keys, so fewer rows means the
+  migration did not apply (or a price differs from the ladder) — stop and fix the
+  catalog before continuing; an empty result is not a timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly
   FROM public.subscription_plans AS p
   JOIN (VALUES
     ('spark', 1999), ('ace', 3999), ('pro', 7999),
-    ('team', 9900), ('hub', 29900), ('campus', 69900)
+    ('hub', 29900), ('campus', 69900)
   ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
   ORDER BY p.sort_order;
   ```
@@ -300,7 +302,7 @@ Steps:
    Prices mismatched between steps.
 1. `bun scripts/stripe-bootstrap.ts --check` in the production secret environment
    (read-only: it reads `subscription_plans` and makes no Stripe calls). Confirm
-   the 6 amounts and the tax-code line. Any additional active paid plan (a
+   the 5 amounts and the tax-code line. Any additional active paid plan (a
    legacy catalog row) must be deactivated first.
 2. `bun scripts/stripe-bootstrap.ts --live`. It requires `--live`, a live
    `rk_live_`/`sk_live_` key, `APP_ENV=production`, an `https://` non-localhost
@@ -309,10 +311,10 @@ Steps:
    tax-inclusive Prices and the portal configuration, and prints
    `STRIPE_PORTAL_CONFIGURATION_ID=bpc_…`.
 3. Verify before deploying:
-   - 6 active `stripe_prices` rows with `livemode = true` whose amounts match the
+   - 5 active `stripe_prices` rows with `livemode = true` whose amounts match the
      catalog;
    - every StudiQ Product (`metadata.studiq_plan_key`) carries the tax code;
-   - every Price referenced by those 6 rows has `tax_behavior = 'inclusive'`;
+   - every Price referenced by those 5 rows has `tax_behavior = 'inclusive'`;
    - the printed portal configuration is active, `livemode`, and belongs to this
      account.
 4. Create the live Dashboard webhook endpoint

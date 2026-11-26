@@ -67,10 +67,10 @@ const CATALOG: Record<string, CatalogPlan> = {
     audience: null,
     sortOrder: 3,
   },
-  team: {
-    key: 'team',
-    name: 'StudiQ Team',
-    priceMonthly: 5999,
+  campus: {
+    key: 'campus',
+    name: 'StudiQ Campus',
+    priceMonthly: 6999,
     currency: 'PLN',
     isActive: true,
     scope: 'organization',
@@ -242,7 +242,7 @@ describe('BillingService.changePlan', () => {
 
     // An organization plan can never attach to the personal owner, so the
     // subscription is never read for this target.
-    await expect(service.changePlan(memberCtx, 'team')).resolves.toEqual({
+    await expect(service.changePlan(memberCtx, 'campus')).resolves.toEqual({
       success: false,
       error: 'FORBIDDEN',
     });
@@ -390,7 +390,7 @@ describe('BillingService.changePlan', () => {
     );
     vi.mocked(gateway.changePlan).mockResolvedValueOnce(success({ status: 'applied' }));
 
-    await service.changePlan(managerCtx, 'team');
+    await service.changePlan(managerCtx, 'campus');
 
     expect(gateway.changePlan).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -401,7 +401,7 @@ describe('BillingService.changePlan', () => {
           accountType: AccountType.MANAGER,
         },
         currentPlanKey: 'hub',
-        targetPlanKey: 'team',
+        targetPlanKey: 'campus',
         direction: 'upgrade',
       }),
     );

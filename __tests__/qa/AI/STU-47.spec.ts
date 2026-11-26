@@ -14,8 +14,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   scripts/fake-llm/cases/STU-47.slow-stream.json  13 chunks, 400 ms apart
  *
  * Tenant: `bun scripts/qa-tenant.ts STU-47 --fresh` (`content` profile on the
- * `hub` plan: a finite daily AI budget of 200 000 tokens, which is what makes
- * the counter assertable). The spec signs in as the tenant's `users.student`.
+ * `hub` plan with `personalPlan: "spark"`: the organization ladder is capacity
+ * only since #1493, so the student's personal Plus plan carries `ai.chat` and
+ * its finite budget of 100 000 tokens is what makes the counter assertable). The
+ * spec signs in as the tenant's `users.student`.
  *
  * Reconciliation (walk on the app, 2026-11-15):
  * - The case expects a counter „X/Y zapytań użytych dzisiaj”. The product meters
@@ -40,7 +42,7 @@ const GREETING = 'Jak mogę pomóc Ci w nauce?';
 /** Tokens of the happy-path fixture: 120 in + 40 out. */
 const HAPPY_PATH_TOKENS = 160;
 
-/** The tokens used today, read from the badge's label („N/200000 tokenów AI …”). */
+/** The tokens used today, read from the badge's label („N/100000 tokenów AI …”). */
 async function usedTokens(page: Page): Promise<number> {
   const badge = page.getByLabel(/tokenów AI wykorzystanych dzisiaj/);
   const label = await badge.getAttribute('aria-label');

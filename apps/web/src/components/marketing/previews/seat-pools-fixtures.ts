@@ -9,6 +9,6 @@ import type { SeatPool } from '@/components/manage/seat-pools-table';
  * the short names `/pricing` prints, so four columns fit a phone gutter.
  */
 export const SEAT_POOL_FIXTURES: readonly SeatPool[] = [
-  { id: 'team', planLabel: 'Team', total: 40, assigned: 12 },
-  { id: 'hub', planLabel: 'Hub', total: 120, assigned: 113 },
+  { id: 'plus', planLabel: 'Plus', total: 40, assigned: 12 },
+  { id: 'pro', planLabel: 'Max', total: 120, assigned: 113 },
 ];

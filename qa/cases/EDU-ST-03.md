@@ -7,6 +7,10 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only since #1493. The `stats.insights` gate passes through the educator's personal Pro plan (`personalPlan: "ace", personalRole: "teacher"`), not the org plan.
+
 ## Prerequisite (verbatim)
 
 Aktywność studentów w ostatnich dniach.
@@ -28,7 +32,7 @@ bun scripts/qa-tenant.ts EDU-ST-03 --fresh
   `--plan`): the case's range switcher (step 2) fires
   `/api/v1/stats/teacher/activity?range=…`, which phase 5d gates on the `stats.insights`
   entitlement — with the query disabled on a plan without it, the request never fires. The
-  tenant's own hub plan carries the key, so the educator passes the gate on every range.
+  educator's personal Pro plan carries the key, so the educator passes the gate on every range.
 - the educator logs in through the real `/api/v1/auth/login` (fixture password
   `Seed4Test!`) with `active_org_id` set to the tenant org; the student builds the
   activity in a second browser context

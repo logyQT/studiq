@@ -22,8 +22,10 @@ import { PUT as putQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/rout
  * (the same shape as `org-control-permission-api.test.ts`); the unit suite pins the same rows
  * for the read path (`getById`).
  *
- * The org plan is `team`, which carries the `quiz.templates` entitlement, so the 403/404 rows
- * below are the permission derivation and not the entitlement gate that runs first on writes.
+ * The org plan is `hub`, which is capacity only since #1493, so the author's
+ * personal `spark` plan carries `quiz.templates` into the org; the 403/404 rows
+ * below are the permission derivation and not the entitlement gate that runs
+ * first on writes.
  */
 
 const PASSWORD = 'QuizMatrix1!';
@@ -103,15 +105,24 @@ describe('quiz-teacher 403/404 matrix (ADR-0015 §7.1, D-5e2)', () => {
   beforeAll(async () => {
     const org = await seedOrganization(`quiz-matrix-${tag}`);
     orgId = org.org.id;
-    // `team` carries `quiz.templates`, so the write's entitlement gate passes and the status
-    // below is the permission derivation, not the plan gate.
-    await setOrgPlan(orgId, 'team');
+    // The organization ladder is capacity only since #1493, so the author's
+    // personal Plus plan carries `quiz.templates` into the org; the write's
+    // entitlement gate passes and the status below is the permission
+    // derivation, not the plan gate.
+    await setOrgPlan(orgId, 'hub');
 
     const foreignOrg = await seedOrganization(`quiz-matrix-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
 
     caller = await createTestUser({ role: 'educator', password: PASSWORD });
     otherTeacher = await createTestUser({ role: 'educator', password: PASSWORD });
+    for (const user of [caller, otherTeacher]) {
+      const { error } = await service
+        .from('profiles')
+        .update({ personal_plan_key: 'spark' })
+        .eq('id', user.id);
+      if (error) throw new Error(`[setup] personal plan: ${error.message}`);
+    }
     await seedOrgMembership({
       organizationId: orgId,
       userId: caller.id,

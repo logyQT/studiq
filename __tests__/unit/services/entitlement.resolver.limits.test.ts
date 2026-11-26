@@ -16,13 +16,17 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
  * seat plan is consulted.
  */
 
+/**
+ * The organization ladder is capacity only since #1493: `hub` carries no
+ * `max_ai_tokens_per_day` row, so its AI quota resolves to 0. A member's paid
+ * personal plan supplies the AI quota inside an org (`personalPortable`).
+ */
 const ORG_LIMITS: Partial<Record<LimitKey, number>> = {
   max_flashcards: 2000,
   max_decks: 200,
   max_questions: 1000,
   max_question_banks: 100,
   max_quiz_attempts_per_day: -1,
-  max_ai_tokens_per_day: 200000,
   max_students: 50,
   max_groups: 20,
 };
@@ -107,8 +111,8 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
 
     // org hub 2000 vs personal base 100 → the org is the floor, max wins.
     expect(limits.max_flashcards).toBe(2000);
-    // hub 200000 vs base 0 → the hub allowance survives.
-    expect(limits.max_ai_tokens_per_day).toBe(200000);
+    // hub carries no AI quota and the free personal plan adds none → 0.
+    expect(limits.max_ai_tokens_per_day).toBe(0);
     // Org-scope keys come from the org plan only.
     expect(limits.max_students).toBe(50);
     expect(limits.max_groups).toBe(20);
@@ -119,16 +123,20 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
       orgPlan: 'hub',
       roleProfile: 'learner',
       seatPlanKey: 'base',
-      personalPlanKey: 'base',
-      planLimits: { hub: ORG_LIMITS, base: { ...SEAT_LIMITS, ...PERSONAL_LIMITS } },
+      personalPlanKey: 'spark',
+      planLimits: {
+        hub: ORG_LIMITS,
+        base: SEAT_LIMITS,
+        spark: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
+      },
     });
 
     const { limits, sources } = await resolver.resolveEntitlements(memberCtx());
 
-    // max(hub 2000, seat 100, personal 100) = 2000.
+    // max(hub 2000, seat 100, personal 1000) = 2000.
     expect(limits.max_flashcards).toBe(2000);
-    // max(hub 200000, seat 0, personal 0) = 200000 — the seat's 0 never wins.
-    expect(limits.max_ai_tokens_per_day).toBe(200000);
+    // max(hub 0, seat 0, personal 100000) = 100000 — the seat's 0 never wins.
+    expect(limits.max_ai_tokens_per_day).toBe(100000);
     // The seat carries -1 for org-scope keys; org capacity must stay the org
     // plan's 50/20, never the seat's "unlimited".
     expect(limits.max_students).toBe(50);
@@ -254,24 +262,30 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     expect(limits.max_students).toBe(50);
   });
 
-  it('phase-3 exit case: a base seat in a hub org keeps the hub allowance — ai.chat on with the hub limit, never 0', async () => {
+  it('phase-3 exit case: a base seat does not zero the personal AI allowance inside a hub org', async () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
       seatPlanKey: 'base',
-      personalPlanKey: null,
+      personalPlanKey: 'spark',
       planEntitlements: {
-        hub: ['flashcards', 'quiz', 'ai.chat', 'quiz.templates', 'stats.insights', 'branding'],
+        hub: ['flashcards', 'quiz'],
         base: ['flashcards', 'quiz'],
+        spark: ['flashcards', 'quiz', 'ai.chat'],
       },
-      planLimits: { hub: ORG_LIMITS, base: SEAT_LIMITS },
+      planLimits: {
+        hub: ORG_LIMITS,
+        base: SEAT_LIMITS,
+        spark: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
+      },
     });
 
     const { entitlements, limits } = await resolver.resolveEntitlements(memberCtx());
 
-    // The seat's max_ai_tokens_per_day = 0 must not zero the hub allowance:
-    // max(hub 200000, seat 0) = 200000, so ai.chat stays effective.
-    expect(limits.max_ai_tokens_per_day).toBe(200000);
+    // The organization grants no AI and the seat's 0 must not zero the personal
+    // allowance: max(hub 0, seat 0, personal 100000) = 100000, so the paid
+    // personal plan keeps ai.chat effective inside the org (B2 interim).
+    expect(limits.max_ai_tokens_per_day).toBe(100000);
     expect(entitlements).toContain('ai.chat');
   });
 

@@ -7,6 +7,11 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+The organization ladder is Launch / Hub / Campus. `team` is retired; the three rows, their prices
+and the capacity comparison replace the four-tier list.
+
 ## Prerequisite (verbatim)
 
 Brak sesji.
@@ -51,7 +56,7 @@ bun scripts/qa-tenant.ts PUB-03           # seed od zera (deterministyczny)
 - „Dla siebie” pokazuje jedną sekcję „Dla osób indywidualnych” z jednym porównaniem planów:
   Free, Plus, Pro, Max (klucze `base`, `spark`, `ace`, `pro`). Nie ma podziału na uczniów
   i edukatorów ani drugiej tabeli porównawczej.
-- „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Team, Hub, Campus
+- „Dla organizacji” pokazuje sekcję „Dla organizacji” z planami Launch, Hub, Campus
   (katalog pobierany przez `?scope=organization` — adres przełącznika to
   `?audience=organization`).
 - Plany `lite`, `guide`, `creator`, `master` i `solo` nie istnieją w katalogu
