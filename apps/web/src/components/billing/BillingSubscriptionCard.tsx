@@ -18,9 +18,15 @@ import {
   noActionsMessageKey,
   periodRow,
   planChangeFeedback,
+  previewPlanChange,
+  scheduledCancellationDate,
 } from '@/lib/billing-subscription';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
+import {
+  PlanChangeDialog,
+  type PlanChangePreviewState,
+} from '@/components/billing/plan-change-dialog';
 
 interface BillingSubscriptionCardProps {
   subscription: BillingSubscriptionView | undefined;
@@ -65,6 +71,9 @@ export function BillingSubscriptionCard({
   const locale = useLocale();
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingInvoiceUrl, setPendingInvoiceUrl] = useState<string | null>(null);
+  const [pendingPlanKey, setPendingPlanKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PlanChangePreviewState | null>(null);
+  const [applying, setApplying] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(
@@ -103,7 +112,20 @@ export function BillingSubscriptionCard({
   const statusKey = billingStatusKey(subscription.status);
   const statusLabel = statusKey ? t(statusKey) : subscription.status;
   const period = periodRow(subscription);
+  const cancellationDate = scheduledCancellationDate(subscription);
   const planName = (key: string) => plans?.find((plan) => plan.key === key)?.name ?? key;
+  const catalogueName = (key: string | null | undefined) =>
+    key ? (plans?.find((plan) => plan.key === key)?.name ?? null) : null;
+  const currentPlanName =
+    catalogueName(subscription.billedPlanKey) ??
+    subscription.billedPlanName ??
+    catalogueName(subscription.planKey) ??
+    subscription.planName ??
+    subscription.billedPlanKey ??
+    subscription.planKey;
+  const targetPlanKey =
+    preview?.status === 'ready' ? preview.preview.targetPlanKey : pendingPlanKey;
+  const targetPlanName = targetPlanKey ? planName(targetPlanKey) : '';
   const actions = hasProviderActions(subscription);
   const alternatives = alternativePlans(plans, subscription, accountType);
 
@@ -162,10 +184,28 @@ export function BillingSubscriptionCard({
     }
   }
 
-  async function changePlan(planKey: string) {
-    setBusy(planKey);
+  async function openPlanChange(planKey: string) {
+    setPendingPlanKey(planKey);
+    setPreview({ status: 'loading' });
     try {
-      const request = billingCardRequest({ type: 'change', planKey }, personal);
+      setPreview({ status: 'ready', preview: await previewPlanChange(planKey, personal) });
+    } catch {
+      setPreview({ status: 'error' });
+    }
+  }
+
+  function closePlanChange(open: boolean) {
+    if (open) return;
+    setPendingPlanKey(null);
+    setPreview(null);
+  }
+
+  async function confirmPlanChange() {
+    if (!pendingPlanKey || preview?.status !== 'ready') return;
+
+    setApplying(true);
+    try {
+      const request = billingCardRequest({ type: 'change', planKey: pendingPlanKey }, personal);
       const result = await apiPost<ChangePlanResult>(request.url, request.body);
       const feedback = planChangeFeedback(result);
 
@@ -173,6 +213,8 @@ export function BillingSubscriptionCard({
       if (feedback.tone === 'success') toast.success(t(feedback.messageKey));
       else toast.info(t(feedback.messageKey));
 
+      setPendingPlanKey(null);
+      setPreview(null);
       onChanged();
       if (result.status === 'applied') {
         // The entitlement moves on `customer.subscription.updated`, which may
@@ -183,7 +225,7 @@ export function BillingSubscriptionCard({
     } catch {
       toast.error(t('change_plan_failed'));
     } finally {
-      setBusy(null);
+      setApplying(false);
     }
   }
 
@@ -193,18 +235,31 @@ export function BillingSubscriptionCard({
         <CardTitle>{t('plan_change_title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {currentPlanName && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{t('current_plan_label')}</span>
+            <span className="font-medium">{currentPlanName}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t('status_label')}</span>
           <span className="font-medium">{statusLabel}</span>
         </div>
 
-        {period && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{t(period.labelKey)}</span>
-            <span className="font-medium">
-              {t(period.messageKey, { date: formatDate(period.date, locale) })}
-            </span>
-          </div>
+        {cancellationDate ? (
+          <p className="text-sm font-medium text-destructive">
+            {t('scheduled_cancellation', { date: formatDate(cancellationDate, locale) })}
+          </p>
+        ) : (
+          period && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{t(period.labelKey)}</span>
+              <span className="font-medium">
+                {t(period.messageKey, { date: formatDate(period.date, locale) })}
+              </span>
+            </div>
+          )
         )}
 
         {subscription.pendingPlanKey && (
@@ -305,9 +360,8 @@ export function BillingSubscriptionCard({
                     variant="secondary"
                     size="sm"
                     disabled={busy !== null}
-                    onClick={() => changePlan(plan.key)}
+                    onClick={() => openPlanChange(plan.key)}
                   >
-                    {busy === plan.key && <Loader2 className="size-3.5 mr-2 animate-spin" />}
                     {plan.name} · {fmt(plan.priceMonthly, plan.currency)}
                   </Button>
                 ))}
@@ -316,6 +370,19 @@ export function BillingSubscriptionCard({
           </>
         )}
       </CardContent>
+
+      <PlanChangeDialog
+        open={pendingPlanKey !== null}
+        state={preview}
+        currentPlanName={currentPlanName ?? ''}
+        targetPlanName={targetPlanName}
+        applying={applying}
+        onOpenChange={closePlanChange}
+        onConfirm={confirmPlanChange}
+        onRetry={() => {
+          if (pendingPlanKey) void openPlanChange(pendingPlanKey);
+        }}
+      />
     </Card>
   );
 }
