@@ -45,7 +45,7 @@ interface PlanInfo {
 /** The two ladders the pricing page documents, per scope. */
 const LADDERS = [
   { scope: 'personal', plans: ['base', 'spark', 'ace', 'pro'] },
-  { scope: 'organization', plans: ['launch', 'team', 'hub', 'campus'] },
+  { scope: 'organization', plans: ['launch', 'hub', 'campus'] },
 ] as const;
 
 /** Collect browser-side failures so "no errors" is asserted, not assumed. */
@@ -279,7 +279,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
      * alone is true of a client-fetched ladder too (#1272). The handles are the
      * plan keys the catalogue renders (`#launch` … `#campus`).
      */
-    for (const key of ['launch', 'team', 'hub', 'campus']) {
+    for (const key of ['launch', 'hub', 'campus']) {
       expect(organizationHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
     expect(organizationHtml, 'with its price').toContain(copy('period_month'));
@@ -300,7 +300,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     for (const key of ['base', 'spark', 'ace', 'pro']) {
       expect(individualHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
-    for (const retired of ['lite', 'guide', 'creator', 'master', 'solo']) {
+    for (const retired of ['lite', 'guide', 'creator', 'master', 'solo', 'team']) {
       expect(individualHtml, `the retired ${retired} row is absent`).not.toContain(
         `id="${retired}"`,
       );

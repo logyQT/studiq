@@ -7,6 +7,12 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only. The manager's `ai.chat` comes from their personal Plus plan
+(`personalPlan: "spark"`), so `/me/entitlements` still contains it and `/ai/usage` reports the Plus
+quota (100 000) with `plan: 'hub'` as the effective primary.
+
 ## Prerequisite (verbatim)
 
 Zalogowany manager@dev.local.

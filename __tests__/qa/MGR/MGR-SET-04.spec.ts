@@ -1,212 +1,106 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createQaSupabase } from '#test/helpers/db-admin';
 import { json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-SET-04 — brand colour on /manage/settings: pick a colour, save it, see the
- * hex label next to the field and keep the value after a refresh (the page state
- * stays in sync with the organization row, not just with local draft state).
+ * MGR-SET-04 — the brand colour requires the `branding` feature.
  *
- * Tenant (deterministic, one per independent run):
+ * The case set a colour in „Kolor marki” and checked it survived a refresh. Since
+ * #1493 no organization plan carries `branding`, so the field is not rendered and
+ * the API refuses the write. The case moves to the disabled state: a colour
+ * stored on the row (the state a branding plan would have left) is not painted,
+ * and the write is 403.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-04 --fresh
  *
- * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`. The
- * `content` profile supplies the org's manager, and `--plan hub` puts *this
- * tenant's own* organization on Hub through `change_org_plan` (the same RPC the
- * billing webhook calls), which is the case's "Plan z brandingiem" prerequisite.
- * Nothing global is written — no admin setting, feature flag, plan catalogue row
- * or singleton.
- *
- * The spec clears its own org's `brand_color` first so every run starts from the
- * untouched state (the picker falls back to the product's default `#000000`),
- * and only ever reads/writes the tenant's own organization row.
+ * `__tests__/qa/profiles/MGR-SET-04.json` declares `{ profile: "content", plan:
+ * "hub" }`.
  */
 
 const CASE = 'MGR-SET-04';
+const SETTINGS_PATH = '/manage/settings';
+const ORG_API = (orgId: string) => `/api/v1/organization/${orgId}`;
 
-/** Polish copy from `ManageSettingsPage` (`apps/web/src/i18n/messages/pl.json`). */
 const COPY = {
+  pageTitle: 'Ustawienia',
   brandColorLabel: 'Kolor marki',
-  save: 'Zapisz',
-  colorUpdated: 'Kolor zaktualizowany',
   lockedTitle: 'Własny branding',
+  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
 } as const;
 
-/** The colour the case picks, then a second one for the state-sync regression. */
-const PICKED_COLOR = '#1f6feb';
-const SECOND_COLOR = '#c026d3';
-
-/** Default the picker shows when the org has never saved a brand colour. */
-const DEFAULT_COLOR = '#000000';
-
-interface ApiEnvelope<T> {
-  success: boolean;
-  data: T;
-}
+/** The stored colour the gate must not paint; distinct from any UI default. */
+const STORED_COLOR = '#123456';
+/** The colour the case tries to save; it must never reach the row. */
+const REJECTED_COLOR = '#00aa00';
 
 interface OrganizationDetail {
   id: string;
-  name: string;
   brand_color: string | null;
 }
 
-/**
- * The colour picker and the hex label the case expects "next to the field".
- * The label is the sibling `<span>{displayColor}</span>`; the save button follows
- * it inside the same row, so every locator is scoped to that row.
- */
-function colorRow(page: Page) {
-  return page.locator('#brand-color + span').locator('..');
-}
-
-function colorInput(page: Page) {
-  return page.locator('#brand-color');
-}
-
-function colorLabel(page: Page) {
-  return page.locator('#brand-color + span');
-}
-
-function saveButton(page: Page) {
-  return colorRow(page).getByRole('button', { name: COPY.save, exact: true });
-}
-
-function toasts(page: Page) {
-  return page.locator('[data-sonner-toast]');
-}
-
-async function getOrg(page: Page, orgId: string): Promise<OrganizationDetail> {
-  const response = await page.request.get(`/api/v1/organization/${orgId}`);
-  expect(response.status(), 'GET /api/v1/organization/:id').toBe(200);
-  const body = await json<ApiEnvelope<OrganizationDetail>>(response);
-  expect(body.success, 'organization response').toBe(true);
+async function getData<T>(page: Page, url: string): Promise<T> {
+  const response = await page.request.get(url);
+  expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+  const body = await json<{ success: boolean; data: T }>(response);
+  expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
 
-/**
- * Start every run from the case's untouched state. Scoped to the tenant's own
- * organization id from the deterministic fixture.
- */
-async function clearBrandColor(tenant: QaTenant): Promise<void> {
-  const orgId = tenant.org?.id;
-  if (!orgId) throw new Error(`${CASE} needs the content tenant profile (org + manager)`);
-  const db = createQaSupabase();
-  const { error } = await db.from('organizations').update({ brand_color: null }).eq('id', orgId);
-  expect(error, 'reset the tenant brand colour').toBeNull();
+function mainContent(page: Page) {
+  return page.locator('main[data-slot="sidebar-inset"]').first();
 }
 
-/** Sign in as the tenant manager with this case's organization active. */
-async function signInAsManager(page: Page, tenant: QaTenant): Promise<void> {
-  await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
-}
-
-test('saves the brand colour, shows its hex and keeps it after a refresh', async ({ page }) => {
-  test.setTimeout(120_000);
-
+test('hides the colour field and refuses a write when no plan grants branding', async ({
+  page,
+}) => {
   const tenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-  expect(tenant.plan, `${CASE} needs the Hub plan (branding prerequisite)`).toBe('hub');
-  const orgId = tenant.org!.id;
+  expect(tenant.plan, `${CASE} needs its tenant org on Hub`).toBe('hub');
+  const org = tenant.org;
+  if (!org) throw new Error(`${CASE} needs the seeded organization`);
+  const orgId = org.id;
 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
-  await clearBrandColor(tenant);
-  await signInAsManager(page, tenant);
+  // A stored colour, as a plan that carried branding would have left it.
+  const db = createQaSupabase();
+  const seeded = await db
+    .from('organizations')
+    .update({ brand_color: STORED_COLOR })
+    .eq('id', orgId);
+  expect(seeded.error, 'seed the stored brand colour').toBeNull();
 
-  // --- Setup: /manage/settings with branding entitled ---------------------
-  await page.goto('/manage/settings');
+  await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+  await page.goto(SETTINGS_PATH);
   await expect(page).toHaveURL(/\/manage\/settings$/, { timeout: 20_000 });
-  await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.pageTitle, exact: true }),
+  ).toBeVisible();
 
-  // Entitled org: the picker is rendered, never the locked branding card.
-  await expect(page.getByText(COPY.brandColorLabel, { exact: true })).toBeVisible();
-  await expect(page.getByText(COPY.lockedTitle, { exact: true })).toHaveCount(0);
-  await expect(colorInput(page)).toBeVisible();
-  await expect(colorInput(page)).toHaveValue(DEFAULT_COLOR);
-  await expect(colorLabel(page)).toHaveText(DEFAULT_COLOR);
+  // --- Expected: the lock card, no colour control, no stored colour --------
+  const settings = mainContent(page);
+  await expect(settings.getByText(COPY.lockedTitle, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.lockedDescription, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.brandColorLabel, { exact: true })).toHaveCount(0);
+  await expect(settings.locator('input[type="color"]')).toHaveCount(0);
+  await expect(settings.getByText(STORED_COLOR, { exact: true })).toHaveCount(0);
 
-  const before = await getOrg(page, orgId);
-  expect(before.brand_color, 'the tenant starts without a saved brand colour').toBeNull();
-
-  // --- Step 1: pick a colour and click „Zapisz” ---------------------------
-  await colorInput(page).fill(PICKED_COLOR);
-  await expect(colorLabel(page), 'the hex of the picked colour shows next to the field').toHaveText(
-    PICKED_COLOR,
+  // The accent is only injected when the entitlement is on, so the stored
+  // colour must not reach the document's custom property.
+  const accent = await page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--brand-accent').trim(),
   );
+  expect(accent, 'the stored brand colour is not painted').toBe('');
 
-  const [update] = await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        response.request().method() === 'PUT' &&
-        new URL(response.url()).pathname === `/api/v1/organization/${orgId}`,
-    ),
-    saveButton(page).click(),
-  ]);
-  expect(update.status(), 'PUT /api/v1/organization/:id').toBe(200);
+  // --- The API refuses the write -------------------------------------------
+  const attempt = await page.request.put(ORG_API(orgId), { data: { brandColor: REJECTED_COLOR } });
+  expect(attempt.status(), `PUT ${ORG_API(orgId)} with brandColor`).toBe(403);
+  expect(await attempt.json()).toEqual({ success: false, error: 'FORBIDDEN' });
 
-  // Expected result: toast „Kolor zaktualizowany”.
-  await expect(
-    toasts(page).filter({ hasText: COPY.colorUpdated }),
-    'the save shows the „Kolor zaktualizowany” toast',
-  ).toBeVisible({ timeout: 10_000 });
+  const after = await getData<OrganizationDetail>(page, ORG_API(orgId));
+  expect(after.brand_color, 'the refused write changed nothing').toBe(STORED_COLOR);
 
-  // Expected result: the hex stays next to the field once the draft is saved.
-  await expect(colorInput(page)).toHaveValue(PICKED_COLOR);
-  await expect(colorLabel(page)).toHaveText(PICKED_COLOR);
-
-  // Expected result: state is synchronised with the organization data.
-  await expect
-    .poll(async () => (await getOrg(page, orgId)).brand_color, {
-      message: 'the organization stores the picked brand colour',
-      timeout: 15_000,
-    })
-    .toBe(PICKED_COLOR);
-
-  // Let the 4 s toast expire so the next save can only show its own toast.
-  await expect(toasts(page)).toHaveCount(0, { timeout: 15_000 });
-
-  // --- Step 2: refresh keeps the colour ----------------------------------
-  await page.reload();
-  await expect(page).toHaveURL(/\/manage\/settings$/, { timeout: 20_000 });
-  await expect(colorInput(page)).toHaveValue(PICKED_COLOR);
-  await expect(colorLabel(page)).toHaveText(PICKED_COLOR);
-  await expect(page.getByText(COPY.brandColorLabel, { exact: true })).toBeVisible();
-  expect(
-    (await getOrg(page, orgId)).brand_color,
-    'the organization row still carries the colour after the reload',
-  ).toBe(PICKED_COLOR);
-
-  // --- Adjacent regression: a second change saves and shows (issue #272) --
-  // Picking a new colour must not keep showing/ submitting the previously saved
-  // one, and the picker must follow the freshly saved server value.
-  await colorInput(page).fill(SECOND_COLOR);
-  await expect(colorLabel(page)).toHaveText(SECOND_COLOR);
-
-  const [secondUpdate] = await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        response.request().method() === 'PUT' &&
-        new URL(response.url()).pathname === `/api/v1/organization/${orgId}`,
-    ),
-    saveButton(page).click(),
-  ]);
-  expect(secondUpdate.status(), 'second PUT /api/v1/organization/:id').toBe(200);
-
-  await expect(
-    toasts(page).filter({ hasText: COPY.colorUpdated }),
-    'the second save shows the „Kolor zaktualizowany” toast',
-  ).toBeVisible({ timeout: 10_000 });
-  await expect(colorInput(page)).toHaveValue(SECOND_COLOR);
-  await expect(colorLabel(page)).toHaveText(SECOND_COLOR);
-  await expect
-    .poll(async () => (await getOrg(page, orgId)).brand_color, {
-      message: 'the second save is stored on the organization',
-      timeout: 15_000,
-    })
-    .toBe(SECOND_COLOR);
-
-  expect(pageErrors, 'uncaught page errors').toEqual([]);
+  expect(pageErrors, 'no uncaught page errors').toEqual([]);
 });

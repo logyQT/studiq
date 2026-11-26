@@ -218,6 +218,20 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     return user;
   }
 
+  /**
+   * The organization ladder is capacity only since #1493, so a paid surface
+   * reaches an org member through the personal plan (`personalPortable`). These
+   * cases pin permissions; the personal plan keeps the entitlement gate out of
+   * the way.
+   */
+  async function setPersonalPlan(user: TestUserFixture, plan: string): Promise<void> {
+    const { error } = await service
+      .from('profiles')
+      .update({ personal_plan_key: plan })
+      .eq('id', user.id);
+    if (error) throw new Error(`[setup] personal plan ${plan}: ${error.message}`);
+  }
+
   beforeAll(async () => {
     const org = await seedOrganization(`content-route-api-${tag}`);
     orgId = org.org.id;
@@ -229,15 +243,13 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     const foreignOrg = await seedOrganization(`content-route-api-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
 
-    // Phase 5d: the quiz writes are gated on the `quiz.templates` entitlement,
-    // which the `launch` default plan does not carry. These cases pin the
-    // permission keys, not the entitlement, so the fixture org sits on `hub`.
+    // The fixture org sits on `hub` for capacity; the paid surfaces below come
+    // from each actor's personal plan.
     await setOrgPlan(orgId, 'hub');
 
     // Phase 5d: the quiz writes are additionally gated on the
-    // `quiz.templates` entitlement. A custom role reaches the org plan
-    // ceiling (the `hub` org above) only through the `all` profile, so the
-    // quiz holder carries it; the cases still pin the permission keys.
+    // `quiz.templates` entitlement, which the personal Plus plan carries; the
+    // cases still pin the permission keys.
     quizRoleId = await roleWith(
       orgId,
       `quiz-holder-${tag}`,
@@ -252,10 +264,10 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
       'own',
     );
     statsRoleId = await roleWith(orgId, `stats-holder-${tag}`, ['stats.read'], 'group');
-    // The `all` profile reaches the `hub` ceiling, so this role's 403s below are
-    // permission-only: with the default `none` profile the `quiz.templates`
-    // entitlement gate would refuse `createQuiz` as well and the case could not
-    // attribute the 403 to the permission (R42).
+    // The actor's personal Plus plan carries `quiz.templates`, so this role's
+    // 403s below are permission-only: without the key the entitlement gate
+    // would refuse `createQuiz` as well and the case could not attribute the
+    // 403 to the permission (R42).
     noKeyRoleId = await roleWith(orgId, `no-key-${tag}`, ['group.read'], 'group', 'all');
     bankRoleId = await roleWith(orgId, `bank-holder-${tag}`, ['question_bank.update'], 'own');
 
@@ -268,6 +280,14 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     studentAdmin = await memberUser('student', adminRoleId);
     member = await memberUser('student', memberRoleId);
     teacher = await memberUser('educator', teacherRoleId);
+
+    await setPersonalPlan(quizHolder, 'spark');
+    await setPersonalPlan(quizHolder2, 'spark');
+    await setPersonalPlan(statsHolder, 'ace');
+    await setPersonalPlan(noKey, 'spark');
+    // The student-persona Admin authors a quiz (D13): the persona is irrelevant,
+    // so the paid `quiz.templates` key rides their personal Plus plan too.
+    await setPersonalPlan(studentAdmin, 'spark');
 
     // The class the content is shared to: the Teacher under test is a plain
     // group member; the Admin (the deck author) teaches it; the Member reads it.

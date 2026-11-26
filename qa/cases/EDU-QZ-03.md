@@ -7,6 +7,10 @@
 - prereqs: none (self-contained tenant — see Seed)
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"`), not the org plan.
+
 ## Prerequisite (verbatim)
 
 Quiz z ≥ 3 pytaniami.
@@ -26,8 +30,8 @@ Quiz z ≥ 3 pytaniami.
   student, plus the default group `G1`. The tenant's active org is the tenant org, put on the
   **hub** plan by the profile (`{ "profile": "content", "plan": "hub" }` in
   `__tests__/qa/profiles/EDU-QZ-03.json`, applied through the seeder's `--plan`): the
-  saved-quiz library is the `quiz.templates` entitlement (phase 5d), which the tenant's own
-  hub plan carries, so the educator passes the write gates on
+  saved-quiz library is the `quiz.templates` entitlement (phase 5d), which the
+  educator's personal Plus plan carries, so the educator passes the write gates on
   `POST /api/v1/teacher/quizzes` and `POST /api/v1/teacher/quizzes/:id/questions`.
 - Content: the spec creates the case's „quiz z ≥ 3 pytaniami” itself — one question
   bank and three questions through `POST /api/v1/questions/banks` +

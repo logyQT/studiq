@@ -7,6 +7,10 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the teacher's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"`), not the org plan.
+
 ## Prerequisite (verbatim)
 
 Quiz z pytaniami.

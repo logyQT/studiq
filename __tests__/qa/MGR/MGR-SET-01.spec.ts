@@ -25,18 +25,20 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * uzyskać dostęp do własnego brandingu” with a „Zobacz plany” button; the upload
  * control, the „Kolor marki” picker and the file input are not rendered at all.
  * „Zobacz plany” goes to the organization ladder of `/pricing`
- * (`/pricing?audience=organization`), where Hub/Campus list „Własny branding” in
- * the ladder's comparison and the current Launch row does not. The API enforces the
- * same `branding` gate: a `PUT /api/v1/organization/:id` carrying `brandColor` and
- * a logo upload both return 403 FORBIDDEN, and the org row keeps
- * `brand_color`/`logo_url` null.
+ * (`/pricing?audience=organization`), which now lists Launch / Hub / Campus as
+ * capacity tiers: no organization plan carries „Własny branding” since #1493, so
+ * the comparison has no branding row and instead tabulates the student and group
+ * caps. The API enforces the same `branding` gate: a `PUT
+ * /api/v1/organization/:id` carrying `brandColor` and a logo upload both return
+ * 403 FORBIDDEN, and the org row keeps `brand_color`/`logo_url` null.
  *
  * Asserted behaviour (the case's expected result):
  * - Instead of the upload control, the „Logo” section shows the branded lock
  *   card with the upgrade copy; there is no brand-colour field.
  * - „Zobacz plany” leads to the organization plans.
  * - Adjacent: the plan feature set (`branding` absent on Launch) and the API
- *   gate agree with the UI, and the upgrade catalogue actually offers branding.
+ *   gate agree with the UI, and the organization ladder's reason to upgrade is
+ *   capacity (students and groups), not branding.
  */
 
 const CASE = 'MGR-SET-01';
@@ -59,6 +61,8 @@ const COPY = {
   currentPlan: 'Twój plan',
   pricingHeading: 'Wybierz swój plan',
   brandingFeature: 'Własny branding',
+  studentsLimit: 'Maks. studentów',
+  groupsLimit: 'Maks. grup',
 } as const;
 
 interface EntitlementSet {
@@ -211,30 +215,28 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     await expect(currentPlanRow).toHaveCount(1);
     await expect(currentPlanRow.getByText(COPY.currentPlan, { exact: true })).toBeVisible();
 
-    // Its comparison table carries the feature the lock withholds, and it is a row
-    // precisely because the plans differ on it.
-    const brandingHeader = page.getByRole('rowheader', { name: COPY.brandingFeature, exact: true });
-    await expect(brandingHeader, 'branding is a comparison row').toHaveCount(1);
-    const brandingRow = brandingHeader.locator('xpath=..');
+    // The organization ladder is the three capacity tiers; the branding the lock
+    // withholds is not sold by any of them.
+    const ladderRows = page.locator('#pricing-plans li');
+    await expect(ladderRows, 'Launch / Hub / Campus, no fourth tier').toHaveCount(3);
+    expect(plans.map((candidate) => candidate.key).toSorted()).toEqual(['campus', 'hub', 'launch']);
+    expect(
+      plans.filter((candidate) => candidate.features.includes('branding')),
+      'no organization plan carries branding since #1493',
+    ).toEqual([]);
+    await expect(
+      page.getByRole('rowheader', { name: COPY.brandingFeature, exact: true }),
+      'branding is no longer a comparison row',
+    ).toHaveCount(0);
 
-    const entitled = plans.filter((candidate) => candidate.features.includes('branding'));
-    expect(entitled.length, 'the catalogue offers at least one plan with branding').toBeGreaterThan(
-      0,
-    );
-    for (const candidate of entitled) {
-      // Columns follow the ladder's catalogue order, so the index is the column.
-      const column = plans.findIndex((cataloguePlan) => cataloguePlan.key === candidate.key);
+    // The comparison tabs the capacity that separates the tiers: students and
+    // groups are the reason to move up.
+    for (const label of [COPY.studentsLimit, COPY.groupsLimit]) {
       await expect(
-        brandingRow.locator('td').nth(column).locator('svg.lucide-check'),
-        `${candidate.name} lists branding`,
+        page.getByRole('rowheader', { name: label, exact: true }),
+        `${label} is a comparison row`,
       ).toHaveCount(1);
     }
-    // Launch really lacks the entitlement — the lock is not a UI-only label.
-    const launchColumn = plans.findIndex((cataloguePlan) => cataloguePlan.key === launchPlan.key);
-    await expect(
-      brandingRow.locator('td').nth(launchColumn).locator('svg.lucide-check'),
-      `${launchPlan.name} does not list branding`,
-    ).toHaveCount(0);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });

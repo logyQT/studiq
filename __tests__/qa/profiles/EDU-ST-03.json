@@ -1,4 +1,6 @@
 {
   "profile": "content",
-  "plan": "hub"
+  "plan": "hub",
+  "personalPlan": "ace",
+  "personalRole": "teacher"
 }

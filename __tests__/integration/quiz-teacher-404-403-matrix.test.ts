@@ -103,15 +103,24 @@ describe('quiz-teacher 403/404 matrix (ADR-0015 §7.1, D-5e2)', () => {
   beforeAll(async () => {
     const org = await seedOrganization(`quiz-matrix-${tag}`);
     orgId = org.org.id;
-    // `team` carries `quiz.templates`, so the write's entitlement gate passes and the status
-    // below is the permission derivation, not the plan gate.
-    await setOrgPlan(orgId, 'team');
+    // The organization ladder is capacity only since #1493, so the author's
+    // personal Plus plan carries `quiz.templates` into the org; the write's
+    // entitlement gate passes and the status below is the permission
+    // derivation, not the plan gate.
+    await setOrgPlan(orgId, 'hub');
 
     const foreignOrg = await seedOrganization(`quiz-matrix-foreign-${tag}`);
     foreignOrgId = foreignOrg.org.id;
 
     caller = await createTestUser({ role: 'educator', password: PASSWORD });
     otherTeacher = await createTestUser({ role: 'educator', password: PASSWORD });
+    for (const user of [caller, otherTeacher]) {
+      const { error } = await service
+        .from('profiles')
+        .update({ personal_plan_key: 'spark' })
+        .eq('id', user.id);
+      if (error) throw new Error(`[setup] personal plan: ${error.message}`);
+    }
     await seedOrgMembership({
       organizationId: orgId,
       userId: caller.id,

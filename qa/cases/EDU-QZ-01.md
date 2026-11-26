@@ -7,6 +7,10 @@
 - prereqs: none (self-contained tenant — see Seed)
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"` in the profile), not the org plan.
+
 ## Prerequisite (verbatim)
 
 TC.
@@ -25,7 +29,7 @@ TC.
   default group `G1`. The tenant org sits on the **hub** plan (`{ "profile": "content",
 "plan": "hub" }` in `__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's
   `--plan`): the saved-quiz library is the `quiz.templates` entitlement (phase 5d), which the
-  tenant's own hub plan carries, so the educator passes the gate on
+  educator's personal Plus plan carries, so the educator passes the gate on
   `POST /api/v1/teacher/quizzes`. No content is needed: the case starts from the empty quiz
   list („Brak quizów”).
 - Quiz name: the case's „Quiz próbny” carries the run suffix („Quiz próbny <suffix>”) so two

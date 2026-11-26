@@ -7,6 +7,14 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+„Plan z brandingiem” no longer exists: no organization plan carries `branding` since #1493. The
+uploader is not rendered, and the API refuses every file — `.txt`, `.svg`, oversized or valid —
+with **403 FORBIDDEN** before the type/size validation. The case keeps its subject (an invalid
+logo file cannot enter the organization) in the disabled state: there is no file-type selector to
+try, and every upload is refused at the entitlement gate.
+
 ## Prerequisite (verbatim)
 
 Plan z brandingiem.

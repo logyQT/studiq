@@ -23,6 +23,16 @@ import { createServiceClient } from '#test/integration/helpers';
 
 const MIGRATION_FILE = path.join(
   process.cwd(),
+  'supabase/migrations/20261126160000_organization_plan_ladder.sql',
+);
+
+/**
+ * `handle_new_user()` is #1193's: the individual migration mints `base` for every
+ * persona. B2 does not touch it, so its guard replay reads that file rather than
+ * the matrix this suite owns.
+ */
+const NEW_USER_MIGRATION_FILE = path.join(
+  process.cwd(),
   'supabase/migrations/20261126130000_individual_plan_ladder.sql',
 );
 
@@ -105,30 +115,13 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_groups: 3,
       max_students: 5,
       max_quiz_attempts_per_day: 10,
-      max_ai_tokens_per_day: 0,
-    },
-  },
-  team: {
-    scope: 'organization',
-    audience: null,
-    price: 9900,
-    entitlements: ['flashcards', 'quiz', 'quiz.templates'],
-    limits: {
-      max_flashcards: 500,
-      max_questions: 200,
-      max_decks: 50,
-      max_question_banks: 20,
-      max_groups: 5,
-      max_students: 5,
-      max_quiz_attempts_per_day: 50,
-      max_ai_tokens_per_day: 0,
     },
   },
   hub: {
     scope: 'organization',
     audience: null,
     price: 29900,
-    entitlements: ['ai.chat', 'branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 2000,
       max_questions: 1000,
@@ -137,26 +130,27 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_groups: 20,
       max_students: 50,
       max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: 200000,
     },
   },
   campus: {
     scope: 'organization',
     audience: null,
     price: 69900,
-    entitlements: ['ai.chat', 'branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: -1,
       max_questions: -1,
       max_decks: -1,
       max_question_banks: -1,
-      max_groups: -1,
-      max_students: -1,
+      max_groups: 1000,
+      max_students: 1000,
       max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: -1,
     },
   },
 };
+
+/** The two baseline keys every organization plan carries, and nothing else (B2). */
+const ORG_ENTITLEMENTS = ['flashcards', 'quiz'];
 
 const EXPECTED_FLAGS = ['branding', 'quiz.templates', 'stats.insights'];
 
@@ -285,7 +279,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     );
   }
 
-  it('is exactly the eight matrix plans, with the expected scope/audience/price', () => {
+  it('is exactly the seven matrix plans, with the expected scope/audience/price', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
@@ -303,7 +297,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
   });
 
   it('the replay guard rejects a manager branch in handle_new_user', async () => {
-    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+    const migrationSql = readFileSync(NEW_USER_MIGRATION_FILE, 'utf8');
     const managerBranch = `  if acct_type = 'manager' then
     plan_key_val := 'solo';
   else
@@ -346,6 +340,62 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     });
 
     expect(rejection).toBe('23514');
+  });
+
+  it('each organization plan carries exactly the baseline keys (B2: capacity only)', () => {
+    for (const [key, expected] of Object.entries(MATRIX)) {
+      if (expected.scope !== 'organization') continue;
+      expect(entitlementsFor(key), key).toEqual(ORG_ENTITLEMENTS);
+    }
+  });
+
+  it('no organization plan carries an AI quota (AI is an organization licence in #1511)', () => {
+    for (const [key, expected] of Object.entries(MATRIX)) {
+      if (expected.scope !== 'organization') continue;
+      expect(limitsFor(key), key).not.toHaveProperty('max_ai_tokens_per_day');
+    }
+  });
+
+  it('re-points an organization on the retired team plan to hub', async () => {
+    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+    const rollback = new Error('team re-point: roll back');
+    const probeOrgId = '00000000-0000-4000-8000-0000000f1493';
+    let probePlan: string | undefined;
+    let teamRows: number | undefined;
+
+    const outcome = await withDirect(async (sql) => {
+      try {
+        await sql.begin(async (tx) => {
+          // The pre-B2 shape: the `team` plan exists and an organization uses it.
+          await tx`
+            insert into public.subscription_plans
+              (key, name, price_monthly, currency, sort_order, is_active, scope, audience)
+            values ('team', 'StudiQ Team', 9900, 'PLN', 99, true, 'organization', null)`;
+          await tx`
+            insert into public.organizations (id, name, plan)
+            values (${probeOrgId}, 'team re-point probe', 'team')`;
+
+          await tx.unsafe(migrationSql);
+
+          const [probe] = await tx<Array<{ plan: string }>>`
+            select plan from public.organizations where id = ${probeOrgId}`;
+          const [team] = await tx<Array<{ n: number }>>`
+            select count(*)::int as n from public.subscription_plans where key = 'team'`;
+          probePlan = probe?.plan;
+          teamRows = team?.n;
+
+          throw rollback;
+        });
+        return 'NO_ERROR';
+      } catch (error) {
+        if (error === rollback) return 'ROLLED_BACK';
+        throw error;
+      }
+    });
+
+    expect(outcome).toBe('ROLLED_BACK');
+    expect(probePlan, 'team folds into hub').toBe('hub');
+    expect(teamRows, 'the team plan is deleted').toBe(0);
   });
 
   it('each plan carries exactly its matrix entitlement set, and none is empty', () => {

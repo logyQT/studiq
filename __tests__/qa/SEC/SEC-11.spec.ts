@@ -17,8 +17,9 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * SEC-11 — Przesyłanie plików: typy i rozmiary.
  *
  * Prerequisite (reconciled with the tenant seeder): an organization on the
- * `hub` plan (so the manager's branding/logo upload is entitled) with a
- * manager, an educator and a student. The legacy manual seed
+ * `hub` plan (capacity only since #1493: the logo upload is refused because no
+ * organization plan carries `branding`) with a manager, an educator and a
+ * student. The legacy manual seed
  * (`manager@dev.local`, `pass`, …) is never used.
  *
  * Tenant: the `content` profile of this case on the `hub` plan
@@ -28,7 +29,8 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *
  * Upload surfaces confirmed during the walk on the shared app:
  * - `POST /api/v1/flashcards/media/upload` — flashcard media (teacher);
- * - `POST /api/v1/organization/<org>/logo` — organization logo (manager, `branding`);
+ * - `POST /api/v1/organization/<org>/logo` — organization logo (manager, `branding`;
+ *   no plan grants it, so every file is 403 before validation);
  * - `POST /api/v1/assignments/<id>/upload-image` — answer photo in an assignment
  *   attempt (student).
  *
@@ -47,7 +49,8 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *    stored `Content-Type`, so the bytes can never be served as an active
  *    document.
  * 4. Oversize uploads answer 413 `PAYLOAD_TOO_LARGE` at the surface's own cap
- *    (logo 5 MB, answer photo 10 MB) and the logo row keeps its previous value.
+ *    (answer photo 10 MB) and the logo row keeps its previous value: the logo
+ *    itself never passes the entitlement gate.
  *
  * The CSV import is *not* a file upload: the dialog reads the file as text and
  * posts a JSON card list, so the server-side property is that a binary body is
@@ -191,7 +194,14 @@ async function expectFlashcardMediaRules(page: Page): Promise<void> {
   // logo (5 MB) and answer-photo (10 MB) caps below cover the size dimension.
 }
 
-/** Organization logo: manager upload, 5 MB cap, and the row is never touched on failure. */
+/**
+ * Organization logo: every file stops at the `branding` entitlement gate.
+ *
+ * No organization plan carries the key since #1493, so the route answers 403
+ * before the type/size checks the other upload points exercise. The row keeps
+ * its previous value, and a valid PNG is refused too — the boundary is the
+ * feature, not the file.
+ */
 async function expectOrganizationLogoRules(page: Page): Promise<void> {
   const url = `/api/v1/organization/${ORG_ID}/logo`;
   const detailUrl = `/api/v1/organization/${ORG_ID}`;
@@ -201,41 +211,22 @@ async function expectOrganizationLogoRules(page: Page): Promise<void> {
   const previousLogo = (await json<ApiEnvelope<{ logo_url: string | null }>>(before)).data
     ?.logo_url;
 
-  for (const file of ACTIVE_FILES) {
-    await expectRejected(await postFile(page, url, file), `POST ${url} (${file.label})`);
+  const files = [
+    ...ACTIVE_FILES,
+    { label: 'valid PNG', name: 'logo.png', mimeType: 'image/png', bytes: VALID_PNG },
+  ];
+  for (const file of files) {
+    const response = await postFile(page, url, file);
+    expect(response.status(), `POST ${url} (${file.label})`).toBe(403);
+    expect(await response.json(), `POST ${url} (${file.label})`).toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
   }
 
-  // > 20 MB is far above the 5 MB org-logos bucket cap.
-  const oversize = Buffer.alloc(21 * 1024 * 1024);
-  PNG_SIGNATURE.copy(oversize);
-  await expectTooLarge(
-    await postFile(page, url, {
-      label: '21 MB PNG',
-      name: 'big.png',
-      mimeType: 'image/png',
-      bytes: oversize,
-    }),
-    `POST ${url} (21 MB)`,
-  );
-
-  const afterRejections = await page.request.get(detailUrl);
-  const logoAfterRejections = (
-    await json<ApiEnvelope<{ logo_url: string | null }>>(afterRejections)
-  ).data?.logo_url;
-  expect(logoAfterRejections, 'rejected uploads must not change the organization logo').toBe(
-    previousLogo,
-  );
-
-  const accepted = await postFile(page, url, {
-    label: 'valid PNG',
-    name: 'logo.png',
-    mimeType: 'image/png',
-    bytes: VALID_PNG,
-  });
-  expect(accepted.status(), `POST ${url} (valid PNG)`).toBe(200);
-  const logoUrl = (await json<ApiEnvelope<{ logo_url: string }>>(accepted)).data?.logo_url;
-  expect(logoUrl, 'accepted logo URL').toContain(`/org-logos/${ORG_ID}/`);
-  await expectInertImage(page, logoUrl!, 'organization logo');
+  const after = await page.request.get(detailUrl);
+  const logoAfter = (await json<ApiEnvelope<{ logo_url: string | null }>>(after)).data?.logo_url;
+  expect(logoAfter, 'no upload may change the organization logo').toBe(previousLogo);
 }
 
 interface AssignmentSetup {

@@ -7,6 +7,15 @@
 - prereqs: MGR-SEAT-01
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Seats are frozen at the UI: `/manage/seats` keeps the pools/assignments tables and every `GET`, but
+hides the purchase, assign and release controls. The API routes stay as the data path for #1511,
+so this case drives the assignment through them. Because the organization ceiling is baseline
+only, a seat raises the member's effective plan and user-scope **limits** but adds no paid
+entitlement; the portable surfaces come from the member's personal Plus plan
+(`personalPlan: "spark"`).
+
 ## Prerequisite (verbatim)
 
 Pula z MGR-SEAT-01.

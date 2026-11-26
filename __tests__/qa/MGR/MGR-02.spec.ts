@@ -25,8 +25,10 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * manager link** — no manager AI page exists (the manager AI surface is
  * ADR-0015 phase 6), so a manager has no assistant to link to. The API itself is
  * not persona-gated any more: since phase 5a `POST /api/v1/ai/chat` and
- * `GET /api/v1/ai/usage` require the `ai.chat` entitlement, and this tenant's
- * Hub org carries it, so the manager *may* call the API. The intended manager
+ * `GET /api/v1/ai/usage` require the `ai.chat` entitlement. The organization
+ * plan is capacity only since #1493, so the manager's **personal Plus plan**
+ * carries `ai.chat` into the org (`personalPortable`; the profile declares
+ * `personalPlan: "spark"`) and the manager *may* call the API. The intended manager
  * menu is therefore „Główne: Przegląd” and the seven „Administracja” entries
  * below; the spec pins the absence of the dead link instead of reproducing it,
  * plus the positive entitlement path on the API.
@@ -220,12 +222,15 @@ test('the manager sidebar has two sections whose entries all open their pages', 
   }
 
   // The menu has no assistant entry because no manager AI page exists (that
-  // surface is ADR-0015 phase 6) — but the API is entitlement-gated, and this
-  // tenant's Hub org carries `ai.chat`, so the manager *may* call it.
+  // surface is ADR-0015 phase 6) — but the API is entitlement-gated, and the
+  // manager's personal Plus plan carries `ai.chat` into the Hub org, so the
+  // manager *may* call it.
   const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
   expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements as the manager').toBe(200);
   const entitlementsBody = await json<{ data: { entitlements: string[] } }>(entitlementsResponse);
-  expect(entitlementsBody.data.entitlements, 'the Hub org resolves ai.chat').toContain('ai.chat');
+  expect(entitlementsBody.data.entitlements, 'the personal plan resolves ai.chat').toContain(
+    'ai.chat',
+  );
 
   const usage = await page.request.get('/api/v1/ai/usage');
   expect(usage.status(), 'GET /api/v1/ai/usage as the manager on Hub').toBe(200);
@@ -233,9 +238,12 @@ test('the manager sidebar has two sections whose entries all open their pages', 
     success: boolean;
     data: { plan: string; limit: number };
   }>(usage);
-  expect(usageBody.data, 'the usage counter reports the Hub org plan').toMatchObject({
+  expect(
+    usageBody.data,
+    'the usage counter reports the org primary and the Plus quota',
+  ).toMatchObject({
     plan: 'hub',
-    limit: 200000,
+    limit: 100000,
   });
 
   // The entitlement gate let the manager through, so the handler's own

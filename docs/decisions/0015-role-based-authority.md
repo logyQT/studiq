@@ -1685,6 +1685,35 @@ interpretation.
 > the organization; `addPool` still requires an active `scope='personal'` plan
 > whose keys are all `seatEligible`.
 
+> **2026-11-26 (B2, #1493).** The organization ladder is three **capacity-only**
+> tiers: Launch (`launch`, 0 zł, 5 members / 3 groups), Hub (`hub`, 299 zł, 50 / 20) and Campus (`campus`, 699 zł, 1 000 / 100). `team` retires into `hub`: an
+> organization on `team` is re-pointed to `hub`, so the entry price rises rather
+> than the mid tier disappearing (premarket; no user data to preserve). Campus's
+> `max_students`/`max_groups` `-1` becomes 1000/100; the per-member content caps
+> are unchanged.
+>
+> Every organization plan now carries only the two baseline keys `flashcards` and
+> `quiz`; `ai.chat`, `quiz.templates`, `stats.insights` and `branding` leave the
+> plans. The baseline keys stay because they are `scope:'personal'` and not
+> `personalPortable`: the personal layer does not carry them into an
+> organization, so removing them would strip flashcards and quizzes from every
+> org member and would need a resolver change. No organization plan carries
+> `max_ai_tokens_per_day`; a missing row is 0.
+>
+> The interim for features is the personal plan: a member on `spark`/`ace`/`pro`
+> keeps `ai.chat`, `quiz.templates` and `stats.insights` inside an organization
+> through `personalPortable`. Organization-funded AI and other per-seat licences
+> are #1511, which depends on this shape; no organization entitlement returns
+> before it.
+>
+> Seats are **frozen at the UI**: `/manage/seats` hides the purchase, assign and
+> release entries while the pools and assignments tables and every `GET` stay.
+> The API routes and their `org.seat.manage` authority checks remain the data
+> path #1511 builds on. `seatEligible` keeps its derived meaning (a plan whose
+> keys are all seat-eligible); it no longer means "a seat a manager can buy"
+> until #1511. §14.2's "paid org (`hub`/`campus`)" column therefore reads as
+> capacity, not a feature ceiling.
+
 ---
 
 ## 16. Non-goals

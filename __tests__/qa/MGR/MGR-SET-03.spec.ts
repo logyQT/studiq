@@ -3,204 +3,120 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-SET-03 — logo rejects disallowed files and oversized images.
+ * MGR-SET-03 — logo file validation is unreachable without the branding feature.
  *
- * Case step: "Spróbuj wgrać plik .txt, plik .svg i obraz > 5 MB."
- * Expected: the selector accepts PNG, JPEG, GIF and WEBP only; a disallowed or
- * oversized file shows the toast „Nie udało się zapisać” and leaves the logo
- * unchanged.
- *
- * Tenant (deterministic, one per independent run):
+ * The case used to try a `.txt`, an `.svg` and an oversized image through the
+ * settings uploader. Since #1493 no organization plan carries `branding`, so the
+ * uploader is not rendered and the API's entitlement gate answers **before** the
+ * type/size validation: every file, valid or not, is 403 and nothing is stored.
+ * The case keeps its subject — an invalid logo file cannot enter the
+ * organization — and moves it to the shipped disabled state.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-03 --fresh
  *
- * `__tests__/qa/profiles/<CASE>.json` declares `{ profile: "content", plan: "hub" }`: the
- * `content` tenant supplies the org's manager and `--plan hub` puts *this
- * tenant's own* organization on Hub through `change_org_plan`, which is the
- * case's prerequisite („Plan z brandingiem”). Nothing global is written — no
- * admin setting, feature flag, plan catalogue row or singleton.
- *
- * The spec first uploads a real PNG through the same hidden file input the page
- * uses, so "does not change the logo" is asserted against a logo that exists
- * (a rejected upload that cleared `logo_url` would be caught, not masked by an
- * empty state). The three rejected uploads then come from the case.
+ * `__tests__/qa/profiles/MGR-SET-03.json` declares `{ profile: "content", plan:
+ * "hub" }`, so the lock is not a free-tier artefact.
  */
 
 const CASE = 'MGR-SET-03';
+const SETTINGS_PATH = '/manage/settings';
+const ORG_API = (orgId: string) => `/api/v1/organization/${orgId}`;
+const LOGO_API = (orgId: string) => `/api/v1/organization/${orgId}/logo`;
 
-/** Polish copy from `ManageSettingsPage` (`apps/web/src/i18n/messages/pl.json`). */
 const COPY = {
-  title: 'Ustawienia',
-  logoLabel: 'Logo',
-  noLogo: 'Brak logo',
+  pageTitle: 'Ustawienia',
   uploadLogo: 'Wgraj logo',
-  logoUpdated: 'Logo zaktualizowane',
-  saveFailed: 'Nie udało się zapisać',
+  lockedTitle: 'Własny branding',
+  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
 } as const;
 
-/** The `<input accept>` list the page renders: PNG, JPEG, GIF, WEBP. */
-const ALLOWED_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
-
-/** A real 1×1 PNG — `storageService` sniffs the bytes, not the file name. */
-const PNG_1X1 = Buffer.from(
+const LOGO_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
 
-/** The three files the case uploads, each with the API error the UI turns into a toast. */
-const REJECTED_FILES = [
+/** The files the case rejected, plus one valid PNG as the control. */
+const FILES = [
+  { label: '.txt', name: 'logo.txt', mimeType: 'text/plain', buffer: Buffer.from('not a logo') },
   {
-    label: '.txt (text/plain)',
-    name: 'notes.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('not an image'),
-    status: 422,
-  },
-  {
-    label: '.svg (image/svg+xml)',
+    label: '.svg',
     name: 'logo.svg',
     mimeType: 'image/svg+xml',
-    buffer: Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>',
-    ),
-    status: 422,
+    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
   },
   {
-    label: '> 5 MB PNG',
-    name: 'too-big.png',
+    label: 'oversized PNG',
+    name: 'huge.png',
     mimeType: 'image/png',
-    buffer: (() => {
-      const bytes = Buffer.alloc(6 * 1024 * 1024);
-      // 5 MB is the org-logos bucket cap; the size check fires before sniffing.
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
-      return bytes;
-    })(),
-    status: 413,
+    // Over the org-logos bucket's 5 MB cap; the entitlement must reject first.
+    buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 0),
   },
+  { label: 'valid PNG', name: 'logo.png', mimeType: 'image/png', buffer: LOGO_PNG },
 ] as const;
-
-interface ApiEnvelope<T> {
-  success: boolean;
-  data: T;
-}
 
 interface OrganizationDetail {
   id: string;
-  name: string;
   logo_url: string | null;
 }
 
-async function getJson<T>(page: Page, url: string): Promise<T> {
-  const res = await page.request.get(url);
-  expect(res.ok(), `GET ${url} → ${res.status()} ${await res.text()}`).toBe(true);
-  const body = await json<ApiEnvelope<T>>(res);
-  expect(body.success, `GET ${url} success`).toBe(true);
+async function getData<T>(page: Page, url: string): Promise<T> {
+  const response = await page.request.get(url);
+  expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+  const body = await json<{ success: boolean; data: T }>(response);
+  expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
 
-/** The logo currently persisted on the org (the page reads the same row). */
-async function logoUrl(page: Page, orgId: string): Promise<string | null> {
-  const org = await getJson<OrganizationDetail>(page, `/api/v1/organization/${orgId}`);
-  return org.logo_url;
+function mainContent(page: Page) {
+  return page.locator('main[data-slot="sidebar-inset"]').first();
 }
 
-function toasts(page: Page) {
-  return page.locator('[data-sonner-toast]');
-}
-
-/**
- * Sonner keeps a toast for 4 s (`duration={4000}` in `app/layout.tsx`). Letting
- * it clear means the next assertion can only see a toast from the next upload —
- * a stale „Nie udało się zapisać” can never make a silently accepted file pass.
- */
-async function waitForToastsToClear(page: Page): Promise<void> {
-  await expect(toasts(page)).toHaveCount(0, { timeout: 15_000 });
-}
-
-test('rejects .txt, .svg and an oversized image without changing the logo', async ({ page }) => {
+test('rejects every logo file at the entitlement gate before type or size validation', async ({
+  page,
+}) => {
   test.setTimeout(120_000);
 
   const tenant = loadTenant(CASE);
-  expect(tenant.org, `${CASE} needs the seeded organization`).toBeTruthy();
-  // The case prerequisite is a plan that includes branding; the tenant seeder
-  // applies it to this org only, so no global plan row is touched.
+  expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
   expect(tenant.plan, `${CASE} needs its tenant org on Hub`).toBe('hub');
-
-  const orgId = tenant.org!.id;
-  const orgName = tenant.org!.name;
+  const org = tenant.org;
+  if (!org) throw new Error(`${CASE} needs the seeded organization`);
+  const orgId = org.id;
 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+  await page.goto(SETTINGS_PATH);
+  await expect(page).toHaveURL(/\/manage\/settings$/, { timeout: 20_000 });
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.pageTitle, exact: true }),
+  ).toBeVisible();
 
-  const entitlements = await getJson<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
-  expect(entitlements.entitlements, 'the org plan unlocks branding').toContain('branding');
+  // --- Expected: no uploader, so no file-type selector to try --------------
+  const settings = mainContent(page);
+  await expect(settings.getByText(COPY.lockedTitle, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.lockedDescription, { exact: true })).toBeVisible();
+  await expect(settings.getByRole('button', { name: COPY.uploadLogo, exact: true })).toHaveCount(0);
+  await expect(settings.locator('input[type="file"]')).toHaveCount(0);
+  await expect(settings.locator('input[accept]')).toHaveCount(0);
 
-  await page.goto('/manage/settings');
-  await expect(page.getByRole('heading', { name: COPY.title, level: 2 })).toBeVisible();
-  await expect(page.getByText(COPY.logoLabel, { exact: true })).toBeVisible();
-
-  // --- Acceptance: the picker offers exactly PNG, JPEG, GIF and WEBP ---------
-  const fileInput = page.locator('input[type="file"]');
-  await expect(fileInput).toHaveAttribute('accept', ALLOWED_ACCEPT);
-  await expect(page.getByRole('button', { name: COPY.uploadLogo })).toBeVisible();
-
-  // --- Adjacent positive path: a valid PNG becomes the logo ------------------
-  const initialLogo = await logoUrl(page, orgId);
-  await fileInput.setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG_1X1 });
-  await expect(toasts(page).filter({ hasText: COPY.logoUpdated })).toBeVisible({ timeout: 20_000 });
-
-  const uploadedLogo = await logoUrl(page, orgId);
-  expect(uploadedLogo, 'a valid PNG is stored as the org logo').toBeTruthy();
-  expect(uploadedLogo, 'a valid PNG replaces the previous logo').not.toBe(initialLogo);
-
-  const preview = page.locator(`img[alt="${orgName}"]`);
-  await expect(preview).toBeVisible();
-  await expect(preview).toHaveAttribute('src', uploadedLogo!);
-  await expect(preview).toHaveAttribute('width', '48');
-  await expect(preview).toHaveAttribute('height', '48');
-  await expect(page.getByText(COPY.noLogo, { exact: true })).toHaveCount(0);
-
-  await waitForToastsToClear(page);
-
-  // --- Step 1: each rejected file shows the toast and keeps the logo ---------
-  for (const file of REJECTED_FILES) {
-    // Pin the server-side reason as well as the toast: type only allow-lists
-    // PNG/JPEG/GIF/WEBP (422), the org-logos bucket caps at 5 MB (413).
-    const response = await page.request.post(`/api/v1/organization/${orgId}/logo`, {
+  // --- Step 1: every file is refused before validation ---------------------
+  for (const file of FILES) {
+    const response = await page.request.post(LOGO_API(orgId), {
       multipart: { file: { name: file.name, mimeType: file.mimeType, buffer: file.buffer } },
     });
-    expect(response.status(), `POST logo with ${file.label}`).toBe(file.status);
-
-    await fileInput.setInputFiles({
-      name: file.name,
-      mimeType: file.mimeType,
-      buffer: file.buffer,
+    // 403, never 413/422: the entitlement gate is the first statement, so a
+    // well-formed or malformed file both stop there.
+    expect(response.status(), `POST logo with ${file.label}`).toBe(403);
+    expect(await response.json(), `POST logo with ${file.label}`).toEqual({
+      success: false,
+      error: 'FORBIDDEN',
     });
-    await expect(
-      toasts(page).filter({ hasText: COPY.saveFailed }),
-      `${file.label} shows „${COPY.saveFailed}”`,
-    ).toBeVisible({ timeout: 20_000 });
-
-    // The upload button leaves its pending state only after the request settled.
-    await expect(page.getByRole('button', { name: COPY.uploadLogo })).toBeVisible();
-    expect(await logoUrl(page, orgId), `${file.label} keeps the stored logo`).toBe(uploadedLogo);
-    await expect(preview, `${file.label} keeps the 48×48 preview`).toHaveAttribute(
-      'src',
-      uploadedLogo!,
-    );
-    await expect(page.getByText(COPY.noLogo, { exact: true })).toHaveCount(0);
-
-    await waitForToastsToClear(page);
   }
 
-  // --- The valid logo survives a reload, untouched by the rejected uploads ---
-  await page.reload();
-  await expect(page.getByRole('heading', { name: COPY.title, level: 2 })).toBeVisible();
-  await expect(preview).toBeVisible();
-  await expect(preview).toHaveAttribute('src', uploadedLogo!);
-  expect(await logoUrl(page, orgId)).toBe(uploadedLogo);
+  const after = await getData<OrganizationDetail>(page, ORG_API(orgId));
+  expect(after.logo_url, 'no rejected or valid file was stored').toBeNull();
 
   expect(pageErrors, 'no uncaught page errors').toEqual([]);
 });

@@ -7,6 +7,13 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+The Launch lock state is unchanged, but no organization plan carries `branding` any more: the org
+ladder is Launch / Hub / Campus (three rows) and its comparison table lists the capacity rows
+(students, groups), not a branding row. The lock copy now says branding is not part of the current
+plans; the API still returns 403 for both branding writes.
+
 ## Prerequisite (verbatim)
 
 M1, WSB Merito (Launch – bez funkcji branding).
@@ -47,7 +54,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
 
 ## Expected result
 
-- Zamiast uploadu widoczna karta „Własny branding – Ulepsz plan, aby uzyskać dostęp do własnego brandingu”; brak pola koloru marki.
+- Zamiast uploadu widoczna karta „Własny branding – Własny branding nie jest częścią obecnych planów”; brak pola koloru marki.
 - Przycisk prowadzi do /pricing?audience=organization.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
@@ -62,8 +69,9 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   (nazwa, data utworzenia) pozostaje widoczny — blokada dotyczy tylko brandingu.
 - Krok 2 — „Zobacz plany” prowadzi dokładnie do **`/pricing?audience=organization`**
   („Wybierz swój plan”), z przełącznikiem ustawionym na „Dla organizacji”. Wiersz
-  „StudiQ Launch” jest oznaczony „Twój plan”, a plany **Hub** i **Campus** wymieniają funkcję
-  „Własny branding” (Launch i Team — nie). Ścieżka ulepszenia, o której mówi karta, istnieje.
+  „StudiQ Launch” jest oznaczony „Twój plan”. Od #1493 żaden plan organizacji nie zawiera
+  „Własny branding”: tabela porównania pokazuje pojemność (uczniowie, grupy), a nie funkcję
+  brandingową. Karta prowadzi do planów po pojemność, nie po branding.
 - Ta sama sesja potwierdza bramkę po stronie API: `GET /api/v1/me/entitlements` nie zawiera
   `branding`, `GET /api/v1/me/plan` zwraca `launch` bez `branding`,
   `PUT /api/v1/organization/<id>` z `{"brandColor":"#123456"}` → **403**

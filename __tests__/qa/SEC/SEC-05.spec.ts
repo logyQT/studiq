@@ -8,8 +8,9 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *
  * Prerequisite (reconciled with the tenant seeder): the legacy manual account
  * `student1@…` (password `pass`) is never used. `__tests__/qa/profiles/SEC-05.json`
- * declares `{ "profile": "content", "plan": "hub" }`, which the suite runner seeds
- * **once, before Playwright starts**, under the case's own run suffix:
+ * declares `{ "profile": "content", "plan": "hub", "personalPlan": "spark",
+ * "personalRole": "teacher" }`, which the suite runner seeds **once, before
+ * Playwright starts**, under the case's own run suffix:
  *
  *   bun scripts/qa-tenant.ts SEC-05 --fresh
  *
@@ -29,8 +30,9 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    library key, not the persona: `quiz.templates` is not in
  *    `LEARNER_ENTITLEMENTS` and no student personal plan carries it, so a learner
  *    cannot author a quiz at all since 5d. The "key, not persona" positive control
- *    (an entitled teacher creating a quiz → 201) now lives in EDU-QZ-01 (teacher on
- *    `hub` → the library works) and EDU-QZ-06 (teacher on `launch` → plan card + 403).
+ *    (an entitled teacher creating a quiz → 201) now lives in EDU-QZ-01 (teacher
+ *    whose personal Plus plan carries the key → the library works) and EDU-QZ-06
+ *    (teacher on `launch` with the free personal plan → plan card + 403).
  * 2. `POST /api/v1/teacher/assignments {...}` → **403 `FORBIDDEN`** — the member
  *    template carries no `assignment.*` key, and the gate runs before input
  *    validation (a malformed body is still 403, never 422).
@@ -38,10 +40,12 @@ import { loadTenant, loginAs, tenantUser, type QaTenant } from '#test/qa/fixture
  *    (`stats.read` at `own`; the payload counts the student's own content only).
  *    …and no staff resource is created: after the calls the tenant organization
  *    owns zero `teacher_assignments` rows and no row created by the student there.
- * The tenant org sits on the **hub** plan (`{ "profile": "content", "plan": "hub" }`
- * in `__tests__/qa/profiles/SEC-05.json`) so the educator positive control passes
- * the 5d `quiz.templates` gate; the student subject still 403s on the quiz create
- * because the learner entitlement set never carries that key.
+ * The tenant org sits on the **hub** plan and only the educator gets the paid
+ * personal Plus plan (`personalRole: "teacher"` in
+ * `__tests__/qa/profiles/SEC-05.json`), so the positive control passes the 5d
+ * `quiz.templates` gate; the student stays on the free personal plan and still
+ * 403s on the quiz create because the learner entitlement set never carries that
+ * key.
  *
  * Adjacent regressions that matter for this surface:
  * - the collection reads behind the same keys: `GET /api/v1/teacher/quizzes` is
@@ -245,8 +249,9 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     // The paid library key — not the persona — is the boundary here:
     // `quiz.templates` is not in `LEARNER_ENTITLEMENTS` and no student personal
     // plan carries it, so a learner cannot author a quiz at all since 5d. The
-    // "key, not persona" positive control now lives in EDU-QZ-01 (teacher on
-    // `hub` → the library works) and EDU-QZ-06 (teacher on `launch` → 403).
+    // "key, not persona" positive control now lives in EDU-QZ-01 (teacher whose
+    // personal Plus plan carries `quiz.templates` → the library works) and
+    // EDU-QZ-06 (teacher on `launch` with the free personal plan → 403).
     expectForbidden(
       await call(page, 'POST', TEACHER_QUIZZES, { name: 'SEC-05 own quiz' }),
       'POST /api/v1/teacher/quizzes as the student (quiz.templates entitlement)',
@@ -335,10 +340,11 @@ test.describe('@case:SEC-05 @area:SEC @prio:P1 student cannot call teacher endpo
     expect(studentAssignments.data, 'no assignment row is owned by the student').toEqual([]);
 
     // --- Positive control: the tenant's educator is allowed the same calls -
-    // Same endpoints, same active organization, same bodies. The tenant org is on
-    // `hub`, so the educator's `all` role profile carries `quiz.templates` and the
-    // create succeeds: the student's 403 above is the entitlement boundary, and the
-    // routes themselves are healthy.
+    // Same endpoints, same active organization, same bodies. The educator's
+    // personal Plus plan carries `quiz.templates` (`personalPortable`) while the
+    // student stays on the free personal plan, so the create succeeds: the
+    // student's 403 above is the entitlement boundary, and the routes themselves
+    // are healthy.
     await switchUser(page, tenant, 'teacher');
 
     const quizResponse = await page.request.post(TEACHER_QUIZZES, {

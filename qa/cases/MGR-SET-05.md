@@ -7,6 +7,14 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+No organization plan carries `branding` since #1493, so a plan change can no longer withdraw it.
+The case still runs the real Hub → Launch → Hub webhook path, but the expected result changed:
+the lock card and the unpainted stored logo are present on **every** tier, the stored
+`logo_url`/`brand_color` never change, and re-buying Hub does not restore the controls because no
+plan grants the feature.
+
 ## Prerequisite (verbatim)
 
 Organizacja z wgranym logo na planie Hub.

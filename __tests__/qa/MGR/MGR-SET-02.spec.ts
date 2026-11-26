@@ -1,266 +1,115 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createQaSupabase } from '#test/helpers/db-admin';
-import { asJson, json } from '#test/helpers/json';
-import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
+import { json } from '#test/helpers/json';
+import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-SET-02 — uploading an organization logo on /manage/settings: toast,
- * 48×48 preview, immediate logo in the org switcher (replacing the generated
- * avatar, no reload) and persistence after a refresh.
+ * MGR-SET-02 — uploading a logo requires the `branding` feature.
  *
- * Tenant (deterministic `content` profile, fresh run suffix per independent run):
+ * The case's prerequisite was „Organizacja na planie Hub/Campus”. Since #1493 no
+ * organization plan carries `branding`: the ladder is capacity only and the
+ * feature has no plan path left. The case therefore checks the disabled state
+ * the product ships: `/manage/settings` shows the lock card in place of the
+ * uploader, and the logo route refuses a valid PNG with 403, so no file reaches
+ * validation or storage.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-02 --fresh
  *
- * gives the organization `qa-mgr-set-02-<suffix>` with a manager, an educator and
- * a student (`tenantKey('qa/cases/MGR-SET-02.md', 'MGR-SET-02#<suffix>',
- * 'qa-shared')`).
- *
- * Branding precondition. The case asks for an organization on a plan with
- * branding. A non-marker entitlement key resolves from the role's
- * `entitlement_profile` (the manager's Admin role is `all`) intersected with
- * `plan_entitlements(organizations.plan)`; there is no per-role feature store.
- * So this spec reads the tenant's plan and, when its ceiling lacks
- * `branding`, calls the service-role `change_org_plan` RPC — the same RPC the
- * billing webhook calls — to put this tenant's own organization on `hub`. Only
- * that organization is written: the plan catalog, `plan_entitlements` and
- * `entitlement_flags` are shared rows and stay untouched. The spec also clears
- * the org's `logo_url` (and its own storage object) so the run always starts
- * from the case's "no logo → avatar" state, making the spec repeatable without a
- * reseed.
- *
- * Nothing global is assumed beyond the migration-seeded `branding` kill switch
- * being on, which is the product's default for this surface.
+ * `__tests__/qa/profiles/MGR-SET-02.json` is absent, so the default `content`
+ * profile seeds the org on the trigger's `launch` plan. Nothing global is
+ * written; the catalogue is only read.
  */
 
 const CASE = 'MGR-SET-02';
-const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/org-logos/';
+const SETTINGS_PATH = '/manage/settings';
+const ORG_API = (orgId: string) => `/api/v1/organization/${orgId}`;
+const LOGO_API = (orgId: string) => `/api/v1/organization/${orgId}/logo`;
 
-/** Polish copy from `ManageSettingsPage` and the sidebar's `OrgSwitcher`. */
 const COPY = {
+  pageTitle: 'Ustawienia',
+  profileCard: 'Profil uczelni',
+  logoLabel: 'Logo',
   uploadLogo: 'Wgraj logo',
-  noLogo: 'Brak logo',
-  logoUpdated: 'Logo zaktualizowane',
-  lockedTitle: 'Własny branding',
   brandColorLabel: 'Kolor marki',
+  lockedTitle: 'Własny branding',
+  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedCta: 'Zobacz plany',
 } as const;
 
-/**
- * A 1×1 PNG. Small, deterministic and accepted by the route's byte-signature
- * sniffing; the UI renders whatever size the slot asks for (48 px in settings,
- * 32 px in the switcher), so the pixel size does not matter here.
- */
 const LOGO_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
 
-interface OrgDetail {
+interface OrganizationDetail {
   id: string;
   name: string;
   logo_url: string | null;
+  brand_color: string | null;
 }
 
-interface OrgMembership {
-  id: string;
-  isActive: boolean;
-  logo_url?: string | null;
-}
-
-function settingsPreview(page: Page, orgName: string) {
-  // The 48×48 preview is the only image with the org name as alt text *and*
-  // width 48; the switcher's 32 px avatar also uses the org name as its alt.
-  return page.locator(`img[alt="${orgName}"][width="48"]`);
-}
-
-function switcherHeader(page: Page) {
-  return page.locator('[data-sidebar="header"]');
-}
-
-function switcherImage(page: Page) {
-  return switcherHeader(page).locator('img');
-}
-
-async function getOrg(page: Page, orgId: string): Promise<OrgDetail> {
-  const response = await page.request.get(`/api/v1/organization/${orgId}`);
-  expect(response.status(), 'GET /api/v1/organization/:id').toBe(200);
-  const body = await json<{ success: boolean; data: OrgDetail }>(response);
-  expect(body.success, 'organization response').toBe(true);
+async function getData<T>(page: Page, url: string): Promise<T> {
+  const response = await page.request.get(url);
+  expect(response.ok(), `GET ${url} → ${response.status()} ${await response.text()}`).toBe(true);
+  const body = await json<{ success: boolean; data: T }>(response);
+  expect(body.success, `GET ${url} success flag`).toBe(true);
   return body.data;
 }
 
-/**
- * Put the tenant org on a plan whose ceiling carries `branding` and remove any
- * logo left by an earlier run of the same tenant. Both writes are scoped to this
- * tenant's rows (org id comes from the deterministic fixture) and are idempotent.
- */
-async function prepareBrandingTenant(tenant: QaTenant): Promise<void> {
-  const orgId = tenant.org?.id;
-  if (!orgId) throw new Error(`${CASE} needs the content tenant profile (org + manager)`);
-
-  const db = createQaSupabase();
-
-  const { data: org, error: orgError } = await db
-    .from('organizations')
-    .select('plan')
-    .eq('id', orgId)
-    .maybeSingle();
-  expect(orgError, 'read the tenant plan').toBeNull();
-
-  const { data: ceiling, error: ceilingError } = await db
-    .from('plan_entitlements')
-    .select('entitlement_key')
-    .eq('plan_key', org?.plan ?? '')
-    .eq('entitlement_key', 'branding')
-    .maybeSingle();
-  expect(ceilingError, 'read the branding ceiling').toBeNull();
-
-  if (!ceiling) {
-    const { error: planError } = await db.rpc('change_org_plan', {
-      p_org_id: orgId,
-      p_plan: 'hub',
-    });
-    expect(planError, 'put the tenant org on a branding plan').toBeNull();
-  }
-
-  const { data: current, error: readError } = await db
-    .from('organizations')
-    .select('logo_url')
-    .eq('id', orgId)
-    .maybeSingle();
-  expect(readError, 'read the tenant logo').toBeNull();
-
-  const previous = asJson<string | null | undefined>(current?.logo_url);
-  if (previous) {
-    // Only a URL under this org's own storage prefix is removed; an arbitrary
-    // persisted URL is left alone (the spec never deletes outside its tenant).
-    const marker = `${STORAGE_PUBLIC_PATH}${orgId}/`;
-    const index = previous.indexOf(marker);
-    if (index >= 0) {
-      const path = decodeURIComponent(previous.slice(index + STORAGE_PUBLIC_PATH.length));
-      const { error: removeError } = await db.storage.from('org-logos').remove([path]);
-      expect(removeError, 'remove the previous run’s logo object').toBeNull();
-    }
-  }
-
-  const { error: resetError } = await db
-    .from('organizations')
-    .update({ logo_url: null })
-    .eq('id', orgId);
-  expect(resetError, 'reset the tenant logo').toBeNull();
+function mainContent(page: Page) {
+  return page.locator('main[data-slot="sidebar-inset"]').first();
 }
 
-/** Sign in as the tenant manager with this case's organization active. */
-async function signInAsManager(page: Page, tenant: QaTenant): Promise<void> {
-  await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
-}
-
-test('uploads a logo, shows it in the org switcher without a reload, and keeps it after a refresh', async ({
+test('offers no logo upload without the branding feature and refuses the file', async ({
   page,
 }) => {
   const tenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
-  const orgId = tenant.org!.id;
-  const orgName = tenant.org!.name;
+  const org = tenant.org;
+  if (!org) throw new Error(`${CASE} needs the seeded organization`);
+  const orgId = org.id;
+  const orgName = org.name;
 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
-  await prepareBrandingTenant(tenant);
-  await signInAsManager(page, tenant);
+  await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
 
-  // --- Setup: /manage/settings with branding entitled ---------------------
-  await page.goto('/manage/settings');
+  // --- Prerequisite: the organization's plan carries no branding -----------
+  const entitlements = await getData<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
+  expect(entitlements.entitlements, 'launch grants no branding').not.toContain('branding');
+
+  // --- Expected: the settings page shows the lock card, not the uploader ----
+  await page.goto(SETTINGS_PATH);
   await expect(page).toHaveURL(/\/manage\/settings$/, { timeout: 20_000 });
-  await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+  await expect(
+    page.getByRole('heading', { level: 2, name: COPY.pageTitle, exact: true }),
+  ).toBeVisible();
 
-  // Entitled org: upload control + colour picker, never the lock card.
-  await expect(page.getByRole('button', { name: COPY.uploadLogo, exact: true })).toBeVisible();
-  await expect(page.getByText(COPY.brandColorLabel, { exact: true })).toBeVisible();
-  await expect(page.getByText(COPY.lockedTitle, { exact: true })).toHaveCount(0);
+  const settings = mainContent(page);
+  await expect(settings.getByText(COPY.profileCard, { exact: true })).toBeVisible();
+  await expect(settings.getByText(orgName, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.logoLabel, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.lockedTitle, { exact: true })).toBeVisible();
+  await expect(settings.getByText(COPY.lockedDescription, { exact: true })).toBeVisible();
+  await expect(settings.getByRole('button', { name: COPY.lockedCta, exact: true })).toBeVisible();
+  await expect(settings.locator('svg.lucide-lock')).toHaveCount(1);
 
-  // The case's starting point: no logo in the org, so the switcher shows the
-  // generated avatar and the settings page shows the placeholder.
-  const before = await getOrg(page, orgId);
-  expect(before.logo_url, 'the tenant starts without a logo').toBeNull();
-  await expect(settingsPreview(page, orgName)).toHaveCount(0);
-  await expect(page.getByText(COPY.noLogo, { exact: true })).toBeVisible();
-  await expect(switcherImage(page)).toHaveAttribute(
-    'src',
-    `/api/v1/avatar/org/${encodeURIComponent(orgId)}`,
-  );
+  // No uploader and no colour field: the feature is not there to configure.
+  await expect(settings.locator('input[type="file"]')).toHaveCount(0);
+  await expect(settings.locator('input[type="color"]')).toHaveCount(0);
+  await expect(settings.getByRole('button', { name: COPY.uploadLogo, exact: true })).toHaveCount(0);
+  await expect(settings.getByText(COPY.brandColorLabel, { exact: true })).toHaveCount(0);
 
-  // Marker proving the switcher update below happened without a document load.
-  await page.evaluate(() => {
-    (window as Window & { qaNoReload?: boolean }).qaNoReload = true;
+  // --- The API refuses a valid PNG before it can reach the bucket -----------
+  const upload = await page.request.post(LOGO_API(orgId), {
+    multipart: { file: { name: 'logo.png', mimeType: 'image/png', buffer: LOGO_PNG } },
   });
+  expect(upload.status(), `POST ${LOGO_API(orgId)} with a valid PNG`).toBe(403);
+  expect(await upload.json()).toEqual({ success: false, error: 'FORBIDDEN' });
 
-  // --- Step 1: "Wgraj logo" → logo.png -----------------------------------
-  const chooserPromise = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: COPY.uploadLogo, exact: true }).click();
-  const chooser = await chooserPromise;
-  await chooser.setFiles({ name: 'logo.png', mimeType: 'image/png', buffer: LOGO_PNG });
+  const after = await getData<OrganizationDetail>(page, ORG_API(orgId));
+  expect(after.logo_url, 'the refused upload stores nothing').toBeNull();
+  expect(after.brand_color, 'no colour is stored either').toBeNull();
 
-  await expect(page.getByText(COPY.logoUpdated, { exact: true })).toBeVisible();
-
-  // --- Expected: 48×48 preview in settings -------------------------------
-  await expect
-    .poll(async () => (await getOrg(page, orgId)).logo_url, {
-      message: 'the organization stores the uploaded logo',
-      timeout: 15_000,
-    })
-    .not.toBeNull();
-  const logoUrl = (await getOrg(page, orgId)).logo_url!;
-  expect(logoUrl, 'logo stored in the public org-logos bucket').toContain(
-    `${STORAGE_PUBLIC_PATH}${orgId}/`,
-  );
-  expect(logoUrl, 'logo keeps its sniffed PNG extension').toMatch(/\.png$/);
-
-  const preview = settingsPreview(page, orgName);
-  await expect(preview).toHaveCount(1);
-  await expect(preview).toHaveAttribute('src', logoUrl);
-  await expect(preview).toHaveAttribute('width', '48');
-  await expect(preview).toHaveAttribute('height', '48');
-  await expect(page.getByText(COPY.noLogo, { exact: true })).toHaveCount(0);
-
-  // Stored bytes are actually the logo image, not just a string in the row.
-  const object = await page.request.get(logoUrl);
-  expect(object.status(), 'the uploaded logo is publicly readable').toBe(200);
-  expect(object.headers()['content-type'], 'served content type').toContain('image/png');
-  expect((await object.body()).length, 'served logo bytes').toBeGreaterThan(0);
-
-  // --- Step 2: the sidebar org switcher, without a reload ----------------
-  // The upload invalidates the `['orgs']` query; the switcher must swap the
-  // generated avatar for the new logo in place.
-  await expect(switcherImage(page)).toHaveAttribute('src', logoUrl, { timeout: 15_000 });
-  await expect(switcherHeader(page).getByText(orgName, { exact: true })).toBeVisible();
-  expect(
-    await page.evaluate(() => (window as Window & { qaNoReload?: boolean }).qaNoReload ?? false),
-    'the switcher updated without a document reload',
-  ).toBe(true);
-  await expect(page).toHaveURL(/\/manage\/settings$/);
-
-  // Same data contract the switcher renders from.
-  const orgsResponse = await page.request.get('/api/v1/me/orgs');
-  expect(orgsResponse.status(), 'GET /api/v1/me/orgs').toBe(200);
-  const orgsBody = await json<{ success: boolean; data: OrgMembership[] }>(orgsResponse);
-  const activeOrg = orgsBody.data.find((org) => org.id === orgId);
-  expect(activeOrg, 'the tenant org is one of the manager’s memberships').toBeTruthy();
-  expect(activeOrg!.isActive, 'the tenant org is active').toBe(true);
-  expect(activeOrg!.logo_url, 'the orgs endpoint carries the new logo').toBe(logoUrl);
-
-  // --- Step 3: refresh keeps the logo ------------------------------------
-  await page.reload();
-  await expect(page).toHaveURL(/\/manage\/settings$/, { timeout: 20_000 });
-
-  const afterReload = settingsPreview(page, orgName);
-  await expect(afterReload).toHaveCount(1);
-  await expect(afterReload).toHaveAttribute('src', logoUrl);
-  await expect(afterReload).toHaveAttribute('width', '48');
-  await expect(afterReload).toHaveAttribute('height', '48');
-  await expect(switcherImage(page)).toHaveAttribute('src', logoUrl, { timeout: 15_000 });
-  await expect(page.getByText(COPY.noLogo, { exact: true })).toHaveCount(0);
-  await expect(page.getByText(COPY.logoUpdated, { exact: true })).toHaveCount(0);
-
-  expect(pageErrors, 'uncaught page errors').toEqual([]);
+  expect(pageErrors, 'no uncaught page errors').toEqual([]);
 });

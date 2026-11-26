@@ -189,7 +189,10 @@ describe('active_org_id membership gate (#186)', () => {
     expect(body.data.key).toBe('ace');
     expect(body.data.limits.max_ai_tokens_per_day).toBe(250000);
     expect(body.data.limits.max_decks).toBe(500);
-    expect(body.data.features).toContain('ai.chat');
+    // The organization ladder is capacity only (#1493): the seat ∩ hub ceiling
+    // adds the baseline keys, and a paid surface would need the member's own
+    // personal plan (`personalPortable`).
+    expect(body.data.features.toSorted()).toEqual(['flashcards', 'quiz']);
   });
 
   it('serves the org plan to the org manager', async () => {

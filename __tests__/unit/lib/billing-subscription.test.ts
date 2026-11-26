@@ -99,15 +99,15 @@ describe('alternativePlans', () => {
     const options = alternativePlans(
       [
         plan('launch', { priceMonthly: 0, scope: 'organization', audience: null }),
-        plan('team', { priceMonthly: 9900, scope: 'organization', audience: null }),
         plan('hub', { priceMonthly: 29900, scope: 'organization', audience: null }),
+        plan('campus', { priceMonthly: 69900, scope: 'organization', audience: null }),
         plan('spark', { priceMonthly: 1999 }),
       ],
       subscription({ planKey: 'launch', billedPlanKey: 'launch' }),
       AccountType.MANAGER,
     );
 
-    expect(options.map((option) => option.key)).toEqual(['team', 'hub']);
+    expect(options.map((option) => option.key)).toEqual(['hub', 'campus']);
   });
 });
 
