@@ -416,7 +416,7 @@ ON CONFLICT DO NOTHING;
 
 -- Profiles
 INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
-  ('00000000-0000-4000-8001-00000000000A', 'teacher-classroom@dev.local', 'Classroom Teacher', 'launch'),
+  ('00000000-0000-4000-8001-00000000000A', 'teacher-classroom@dev.local', 'Classroom Teacher', 'base'),
   ('00000000-0000-4000-8001-00000000000B', 'student-classroom@dev.local', 'Classroom Student', 'base')
 ON CONFLICT DO NOTHING;
 
