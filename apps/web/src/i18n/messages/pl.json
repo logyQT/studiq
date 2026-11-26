@@ -3167,7 +3167,8 @@
     "answer_key": "Klucz odpowiedzi",
     "answer_key_desc": "Dołącz osobną stronę z kluczem odpowiedzi",
     "save": "Zapisz ustawienia",
-    "saved": "Ustawienia zapisane"
+    "saved": "Ustawienia zapisane",
+    "save_failed": "Nie udało się zapisać ustawień na tym urządzeniu."
   },
   "AppAssignmentsPage": {
     "title": "Moje kartkówki",

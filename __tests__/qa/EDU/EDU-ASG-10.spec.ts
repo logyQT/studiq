@@ -71,6 +71,7 @@ const COPY = {
   settingsTitle: 'Ustawienia drukowania',
   saveSettings: 'Zapisz ustawienia',
   settingsSaved: 'Ustawienia zapisane',
+  settingsSaveFailed: 'Nie udało się zapisać ustawień na tym urządzeniu.',
 } as const;
 
 /** The switches on the settings page, in the order the page renders them. */
@@ -267,6 +268,62 @@ async function saveSettings(page: Page): Promise<void> {
   await expect(page.getByText(COPY.settingsSaved, { exact: true })).toBeVisible();
 }
 
+interface SwitchLog {
+  seen: number;
+  wrong: number;
+}
+
+declare global {
+  interface Window {
+    switchLog?: SwitchLog;
+  }
+}
+
+/**
+ * From the next load, records each moment when the DOM holds a visible switch that is on, or when a
+ * visible switch changes from on. With all five settings saved as off, each one is a wrong value
+ * (#852). This examines the DOM, not the painted pixels.
+ */
+async function watchSwitches(page: Page): Promise<() => Promise<SwitchLog | undefined>> {
+  await page.addInitScript(() => {
+    const log = { seen: 0, wrong: 0 };
+    window.switchLog = log;
+    const inspect = (element: Element) => {
+      if (element.matches('.invisible')) return;
+      log.seen += 1;
+      if (element.getAttribute('aria-checked') === 'true') log.wrong += 1;
+    };
+    new MutationObserver((records) => {
+      for (const { attributeName, oldValue, target, addedNodes, removedNodes } of records) {
+        // A replaced switch is gone from the document by now; only the record still holds it.
+        for (const node of [...addedNodes, ...removedNodes]) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches('[role="switch"]')) inspect(node);
+          for (const element of node.querySelectorAll('[role="switch"]')) inspect(element);
+        }
+        if (attributeName !== 'aria-checked' || oldValue !== 'true') continue;
+        if (target instanceof Element && !target.matches('.invisible')) log.wrong += 1;
+      }
+      for (const element of document.querySelectorAll('[role="switch"]')) inspect(element);
+    }).observe(document, {
+      subtree: true,
+      childList: true,
+      attributeOldValue: true,
+      attributeFilter: ['aria-checked', 'class'],
+    });
+  });
+  return () => page.evaluate(() => window.switchLog);
+}
+
+async function expectSwitches(page: Page, on: readonly string[]): Promise<void> {
+  for (const label of Object.values(SWITCHES)) {
+    await expect(settingsRow(page, label).getByRole('switch'), `“${label}”`).toHaveAttribute(
+      'aria-checked',
+      String(on.includes(label)),
+    );
+  }
+}
+
 /** Opens the print view from the assignment detail page, as the case does. */
 async function openPrintView(page: Page, assignment: PrintAssignment, button: string) {
   await page.goto(`/edu/assignments/${assignment.id}`);
@@ -428,6 +485,58 @@ test.describe('@case:EDU-ASG-10 @area:EDU @prio:P2 print an assignment and its a
       await expect(questionBlock(page, content)).toHaveCount(1);
     }
 
+    expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
+  });
+
+  test('a reload shows the saved switches and never the defaults', async ({ page }) => {
+    await loginAs(page, loadTenant(CASE), 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
+    await page.goto('/edu/assignments/settings');
+    for (const label of Object.values(SWITCHES)) {
+      await setSwitch(page, label, false);
+    }
+    await saveSettings(page);
+
+    const readLog = await watchSwitches(page);
+    await page.reload();
+    await expectSwitches(page, []);
+    const log = await readLog();
+    expect(log?.seen, 'the observer saw the switches').toBeGreaterThan(0);
+    expect(log?.wrong, 'moments with a wrong switch').toBe(0);
+
+    const mixed = [SWITCHES.className, SWITCHES.points];
+    for (const label of mixed) {
+      await setSwitch(page, label, true);
+    }
+    await saveSettings(page);
+    await page.reload();
+    await expectSwitches(page, mixed);
+  });
+
+  test('a save that the browser refuses shows an error and keeps the choice', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.addInitScript(() => {
+      Storage.prototype.setItem = new Proxy(Storage.prototype.setItem, {
+        apply(target, storage, args: [string, string]) {
+          if (args[0] === 'assignment-print-settings') {
+            throw new DOMException('full', 'QuotaExceededError');
+          }
+          Reflect.apply(target, storage, args);
+        },
+      });
+    });
+    await loginAs(page, loadTenant(CASE), 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
+    await page.goto('/edu/assignments/settings');
+    await setSwitch(page, SWITCHES.date, false);
+
+    await page.getByRole('button', { name: COPY.saveSettings, exact: true }).click();
+
+    await expect(page.getByText(COPY.settingsSaveFailed, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.settingsSaved, { exact: true })).toHaveCount(0);
+    await expect(settingsRow(page, SWITCHES.date).getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
     expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
   });
 });

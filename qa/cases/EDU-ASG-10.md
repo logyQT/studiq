@@ -31,6 +31,10 @@ Kartkówka z pytaniami.
   the „Ustawienia drukowania” page writes). Each test starts from an empty browser context, so
   the documented defaults (every field on) apply; the second test turns all five switches off on
   `/edu/assignments/settings` and saves before printing.
+- Settings page (#852): after a reload it shows the saved switches. It does not show another
+  value first: the switches stay invisible, and „Zapisz ustawienia” stays disabled, until the
+  page reads the saved entry. If the browser refuses a save, the page shows „Nie udało się
+  zapisać ustawień na tym urządzeniu.”, does not show „Ustawienia zapisane”, and keeps the choice.
 - Nothing shared is read or written: no admin setting, feature flag, plan, platform stat or
   singleton row, and no other tenant.
 - UI notes (walk on the shared app, Polish UI): the detail page offers „Drukuj” in the header and

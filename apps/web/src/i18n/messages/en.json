@@ -3186,7 +3186,8 @@
     "answer_key": "Answer Key",
     "answer_key_desc": "Include a separate answer key page",
     "save": "Save Settings",
-    "saved": "Settings saved"
+    "saved": "Settings saved",
+    "save_failed": "The app cannot save the settings on this device."
   },
   "AppAssignmentsPage": {
     "title": "My Assignments",
