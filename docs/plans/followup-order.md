@@ -22,15 +22,15 @@ and B2 are unblocked on it.
 
 ## Done
 
-| Step | Issue     | PR      | Result                                                                                              |
-| ---- | --------- | ------- | --------------------------------------------------------------------------------------------------- |
-| A1   | **#1494** | #1499   | Migrations own the plan catalogue; the seed writes no plan data.                                    |
-| A2   | **#1502** | #1503   | Seeds hold test data only; migrations own the permission catalogue and all DDL.                     |
-| A3   | **#1484** | #1506   | The public pricing read hides a kill-switched key and a DB-ahead key.                               |
-| A4   | **#1482** | pending | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it. |
+| Step | Issue     | PR    | Result                                                                                              |
+| ---- | --------- | ----- | --------------------------------------------------------------------------------------------------- |
+| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                    |
+| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                     |
+| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                               |
+| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it. |
 
-A4 is implemented on branch `fix/1482-daily-activity-definer` and awaits a fresh
-local review. Its PR number replaces `pending` when the PR opens.
+A4 moved the two stats triggers behind definer functions, so no user client writes the
+table. A fresh local review and served QA ran before the PR opened.
 
 ## B. Simplify the plans
 

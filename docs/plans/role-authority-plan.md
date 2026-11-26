@@ -40,9 +40,8 @@ call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
 **Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
-#1502 (#1503) and #1484 (#1506) have merged, and #1482 is implemented on branch
-`fix/1482-daily-activity-definer` (PR pending); next are #1478 and #1492, then the plans,
-then the shell, then the `/app` decision, then onboarding.
+#1502 (#1503), #1484 (#1506) and #1482 (#1510) have merged; next are #1478 and #1492,
+then the plans, then the shell, then the `/app` decision, then onboarding.
 **Open follow-ups (owned):** **#1483** notify org admins when a new
 entitlement is grantable; **#1478** the merge queue cannot land a docs-only PR;
 row 14 (per-user personal default permission set) still defers. A
@@ -5823,8 +5822,7 @@ Landed in this slice:
   moved enforcement back to that gate and kept the atomic accounting: the write
   is truthful, the next request trips on `current >= limit`, and one stream may
   overshoot by its own token count.
-  **Residual closed by #1482** (branch `fix/1482-daily-activity-definer`, PR
-  pending review): phase 7 left `authenticated` with `INSERT`/`UPDATE` on its
+  **Residual closed by #1482** (#1510): phase 7 left `authenticated` with `INSERT`/`UPDATE` on its
   own `user_daily_activity` row because the review/quiz triggers ran as the
   invoking user, so a determined user could **reset** their own counter with a
   direct `UPDATE`, or a PostgREST upsert of the day's row (negative counts on
