@@ -1,0 +1,110 @@
+{
+  "key": "STU-48:topics",
+  "case": "STU-48",
+  "match": {
+    "lastUserContains": "Fiszki o komórce z podziałem na tematy",
+    "hasTools": true
+  },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_cards",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "Fiszki o komórce z podziałem na tematy",
+            "deck_name": "Organelle komórkowe",
+            "count": 6,
+            "flashcards": [
+              {
+                "front": "Które organellum wytwarza większość ATP?",
+                "back": "Mitochondrium",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Co tworzy wewnętrzna błona mitochondrium?",
+                "back": "Grzebienie",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Gdzie zachodzi cykl Krebsa?",
+                "back": "W macierzy mitochondrialnej",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Które organellum syntetyzuje białka?",
+                "back": "Rybosom",
+                "topic": "Rybosomy QA"
+              },
+              {
+                "front": "Z ilu podjednostek składa się rybosom?",
+                "back": "Z dwóch",
+                "topic": "Rybosomy QA"
+              },
+              {
+                "front": "Z czego zbudowany jest rybosom?",
+                "back": "Z rRNA i białek",
+                "topic": "Rybosomy QA"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": {
+        "input": 200,
+        "output": 180
+      }
+    },
+    {
+      "match": {
+        "hasToolResult": true
+      },
+      "toolCalls": [
+        {
+          "id": "call_finish",
+          "name": "finish",
+          "arguments": {
+            "type": "flashcards",
+            "deckName": "Organelle komórkowe",
+            "flashcards": [
+              {
+                "front": "Które organellum wytwarza większość ATP?",
+                "back": "Mitochondrium",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Co tworzy wewnętrzna błona mitochondrium?",
+                "back": "Grzebienie",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Gdzie zachodzi cykl Krebsa?",
+                "back": "W macierzy mitochondrialnej",
+                "topic": "Mitochondria QA"
+              },
+              {
+                "front": "Które organellum syntetyzuje białka?",
+                "back": "Rybosom",
+                "topic": "Rybosomy QA"
+              },
+              {
+                "front": "Z ilu podjednostek składa się rybosom?",
+                "back": "Z dwóch",
+                "topic": "Rybosomy QA"
+              },
+              {
+                "front": "Z czego zbudowany jest rybosom?",
+                "back": "Z rRNA i białek",
+                "topic": "Rybosomy QA"
+              }
+            ]
+          }
+        }
+      ],
+      "usage": {
+        "input": 450,
+        "output": 60
+      }
+    }
+  ]
+}

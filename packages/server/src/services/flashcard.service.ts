@@ -42,11 +42,24 @@ export interface FlashcardListPage {
 export class FlashcardService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
+  /**
+   * Refuses, with `USAGE_LIMIT_EXCEEDED`, to add `adding` flashcards that would take the
+   * caller past the plan's `max_flashcards`. Create, bulk create and CSV import ask
+   * this before they write anything.
+   */
+  async checkCapacity(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+    adding = 1,
+  ): Promise<void> {
+    const owned = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_flashcards', owned, adding);
+  }
+
   async create(data: CreateFlashcardInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const flashcardCount = await this.countOwned(supabase, ctx);
-    await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount);
+    await this.checkCapacity(supabase, ctx);
 
     let deckVisibility: Database['public']['Enums']['visibility_type'] | undefined;
     if (data.deckId) {
@@ -91,8 +104,7 @@ export class FlashcardService {
     const supabase = await this.clientFactory();
     const cardCount = data.cards.length;
 
-    const bulkFlashcardCount = await this.countOwned(supabase, ctx);
-    await limitsResolver.checkLimit(ctx, 'max_flashcards', bulkFlashcardCount, cardCount);
+    await this.checkCapacity(supabase, ctx, cardCount);
 
     let bulkDeckVisibilities: string[] = [];
     if (data.deckId) {

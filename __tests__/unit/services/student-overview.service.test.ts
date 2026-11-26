@@ -226,7 +226,14 @@ describe('StudentOverviewService.getOverview', () => {
           completed_at: '2026-10-27T10:00:00Z',
           is_assignment_attempt: true,
           config: null,
-          teacher_assignments: { title: 'Kartkówka', show_results: true },
+          teacher_assignments: {
+            id: 'as-1',
+            title: 'Kartkówka',
+            show_results: true,
+            status: 'published',
+            closed_at: '2026-10-27T11:00:00Z',
+            deadline: null,
+          },
         },
       ],
     });
@@ -240,8 +247,17 @@ describe('StudentOverviewService.getOverview', () => {
       'quiz_completed',
     ]);
     expect(activity[0]).toMatchObject({ cardsStudied: 9, scorePct: null, attemptId: null });
-    expect(activity[1]).toMatchObject({ title: 'Kartkówka', scorePct: 70, attemptId: 'asg-1' });
+    expect(activity[1]).toMatchObject({
+      title: 'Kartkówka',
+      scorePct: 70,
+      attemptId: 'asg-1',
+      assignmentId: 'as-1',
+      reviewUnlocked: true,
+    });
     expect(activity[2]).toMatchObject({ title: 'Quiz A', scorePct: 80 });
+    for (const own of [activity[0], activity[2]]) {
+      expect(own).toMatchObject({ assignmentId: null, reviewUnlocked: false });
+    }
   });
 
   it('uses the closed questions as the denominator of a practice quiz, like the review page', async () => {
@@ -321,14 +337,87 @@ describe('StudentOverviewService.getOverview', () => {
           completed_at: '2026-10-27T10:00:00Z',
           is_assignment_attempt: true,
           config: null,
-          teacher_assignments: { title: 'Sprawdzian', show_results: false },
+          teacher_assignments: {
+            id: 'as-2',
+            title: 'Sprawdzian',
+            show_results: false,
+            status: 'published',
+            closed_at: '2026-10-27T11:00:00Z',
+            deadline: null,
+          },
         },
       ],
     });
 
     const result = await s.getOverview(ctx, NOW);
 
-    expect(result.success && result.data.activity[0]?.scorePct).toBeNull();
+    expect(result.success && result.data.activity[0]).toMatchObject({
+      scorePct: null,
+      assignmentId: 'as-2',
+      reviewUnlocked: false,
+    });
+  });
+
+  // #1142: a link must not lead to a 404 or to a review that is not available.
+  const PAST = '2026-10-27T11:00:00Z';
+  const FUTURE = '2026-10-28T12:00:00Z';
+
+  it.each([
+    ['published, results on, closed', 'published', true, PAST, null, 'as-3', true],
+    ['published, only the deadline passed', 'published', true, null, PAST, 'as-3', true],
+    ['published, the deadline is now', 'published', true, null, NOW.toISOString(), 'as-3', true],
+    ['published, still open', 'published', true, null, FUTURE, 'as-3', false],
+    ['published, results off, closed', 'published', false, PAST, null, 'as-3', false],
+    ['cancelled', 'cancelled', true, PAST, null, null, false],
+    ['a draft', 'draft', true, null, FUTURE, null, false],
+    ['a draft with a past deadline', 'draft', true, null, PAST, null, false],
+  ] as const)(
+    'sets the link fields of an assignment that is %s',
+    async (_label, status, showResults, closedAt, deadline, assignmentId, reviewUnlocked) => {
+      const { service: s } = service({
+        completed: [
+          {
+            id: 'asg-3',
+            score: 7,
+            total_questions: 5,
+            total_points: 10,
+            completed_at: '2026-10-27T10:00:00Z',
+            is_assignment_attempt: true,
+            config: null,
+            teacher_assignments: {
+              id: 'as-3',
+              title: 'Test',
+              show_results: showResults,
+              status,
+              closed_at: closedAt,
+              deadline,
+            },
+          },
+        ],
+      });
+
+      const result = await s.getOverview(ctx, NOW);
+
+      expect(result.success && result.data.activity[0]).toMatchObject({
+        assignmentId,
+        reviewUnlocked,
+        scorePct: showResults ? 70 : null,
+      });
+    },
+  );
+
+  // #1142: the link fields need these columns from the embed.
+  it('asks for the assignment columns that decide the link', async () => {
+    const { service: s, attemptQueue } = service({});
+    const completed = requiredValue(attemptQueue[1], 'the completed-attempts query');
+
+    await s.getOverview(ctx, NOW);
+
+    expect(completed.select).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'teacher_assignments(id, title, show_results, status, closed_at, deadline)',
+      ),
+    );
   });
 
   // #1141: deleting an assignment nulls `quiz_attempts.assignment_id`; the durable
@@ -358,6 +447,8 @@ describe('StudentOverviewService.getOverview', () => {
         title: null,
         scorePct: null,
         attemptId: 'asg-gone',
+        assignmentId: null,
+        reviewUnlocked: false,
       });
       // It is not a practice quiz, so its closed questions are never counted.
       expect(from).not.toHaveBeenCalledWith('quiz_attempt_questions');

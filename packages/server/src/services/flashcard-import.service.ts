@@ -5,17 +5,19 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type { CsvImportInput, CsvImportResult } from '@studiq/server/models/flashcard-import.model';
+import type { CsvImportBatch } from '@studiq/server/models/flashcard-import.model';
+import { flashcardService } from '@studiq/server/services/flashcard.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 export class FlashcardImportService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
+  /** Writes rows that already passed validation, all of them or none past the plan limit. */
   async importCsv(
-    data: CsvImportInput,
+    data: CsvImportBatch,
     ctx: RequestContext,
-  ): Promise<ServiceResult<CsvImportResult>> {
+  ): Promise<ServiceResult<{ imported: number }>> {
     const supabase = await this.clientFactory();
 
     let defaultDeckId: string | undefined = data.deckId;
@@ -29,7 +31,14 @@ export class FlashcardImportService {
 
       if (!deck) return failure('NOT_FOUND');
       await check(ctx, Permission.DECK_UPDATE, deck);
-    } else {
+    }
+
+    // With no valid row there is nothing to write, not even an empty deck or a topic.
+    if (data.cards.length === 0) return success({ imported: 0 });
+
+    await flashcardService.checkCapacity(supabase, ctx, data.cards.length);
+
+    if (!data.deckId) {
       const hasDeckColumn = data.cards.some((c) => c.deck);
       if (!hasDeckColumn) {
         const deckName = data.defaultDeckName ?? 'Imported Flashcards';
@@ -157,29 +166,17 @@ export class FlashcardImportService {
 
     if (insertError) return toDbFailure(insertError);
 
-    const errors: { row: number; error: string }[] = [];
-
     const inserted = dbRows(flashcards);
-    if (inserted.length === 0) {
+    if (inserted.length !== data.cards.length) {
       return failure('INTERNAL_SERVER');
     }
 
     const topicAssignments: { flashcard_id: string; topic_id: string }[] = [];
 
-    for (let i = 0; i < data.cards.length; i++) {
-      const card = data.cards[i]!;
-      const flashcardId = inserted[i]?.id;
-
-      if (!flashcardId) {
-        errors.push({ row: i + 1, error: 'Failed to create flashcard' });
-        continue;
-      }
-
-      if (card.topic) {
-        const topicId = topicNameToId.get(card.topic.toLowerCase());
-        if (topicId) {
-          topicAssignments.push({ flashcard_id: flashcardId, topic_id: topicId });
-        }
+    for (const [i, card] of data.cards.entries()) {
+      const topicId = card.topic ? topicNameToId.get(card.topic.toLowerCase()) : undefined;
+      if (topicId) {
+        topicAssignments.push({ flashcard_id: inserted[i]!.id, topic_id: topicId });
       }
     }
 
@@ -191,11 +188,7 @@ export class FlashcardImportService {
       if (taError) return toDbFailure(taError);
     }
 
-    return success({
-      total: data.cards.length,
-      imported: data.cards.length - errors.length,
-      errors,
-    });
+    return success({ imported: inserted.length });
   }
 }
 export const flashcardImportService = wrapService(
