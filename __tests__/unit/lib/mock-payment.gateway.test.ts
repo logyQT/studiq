@@ -140,7 +140,23 @@ describe('MockPaymentGateway', () => {
         targetPlanKey: 'ace',
         targetPriceId: 'price_ace',
         direction: 'upgrade',
+        resume: false,
+        pendingPlanKey: null,
         idempotencyKey: 'change-key',
+      }),
+    ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
+
+    await expect(
+      gateway.previewChange({
+        owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
+        customerId: 'cus_1',
+        subscriptionId: 'sub_1',
+        currentPlanKey: 'spark',
+        targetPlanKey: 'ace',
+        targetPriceId: 'price_ace',
+        direction: 'upgrade',
+        resume: false,
+        pendingPlanKey: null,
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
 

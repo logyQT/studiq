@@ -46,6 +46,12 @@ export interface StripeClient {
       options?: StripeRequestOptions,
     ): Promise<Stripe.Price>;
   };
+  invoices: {
+    createPreview(
+      params: Stripe.InvoiceCreatePreviewParams,
+      options?: StripeRequestOptions,
+    ): Promise<Stripe.Invoice>;
+  };
   subscriptions: {
     retrieve(
       id: string,
@@ -112,6 +118,9 @@ export function createStripeClient(secretKey: string): StripeClient {
     },
     prices: {
       retrieve: (id, params, options) => stripe.prices.retrieve(id, params, options),
+    },
+    invoices: {
+      createPreview: (params, options) => stripe.invoices.createPreview(params, options),
     },
     subscriptions: {
       retrieve: (id, params, options) => stripe.subscriptions.retrieve(id, params, options),

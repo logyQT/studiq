@@ -1,12 +1,14 @@
 import type {
   CancelAtPeriodEndInput,
   ChangePlanInput,
+  ChangePlanPreview,
   ChangePlanResult,
   CreateCheckoutSessionInput,
   CreatePortalSessionInput,
   PaymentGateway,
   PaymentWebhookEnvelope,
   PortalSessionResult,
+  PreviewChangeInput,
   ReconcileCheckoutInput,
   ReconcileCheckoutResult,
   ReleaseScheduledPlanInput,
@@ -73,6 +75,10 @@ export class MockPaymentGateway implements PaymentGateway {
   }
 
   changePlan(_input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
+    return Promise.resolve(failure('NOT_FOUND'));
+  }
+
+  previewChange(_input: PreviewChangeInput): Promise<ServiceResult<ChangePlanPreview>> {
     return Promise.resolve(failure('NOT_FOUND'));
   }
 

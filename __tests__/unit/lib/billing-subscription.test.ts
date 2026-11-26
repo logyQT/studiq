@@ -1,4 +1,5 @@
 import { AccountType } from '@studiq/authz';
+import type { ChangePlanPreview } from '@studiq/server/lib/payment/payment-gateway';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
@@ -14,7 +15,11 @@ import {
   noActionsMessageKey,
   periodRow,
   planChangeFeedback,
+  previewPlanChange,
+  scheduledCancellationDate,
   seatsSummary,
+  submitCancellation,
+  withCancellationOverride,
   withPersonalScope,
 } from '@/lib/billing-subscription';
 import { describe, expect, it } from 'vitest';
@@ -146,16 +151,35 @@ describe('periodRow', () => {
     });
   });
 
-  it('uses the cancellation message when cancellation is scheduled', () => {
-    expect(periodRow(subscription({ cancelAtPeriodEnd: true }))).toMatchObject({
-      messageKey: 'cancels_on',
-    });
+  it('leaves the cancellation date to the explicit cancellation row', () => {
+    expect(periodRow(subscription({ cancelAtPeriodEnd: true }))).toBeNull();
   });
 
   it('hides the row without a period or for a canceled subscription', () => {
     expect(periodRow(subscription({ currentPeriodEnd: null }))).toBeNull();
     expect(periodRow(subscription({ status: 'canceled' }))).toBeNull();
     expect(periodRow(subscription({ status: 'incomplete_expired' }))).toBeNull();
+  });
+});
+
+describe('scheduledCancellationDate', () => {
+  it('returns the date access ends when cancellation is scheduled', () => {
+    expect(scheduledCancellationDate(subscription({ cancelAtPeriodEnd: true }))).toBe(
+      '2026-12-01T00:00:00.000Z',
+    );
+  });
+
+  it('returns null without a scheduled cancellation or a period', () => {
+    expect(scheduledCancellationDate(subscription())).toBeNull();
+    expect(
+      scheduledCancellationDate(subscription({ cancelAtPeriodEnd: true, currentPeriodEnd: null })),
+    ).toBeNull();
+  });
+
+  it('does not report a cancellation date for a subscription that already ended', () => {
+    expect(
+      scheduledCancellationDate(subscription({ cancelAtPeriodEnd: true, status: 'canceled' })),
+    ).toBeNull();
   });
 });
 
@@ -296,7 +320,7 @@ describe('billingScopeUrl', () => {
 });
 
 describe('billingCardRequest', () => {
-  it('names the personal scope on all four provider actions', () => {
+  it('names the personal scope on every provider action', () => {
     // Portal and release read like the billing read: the scope is in the URL.
     expect(billingCardRequest({ type: 'portal', locale: 'pl' }, true)).toEqual({
       method: 'GET',
@@ -307,10 +331,15 @@ describe('billingCardRequest', () => {
       url: '/api/v1/billing/release-scheduled-plan?scope=personal',
       body: {},
     });
-    // Change and cancel write it into the JSON body.
+    // Change, preview and cancel write it into the JSON body.
     expect(billingCardRequest({ type: 'change', planKey: 'ace' }, true)).toEqual({
       method: 'POST',
       url: '/api/v1/billing/change-plan',
+      body: { planKey: 'ace', scope: 'personal' },
+    });
+    expect(billingCardRequest({ type: 'preview', planKey: 'ace' }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan/preview',
       body: { planKey: 'ace', scope: 'personal' },
     });
     expect(billingCardRequest({ type: 'cancel', cancel: true }, true)).toEqual({
@@ -335,11 +364,84 @@ describe('billingCardRequest', () => {
       url: '/api/v1/billing/change-plan',
       body: { planKey: 'ace' },
     });
+    expect(billingCardRequest({ type: 'preview', planKey: 'ace' }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan/preview',
+      body: { planKey: 'ace' },
+    });
     expect(billingCardRequest({ type: 'cancel', cancel: false }, false)).toEqual({
       method: 'POST',
       url: '/api/v1/billing/cancel',
       body: { cancel: false },
     });
+  });
+});
+
+describe('previewPlanChange', () => {
+  it('requests the read-only preview for a plan click, never the confirmed change', async () => {
+    const preview: ChangePlanPreview = {
+      direction: 'upgrade',
+      currentPlanKey: 'spark',
+      targetPlanKey: 'ace',
+      amountDue: 3999,
+      currency: 'PLN',
+      effectiveAt: '2026-11-26T00:00:00.000Z',
+      resumesAtPeriodEnd: false,
+      replacesPendingPlanKey: null,
+      blockedBySchedule: false,
+    };
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const post = (url: string, body: unknown): Promise<ChangePlanPreview> => {
+      calls.push({ url, body });
+      return Promise.resolve(preview);
+    };
+
+    const result = await previewPlanChange('ace', true, post);
+
+    expect(result).toEqual(preview);
+    expect(calls).toEqual([
+      {
+        url: '/api/v1/billing/change-plan/preview',
+        body: { planKey: 'ace', scope: 'personal' },
+      },
+    ]);
+    expect(calls.some((call) => call.url === '/api/v1/billing/change-plan')).toBe(false);
+  });
+});
+
+describe('cancellation state', () => {
+  it('shows the scheduled cancellation from the endpoint result before the refetch', () => {
+    const view = withCancellationOverride(subscription({ cancelAtPeriodEnd: false }), true);
+
+    expect(scheduledCancellationDate(view)).toBe('2026-12-01T00:00:00.000Z');
+    expect(periodRow(view)).toBeNull();
+  });
+
+  it('submits the cancellation, applies the returned flag, then re-reads', async () => {
+    const calls: string[] = [];
+    const post = (url: string, body: unknown): Promise<{ cancelAtPeriodEnd: boolean }> => {
+      calls.push(`post:${url}:${JSON.stringify(body)}`);
+      return Promise.resolve({ cancelAtPeriodEnd: true });
+    };
+
+    const result = await submitCancellation({
+      cancel: true,
+      personal: true,
+      post,
+      effects: {
+        onCancelAtPeriodEnd: (value) => calls.push(`override:${value}`),
+        onChanged: () => calls.push('changed'),
+        scheduleRefresh: () => calls.push('refresh'),
+      },
+    });
+
+    expect(result).toEqual({ cancelAtPeriodEnd: true });
+    expect(calls).toEqual([
+      'post:/api/v1/billing/cancel:{"cancel":true,"scope":"personal"}',
+      'override:true',
+      'changed',
+      'refresh',
+    ]);
   });
 });
 

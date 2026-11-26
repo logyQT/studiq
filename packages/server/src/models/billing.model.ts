@@ -59,6 +59,21 @@ export const ChangePlanSchema = registry.register(
 );
 
 /**
+ * `POST /api/v1/billing/change-plan/preview` body. The same resolution and
+ * validation as the confirmed change; the response is a read-only amount.
+ */
+export const ChangePlanPreviewSchema = registry.register(
+  'ChangePlanPreviewRequest',
+  z.object({
+    planKey: z
+      .string()
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+    scope: BillingScopeSchema,
+  }),
+);
+
+/**
  * `POST /api/v1/billing/cancel` body (#662 §7.3): `cancel: true` schedules
  * cancellation at period end, `false` reactivates before it takes effect.
  */

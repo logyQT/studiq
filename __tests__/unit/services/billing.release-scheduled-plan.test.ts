@@ -35,6 +35,7 @@ function activeSubscription(overrides: Partial<ActiveSubscription> = {}): Active
     status: 'active',
     planKey: 'hub',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
+    cancelAtPeriodEnd: false,
     pendingPlanKey: 'starter',
     ...overrides,
   };

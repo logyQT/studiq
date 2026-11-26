@@ -1,7 +1,11 @@
 import { AccountType } from '@studiq/authz';
-import type { ChangePlanResult } from '@studiq/server/lib/payment/payment-gateway';
+import type {
+  ChangePlanPreview,
+  ChangePlanResult,
+} from '@studiq/server/lib/payment/payment-gateway';
 import type { BillingSubscriptionView } from '@studiq/server/services/billing.service';
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
+import { apiPost } from '@/lib/api';
 
 /**
  * Pure decisions for the shared billing card (#662 §7.4). Keeping them out of
@@ -59,23 +63,18 @@ export function billingStatusKey(status: string): string | null {
 
 export interface PeriodRow {
   labelKey: 'period_label';
-  messageKey: 'renews_on' | 'cancels_on';
+  messageKey: 'renews_on';
   date: string;
 }
 
 /**
- * The renewal/cancellation row, or `null` when the period is not meaningful
- * (a canceled/expired subscription must not claim it "renews" in the past).
+ * The renewal row, or `null` when the period is not meaningful (a canceled
+ * subscription must not claim it "renews" in the past) or when cancellation is
+ * scheduled — that date is the explicit cancellation row, not a renewal.
  */
 export function periodRow(subscription: BillingSubscriptionView): PeriodRow | null {
   if (!subscription.currentPeriodEnd) return null;
-  if (subscription.cancelAtPeriodEnd) {
-    return {
-      labelKey: 'period_label',
-      messageKey: 'cancels_on',
-      date: subscription.currentPeriodEnd,
-    };
-  }
+  if (scheduledCancellationDate(subscription)) return null;
   if (LIVE_STATUSES.has(subscription.status)) {
     return {
       labelKey: 'period_label',
@@ -84,6 +83,16 @@ export function periodRow(subscription: BillingSubscriptionView): PeriodRow | nu
     };
   }
   return null;
+}
+
+/**
+ * The date access ends when cancellation is scheduled, or `null`. A canceled
+ * status means the date is already history, so it never renders as scheduled.
+ */
+export function scheduledCancellationDate(subscription: BillingSubscriptionView): string | null {
+  if (!subscription.cancelAtPeriodEnd || !subscription.currentPeriodEnd) return null;
+  if (!LIVE_STATUSES.has(subscription.status)) return null;
+  return subscription.currentPeriodEnd;
 }
 
 export function hasProviderActions(subscription: BillingSubscriptionView): boolean {
@@ -108,6 +117,53 @@ export function activatedPlanLabel(
   subscription: BillingSubscriptionView | null | undefined,
 ): string | null {
   return subscription?.billedPlanName ?? null;
+}
+
+/**
+ * Apply Stripe's cancel flag before the `customer.subscription.updated` webhook
+ * writes the mirror. The card keeps this override until a refetched view agrees.
+ */
+export function withCancellationOverride(
+  subscription: BillingSubscriptionView,
+  cancelAtPeriodEnd: boolean | null,
+): BillingSubscriptionView {
+  if (cancelAtPeriodEnd === null) return subscription;
+  return { ...subscription, cancelAtPeriodEnd };
+}
+
+export interface CancellationResult {
+  cancelAtPeriodEnd: boolean;
+}
+
+export interface CancellationEffects {
+  /** Show the provider's answer immediately, before the webhook lands. */
+  onCancelAtPeriodEnd: (value: boolean) => void;
+  onChanged: () => void;
+  /** Re-read once the webhook has had time to update the mirror. */
+  scheduleRefresh: () => void;
+}
+
+/**
+ * Cancel or resume, then report the provider's authoritative flag and schedule
+ * a delayed re-read. The endpoint returns `cancel_at_period_end` before the
+ * webhook writes the mirror, so a refetch alone would keep the old card.
+ */
+export async function submitCancellation(input: {
+  cancel: boolean;
+  personal: boolean;
+  effects: CancellationEffects;
+  post?: (url: string, body: unknown) => Promise<CancellationResult>;
+}): Promise<CancellationResult> {
+  const request = billingCardRequest({ type: 'cancel', cancel: input.cancel }, input.personal);
+  const post =
+    input.post ?? ((url: string, body: unknown) => apiPost<CancellationResult>(url, body));
+  const result = await post(request.url, request.body);
+
+  input.effects.onCancelAtPeriodEnd(result.cancelAtPeriodEnd);
+  input.effects.onChanged();
+  input.effects.scheduleRefresh();
+
+  return result;
 }
 
 /** A Stripe-hosted URL is rendered only when it is a non-empty string. */
@@ -184,6 +240,7 @@ export type BillingCardAction =
   | { type: 'portal'; locale: string }
   | { type: 'cancel'; cancel: boolean }
   | { type: 'release' }
+  | { type: 'preview'; planKey: string }
   | { type: 'change'; planKey: string };
 
 export interface BillingCardRequest {
@@ -224,9 +281,29 @@ export function billingCardRequest(
       body: {},
     };
   }
+  if (action.type === 'preview') {
+    return {
+      method: 'POST',
+      url: '/api/v1/billing/change-plan/preview',
+      body: withPersonalScope({ planKey: action.planKey }, personal),
+    };
+  }
   return {
     method: 'POST',
     url: '/api/v1/billing/change-plan',
     body: withPersonalScope({ planKey: action.planKey }, personal),
   };
+}
+
+/**
+ * The plan button's click action: fetch the read-only preview. The confirmed
+ * change is a separate call from the dialog, so a click can never charge.
+ */
+export async function previewPlanChange(
+  planKey: string,
+  personal: boolean,
+  post: (url: string, body: unknown) => Promise<ChangePlanPreview> = apiPost,
+): Promise<ChangePlanPreview> {
+  const request = billingCardRequest({ type: 'preview', planKey }, personal);
+  return post(request.url, request.body);
 }

@@ -7,6 +7,7 @@ import { checkoutExpiresAt } from '@studiq/server/lib/payment/checkout-timing';
 import type {
   CancelAtPeriodEndInput,
   ChangePlanInput,
+  ChangePlanPreview,
   ChangePlanResult,
   CreateCheckoutSessionInput,
   CreatePortalSessionInput,
@@ -14,6 +15,7 @@ import type {
   PaymentOwner,
   PaymentWebhookEnvelope,
   PortalSessionResult,
+  PreviewChangeInput,
   ReconcileCheckoutInput,
   ReconcileCheckoutResult,
   ReleaseScheduledPlanInput,
@@ -59,12 +61,44 @@ function customerIdOf(customer: string | { id: string } | null | undefined): str
   return typeof customer === 'string' ? customer : customer.id;
 }
 
+/**
+ * The start of the line that charges the target price. `invoice.period_start`
+ * is the earliest line start, which includes the unused-time credit back to the
+ * old period; the target line names when the new plan actually starts.
+ */
+function targetLineStart(invoice: Stripe.Invoice, priceId: string): string | null {
+  for (const line of invoice.lines.data) {
+    const price = line.pricing?.price_details?.price;
+    const id = typeof price === 'string' ? price : price?.id;
+    if (id === priceId) return new Date(line.period.start * 1000).toISOString();
+  }
+  return null;
+}
+
 function ownerMetadata(owner: PaymentOwner): Record<string, string> {
   return {
     [`${METADATA_PREFIX}_owner_type`]: owner.type,
     [`${METADATA_PREFIX}_user_id`]: owner.userId,
     [`${METADATA_PREFIX}_org_id`]: owner.type === 'org' ? owner.orgId : '',
   };
+}
+
+function scheduleIdOf(subscription: Stripe.Subscription): string | null {
+  const schedule = subscription.schedule;
+  if (!schedule) return null;
+  return typeof schedule === 'string' ? schedule : schedule.id;
+}
+
+/**
+ * Stripe forbids `cancel_at_period_end` on a subscription a schedule manages.
+ * The preview omits the flag when a schedule exists; this recognises the
+ * refusal if Stripe still rejects the call, so the dialog can offer the release
+ * action instead of a generic retry.
+ */
+function isScheduleCancellationRefusal(error: unknown): boolean {
+  if (!isRecord(error) || readString(error, 'type') !== 'StripeInvalidRequestError') return false;
+  const message = (readString(error, 'message') ?? '').toLowerCase();
+  return message.includes('subscription schedule') && message.includes('cancel');
 }
 
 /**
@@ -277,45 +311,18 @@ export class StripePaymentGateway implements PaymentGateway {
 
   async changePlan(input: ChangePlanInput): Promise<ServiceResult<ChangePlanResult>> {
     try {
-      const owned = await this.subscriptionOwnedBy(input.subscriptionId, input.customerId);
-      if (isFailure(owned)) return owned;
-      const subscription = owned.data;
-
-      // The MVP bills one plan item per subscription (D4). A second item means
-      // the local model cannot represent the subscription, so fail closed.
-      const item = subscription.items.data.at(0);
-      if (!item || subscription.items.data.length !== 1) {
-        logError('billing.change_plan_multi_item', {
-          subscriptionId: input.subscriptionId,
-          itemCount: subscription.items.data.length,
-        });
-        return failure('SERVICE_UNAVAILABLE');
-      }
-
-      const livePriceId = item.price.id;
+      const live = await this.resolveLivePlanItem(
+        input.subscriptionId,
+        input.customerId,
+        input.currentPlanKey,
+        input.targetPriceId,
+      );
+      if (isFailure(live)) return live;
+      const { subscription, item, livePriceId, alreadyTarget } = live.data;
 
       // A retry after the webhook already applied the target (or a stale
       // mirror) must not reset the anchor and charge a second full period.
-      if (livePriceId === input.targetPriceId) {
-        return success({ status: 'applied' });
-      }
-
-      // The live price must still be the plan the caller/D B thought it was.
-      const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
-      if (isFailure(currentPrice)) return currentPrice;
-      const currentPlanKey = await this.planKeyForLivePrice(
-        livePriceId,
-        currentPrice.data,
-        subscription,
-      );
-      if (currentPlanKey !== input.currentPlanKey) {
-        logError('billing.subscription_plan_mismatch', {
-          subscriptionId: input.subscriptionId,
-          expected: input.currentPlanKey,
-          actual: currentPlanKey,
-        });
-        return failure('CONFLICT');
-      }
+      if (alreadyTarget) return success({ status: 'applied' });
 
       // A pending downgrade schedule would otherwise override this change at its
       // next phase boundary. Release it before applying the new direction.
@@ -333,6 +340,9 @@ export class StripePaymentGateway implements PaymentGateway {
             proration_behavior: 'always_invoice',
             // A 3DS upgrade invoice must not apply the new price before payment.
             payment_behavior: 'pending_if_incomplete',
+            // A confirmed change resumes a subscription that was scheduled to
+            // cancel; clearing an already-clear flag is a no-op.
+            cancel_at_period_end: false,
             expand: ['latest_invoice'],
           },
           { idempotencyKey: input.idempotencyKey },
@@ -356,6 +366,15 @@ export class StripePaymentGateway implements PaymentGateway {
       if (typeof start !== 'number' || typeof end !== 'number' || !livePriceId) {
         logError('billing.change_plan_missing_period', { subscriptionId: input.subscriptionId });
         return failure('SERVICE_UNAVAILABLE');
+      }
+
+      // The confirmed downgrade also resumes a scheduled cancellation. Clear
+      // it before the new schedule so a schedule failure leaves a live
+      // subscription the caller can retry, not one that still cancels.
+      if (input.resume) {
+        await this.client.subscriptions.update(input.subscriptionId, {
+          cancel_at_period_end: false,
+        });
       }
 
       const schedule = await this.createSchedule(input);
@@ -385,6 +404,188 @@ export class StripePaymentGateway implements PaymentGateway {
       );
 
       return success({ status: 'scheduled' });
+    } catch (error) {
+      return stripeFailure(error);
+    }
+  }
+
+  /**
+   * The live subscription, its single plan item and the plan Stripe actually
+   * bills. The preview and the confirmed change validate the same three
+   * things: ownership, one item, and the current plan matching the caller's
+   * expectation. `alreadyTarget` says Stripe bills the target already.
+   */
+  private async resolveLivePlanItem(
+    subscriptionId: string,
+    customerId: string,
+    currentPlanKey: string,
+    targetPriceId: string,
+  ): Promise<
+    ServiceResult<{
+      subscription: Stripe.Subscription;
+      item: Stripe.SubscriptionItem;
+      livePriceId: string;
+      alreadyTarget: boolean;
+    }>
+  > {
+    const owned = await this.subscriptionOwnedBy(subscriptionId, customerId);
+    if (isFailure(owned)) return owned;
+    const subscription = owned.data;
+
+    // The MVP bills one plan item per subscription (D4). A second item means
+    // the local model cannot represent the subscription, so fail closed.
+    const item = subscription.items.data.at(0);
+    if (!item || subscription.items.data.length !== 1) {
+      logError('billing.change_plan_multi_item', {
+        subscriptionId,
+        itemCount: subscription.items.data.length,
+      });
+      return failure('SERVICE_UNAVAILABLE');
+    }
+
+    const livePriceId = item.price.id;
+    if (livePriceId === targetPriceId) {
+      return success({ subscription, item, livePriceId, alreadyTarget: true });
+    }
+
+    // The live price must still be the plan the caller thinks it is.
+    const currentPrice = await this.repository.findPriceById(livePriceId, this.livemode);
+    if (isFailure(currentPrice)) return currentPrice;
+    const livePlanKey = await this.planKeyForLivePrice(
+      livePriceId,
+      currentPrice.data,
+      subscription,
+    );
+    if (livePlanKey !== currentPlanKey) {
+      logError('billing.subscription_plan_mismatch', {
+        subscriptionId,
+        expected: currentPlanKey,
+        actual: livePlanKey,
+      });
+      return failure('CONFLICT');
+    }
+
+    return success({ subscription, item, livePriceId, alreadyTarget: false });
+  }
+
+  /**
+   * Read-only preview of the change `changePlan` would apply (#662 Q7).
+   *
+   * An upgrade previews the same item, anchor reset and `always_invoice`
+   * proration through `invoices.createPreview`, so Stripe computes the amount
+   * due today. A downgrade schedules at the period end and charges nothing
+   * today, so it makes no invoice call. Nothing is written here.
+   */
+  async previewChange(input: PreviewChangeInput): Promise<ServiceResult<ChangePlanPreview>> {
+    try {
+      const live = await this.resolveLivePlanItem(
+        input.subscriptionId,
+        input.customerId,
+        input.currentPlanKey,
+        input.targetPriceId,
+      );
+      if (isFailure(live)) return live;
+      const { subscription, item, alreadyTarget } = live.data;
+
+      const currency = subscription.currency.toUpperCase();
+      const scheduleId = scheduleIdOf(subscription);
+      const replacesPendingPlanKey = scheduleId ? input.pendingPlanKey : null;
+
+      // A stale mirror may still name the plan Stripe already bills; that
+      // change is already effective and costs nothing.
+      if (alreadyTarget) {
+        return success({
+          direction: input.direction,
+          currentPlanKey: input.currentPlanKey,
+          targetPlanKey: input.targetPlanKey,
+          amountDue: 0,
+          currency,
+          effectiveAt: this.now().toISOString(),
+          resumesAtPeriodEnd: input.resume,
+          replacesPendingPlanKey: null,
+          blockedBySchedule: false,
+        });
+      }
+
+      if (input.direction === 'downgrade') {
+        const end = item.current_period_end;
+        if (typeof end !== 'number') {
+          logError('billing.change_plan_missing_period', {
+            subscriptionId: input.subscriptionId,
+          });
+          return failure('SERVICE_UNAVAILABLE');
+        }
+
+        return success({
+          direction: 'downgrade',
+          currentPlanKey: input.currentPlanKey,
+          targetPlanKey: input.targetPlanKey,
+          amountDue: 0,
+          currency,
+          effectiveAt: new Date(end * 1000).toISOString(),
+          resumesAtPeriodEnd: input.resume,
+          replacesPendingPlanKey,
+          blockedBySchedule: false,
+        });
+      }
+
+      let invoice: Stripe.Invoice;
+      try {
+        invoice = await this.client.invoices.createPreview({
+          customer: input.customerId,
+          subscription: input.subscriptionId,
+          subscription_details: {
+            items: [{ id: item.id, price: input.targetPriceId }],
+            proration_behavior: 'always_invoice',
+            billing_cycle_anchor: { type: 'now' },
+            // A schedule owns the cancellation behaviour; sending the flag
+            // makes Stripe reject the whole preview. The confirmed change
+            // releases the schedule first, so the amount is unchanged.
+            ...(scheduleId ? {} : { cancel_at_period_end: false }),
+          },
+        });
+      } catch (error) {
+        if (scheduleId && isScheduleCancellationRefusal(error)) {
+          const end = typeof item.current_period_end === 'number' ? item.current_period_end : null;
+          logWarn('billing.preview_blocked_by_schedule', {
+            subscriptionId: input.subscriptionId,
+            scheduleId,
+          });
+          return success({
+            direction: 'upgrade',
+            currentPlanKey: input.currentPlanKey,
+            targetPlanKey: input.targetPlanKey,
+            amountDue: 0,
+            currency,
+            effectiveAt:
+              end === null ? this.now().toISOString() : new Date(end * 1000).toISOString(),
+            resumesAtPeriodEnd: input.resume,
+            replacesPendingPlanKey,
+            blockedBySchedule: true,
+          });
+        }
+        return stripeFailure(error);
+      }
+
+      const effectiveAt = targetLineStart(invoice, input.targetPriceId);
+      if (!effectiveAt) {
+        logError('billing.preview_effective_date_missing', {
+          subscriptionId: input.subscriptionId,
+        });
+        return failure('SERVICE_UNAVAILABLE');
+      }
+
+      return success({
+        direction: 'upgrade',
+        currentPlanKey: input.currentPlanKey,
+        targetPlanKey: input.targetPlanKey,
+        amountDue: invoice.amount_due,
+        currency: invoice.currency.toUpperCase(),
+        effectiveAt,
+        resumesAtPeriodEnd: input.resume,
+        replacesPendingPlanKey,
+        blockedBySchedule: false,
+      });
     } catch (error) {
       return stripeFailure(error);
     }
