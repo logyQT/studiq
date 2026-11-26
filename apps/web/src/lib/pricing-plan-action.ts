@@ -15,6 +15,12 @@ export type PlanAction = 'none' | 'register' | 'current' | 'checkout' | 'change-
  * `hasActivePlan` is tri-state: `null` means the plan read is still pending or
  * failed. A failed read must not claim the reader has no subscription, so the
  * row prints no action until the answer is known (the prices stay).
+ *
+ * The predicate order is `contact → register → current → null → hasActivePlan →
+ * isFree → checkout`. A subscriber's free row is a downgrade, not a second
+ * checkout, so `hasActivePlan` sits above `isFree`; a reader with no
+ * subscription keeps `none` on a free row, because a checkout there would buy
+ * nothing.
  */
 export function pricingPlanAction(input: {
   signedIn: boolean;
@@ -27,9 +33,11 @@ export function pricingPlanAction(input: {
   if (input.contactOnly) return 'contact';
   if (!input.signedIn) return 'register';
   if (input.isCurrent) return 'current';
-  // A different free row is not a subscription the reader changes.
-  if (input.isFree) return 'none';
   if (input.hasActivePlan === null) return 'none';
+  // A subscriber moves between plans on the billing page: a free row is their
+  // downgrade, and the server refuses a second subscription.
   if (input.hasActivePlan) return 'change-plan';
+  // A reader with no subscription has nothing to check out on a free row.
+  if (input.isFree) return 'none';
   return 'checkout';
 }

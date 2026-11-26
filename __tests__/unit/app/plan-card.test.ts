@@ -36,6 +36,15 @@ const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
   { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
+/** The organization grid: a free tier, the recommended Hub and sales-led Campus. */
+const ORGANIZATION_LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+  { key: 'launch', name: 'StudiQ Launch', priceMonthly: 0 },
+  { key: 'hub', name: 'StudiQ Hub', priceMonthly: 29900 },
+  { key: 'campus', name: 'StudiQ Campus', priceMonthly: 69900 },
+];
+
+const ALL_PLANS = [...LADDER, ...ORGANIZATION_LADDER];
+
 interface CardOptions {
   planKey?: string;
   isCurrentPlan?: boolean;
@@ -49,7 +58,7 @@ function cardElement({
   signedIn = true,
   hasActivePlan,
 }: CardOptions) {
-  const fixture = LADDER.find((candidate) => candidate.key === planKey) ?? LADDER[2];
+  const fixture = ALL_PLANS.find((candidate) => candidate.key === planKey) ?? LADDER[2];
   return createElement(PlanCard, {
     plan: plan(fixture),
     isCurrentPlan,
@@ -58,6 +67,36 @@ function cardElement({
     hasActivePlan,
     billingHref: '/app/billing',
   });
+}
+
+function gridMarkup(
+  ladder: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>>,
+  {
+    isCurrentKey,
+    hasActivePlan = false,
+  }: { isCurrentKey?: string; hasActivePlan?: boolean | null } = {},
+): string {
+  return renderToStaticMarkup(
+    createElement(
+      NextIntlClientProvider,
+      { locale, messages: pl, timeZone: 'UTC' },
+      createElement(
+        'div',
+        null,
+        ...ladder.map((fixture) =>
+          createElement(PlanCard, {
+            key: fixture.key,
+            plan: plan(fixture),
+            isCurrentPlan: fixture.key === isCurrentKey,
+            user: { id: 'u-1' },
+            t,
+            hasActivePlan,
+            billingHref: '/app/billing',
+          }),
+        ),
+      ),
+    ),
+  );
 }
 
 function render(options: CardOptions): string {
@@ -77,6 +116,16 @@ function actionClasses(markup: string): string[] {
 
 function toneTokens(classes: string): string[] {
   return classes.split(/\s+/);
+}
+
+/** `href` → class list for every link the markup renders. */
+function linkClasses(markup: string): Map<string, string> {
+  return new Map(
+    [...markup.matchAll(/<a\b([^>]*)>/g)].map((match) => [
+      /\bhref="([^"]*)"/.exec(match[1])?.[1] ?? '',
+      /\bclass="([^"]*)"/.exec(match[1])?.[1] ?? '',
+    ]),
+  );
 }
 
 describe('PlanCard action', () => {
@@ -126,6 +175,38 @@ describe('PlanCard action', () => {
     expect(markup).not.toContain('href="/app/billing"');
   });
 
+  it('sends the subscriber’s free card to the billing downgrade', () => {
+    // The free card is a downgrade for a subscriber, so it goes to the billing
+    // page rather than back into the app (#1523).
+    const markup = render({ planKey: 'base', hasActivePlan: true });
+
+    expect(markup).toContain('href="/app/billing"');
+    expect(markup).toContain(t('cta_change_plan'));
+    expect(markup).not.toMatch(/href="\/app"/);
+  });
+
+  it('keeps the free plan the reader owns disabled and current', () => {
+    const markup = render({ planKey: 'base', isCurrentPlan: true, hasActivePlan: true });
+
+    expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
+    expect(markup).not.toMatch(/href="\/app/);
+  });
+
+  it('keeps the Campus contact action quiet and Hub the grid’s only signal', () => {
+    const markup = gridMarkup(ORGANIZATION_LADDER);
+    const links = linkClasses(markup);
+    const contact = links.get('/contact');
+
+    // The sales link keeps the quiet fill; only the recommended Hub is signal.
+    expect(contact).toBeDefined();
+    expect(toneTokens(contact ?? '')).toContain('border-input');
+    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+
+    const classes = actionClasses(markup);
+    expect(classes.filter((action) => toneTokens(action).includes('bg-signal'))).toHaveLength(1);
+    expect([...links.values()].filter((c) => toneTokens(c).includes('bg-signal'))).toHaveLength(0);
+  });
+
   it('gives the recommended paid card the single signal fill', () => {
     const classes = actionClasses(render({ planKey: 'ace', hasActivePlan: false }));
 
@@ -162,28 +243,7 @@ describe('PlanCard action', () => {
   });
 
   it('shares one control class and one signal fill across the whole grid', () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        NextIntlClientProvider,
-        { locale, messages: pl, timeZone: 'UTC' },
-        createElement(
-          'div',
-          null,
-          ...LADDER.map((fixture) =>
-            createElement(PlanCard, {
-              key: fixture.key,
-              plan: plan(fixture),
-              isCurrentPlan: fixture.key === 'base',
-              user: { id: 'u-1' },
-              t,
-              hasActivePlan: false,
-              billingHref: '/app/billing',
-            }),
-          ),
-        ),
-      ),
-    );
-    const classes = actionClasses(markup);
+    const classes = actionClasses(gridMarkup(LADDER, { isCurrentKey: 'base' }));
 
     expect(classes).toHaveLength(LADDER.length);
     for (const action of classes) {

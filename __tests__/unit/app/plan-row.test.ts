@@ -36,6 +36,15 @@ const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
   { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
+/** The organization ladder: a free tier, the recommended Hub and sales-led Campus. */
+const ORGANIZATION_LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+  { key: 'launch', name: 'StudiQ Launch', priceMonthly: 0 },
+  { key: 'hub', name: 'StudiQ Hub', priceMonthly: 29900 },
+  { key: 'campus', name: 'StudiQ Campus', priceMonthly: 69900 },
+];
+
+const ALL_PLANS = [...LADDER, ...ORGANIZATION_LADDER];
+
 interface RowOptions {
   planKey?: string;
   isCurrent?: boolean;
@@ -49,7 +58,7 @@ function rowElement({
   signedIn = true,
   hasActivePlan,
 }: RowOptions) {
-  const fixture = LADDER.find((candidate) => candidate.key === planKey);
+  const fixture = ALL_PLANS.find((candidate) => candidate.key === planKey);
   return createElement(PlanRow, {
     plan: fixture ? plan(fixture) : plan(),
     isCurrent,
@@ -57,6 +66,35 @@ function rowElement({
     hasActivePlan,
     billingHref: '/app/billing',
   });
+}
+
+function ladderMarkup(
+  ladder: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>>,
+  {
+    isCurrentKey,
+    hasActivePlan = false,
+  }: { isCurrentKey?: string; hasActivePlan?: boolean | null } = {},
+): string {
+  return renderToStaticMarkup(
+    createElement(
+      NextIntlClientProvider,
+      { locale, messages: pl, timeZone: 'UTC' },
+      createElement(
+        'ul',
+        null,
+        ...ladder.map((fixture) =>
+          createElement(PlanRow, {
+            key: fixture.key,
+            plan: plan(fixture),
+            isCurrent: fixture.key === isCurrentKey,
+            signedIn: true,
+            hasActivePlan,
+            billingHref: '/app/billing',
+          }),
+        ),
+      ),
+    ),
+  );
 }
 
 function render(options: RowOptions): string {
@@ -76,6 +114,16 @@ function actionClasses(markup: string): string[] {
 
 function toneTokens(classes: string): string[] {
   return classes.split(/\s+/);
+}
+
+/** `href` → class list for every link the markup renders. */
+function linkClasses(markup: string): Map<string, string> {
+  return new Map(
+    [...markup.matchAll(/<a\b([^>]*)>/g)].map((match) => [
+      /\bhref="([^"]*)"/.exec(match[1])?.[1] ?? '',
+      /\bclass="([^"]*)"/.exec(match[1])?.[1] ?? '',
+    ]),
+  );
 }
 
 describe('PlanRow action', () => {
@@ -143,28 +191,43 @@ describe('PlanRow action', () => {
     expect(toneTokens(classes[0])).not.toContain('bg-signal');
   });
 
-  it('shares one control class and one signal fill across the whole ladder', () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        NextIntlClientProvider,
-        { locale, messages: pl, timeZone: 'UTC' },
-        createElement(
-          'ul',
-          null,
-          ...LADDER.map((fixture) =>
-            createElement(PlanRow, {
-              key: fixture.key,
-              plan: plan(fixture),
-              isCurrent: fixture.key === 'base',
-              signedIn: true,
-              hasActivePlan: false,
-              billingHref: '/app/billing',
-            }),
-          ),
-        ),
-      ),
-    );
+  it('sends the subscriber’s free row to the billing downgrade', () => {
+    const markup = render({ planKey: 'base', hasActivePlan: true });
+
+    expect(markup).toContain('href="/app/billing"');
+    expect(markup).toContain(t('cta_change_plan'));
+  });
+
+  it('keeps the Campus contact action quiet and Hub the ladder’s only signal', () => {
+    const markup = ladderMarkup(ORGANIZATION_LADDER);
+    const links = linkClasses(markup);
+    const contact = links.get('/contact');
+
+    // Campus is a conversation, not a checkout: the sales link never takes the
+    // recommended plan's fill, even beside it.
+    expect(contact).toBeDefined();
+    expect(toneTokens(contact ?? '')).toContain('border-input');
+    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+
+    // The one signal is Hub's checkout button; no link carries the fill.
     const classes = actionClasses(markup);
+    const signals = classes.filter((action) => toneTokens(action).includes('bg-signal'));
+    expect(signals).toHaveLength(1);
+    expect([...links.values()].filter((c) => toneTokens(c).includes('bg-signal'))).toHaveLength(0);
+  });
+
+  it('keeps the contact action quiet for a subscriber', () => {
+    const contact = linkClasses(ladderMarkup(ORGANIZATION_LADDER, { hasActivePlan: true })).get(
+      '/contact',
+    );
+
+    expect(contact).toBeDefined();
+    expect(toneTokens(contact ?? '')).toContain('border-input');
+    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+  });
+
+  it('shares one control class and one signal fill across the whole ladder', () => {
+    const classes = actionClasses(ladderMarkup(LADDER, { isCurrentKey: 'base' }));
 
     expect(classes).toHaveLength(LADDER.length);
     for (const action of classes) {
