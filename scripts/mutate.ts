@@ -30,9 +30,13 @@
  *
  * `--name` is the test's exact title. vitest treats `-t` as a regex, so the
  * title is escaped and anchored before it reaches vitest: a title with
- * parentheses, brackets or `+` is a literal, and it cannot match a longer
- * title. `--name-regex` passes a raw `-t` pattern through unchanged, for a
- * family of titles; pass exactly one of the two.
+ * parentheses, brackets or `+` is a literal. vitest matches `-t` against the
+ * full name, so the filter is `^(?:.* > )?<title>$`: `--name` matches the title
+ * itself or a full name whose trailing segment is that title (`suite > title`).
+ * Two tests with the same title in different suites both match — the tool
+ * reports `matched N tests` and the caller disambiguates with the full name.
+ * `--name-regex` passes a raw `-t` pattern through unchanged, for a family of
+ * titles; pass exactly one of the two.
  *
  * `--spec` reads a JSON array of
  * `{ "file", "find", "replace", "test", "name" | "nameRegex", "all"? }` — one
@@ -124,9 +128,11 @@ const HELP = `mutate — break one line, run one named test, revert
   bun scripts/mutate.ts --spec <mutations.json> [--json]
 
   --find must match exactly once in the file, or pass --all.
-  --name is the exact test title: regex metacharacters are literal, and the
-  title is anchored, so it cannot match a longer title or a title that contains
-  it. --name-regex is a raw vitest -t pattern. Pass exactly one of the two.
+  --name is the test title: regex metacharacters are literal. It matches the
+  title itself or a full name whose trailing segment is that title (suite >
+  title). Two tests with the same title in different suites report "matched N
+  tests" — pass the full name to disambiguate. --name-regex is a raw vitest -t
+  pattern. Pass exactly one of the two.
   The mutated file must be tracked by git: a mutation needs a pre-image to revert.
   After a KILLED the test is re-run unmutated; a red re-run is ERROR (a flake).
   In --spec mode a row that comes back ERROR does not stop the table.

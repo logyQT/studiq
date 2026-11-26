@@ -48,8 +48,11 @@ bun run mutate -- --spec .tmp/mutations.json --json
   that actually ran in the run that decided the outcome.
 - `--name` is the test's **exact title**. vitest treats `-t` as a regex, so the
   tool escapes every metacharacter and anchors the title: `clamps a (negative)
-  value` is a literal, and it cannot match a longer title or one that merely
-  contains it. `--name-regex <pattern>` passes a raw `-t` pattern through
+  value` is a literal. vitest matches `-t` against the full name, so `--name`
+  matches the title itself or a full name whose trailing segment is that title
+  (`suite > title`). Two tests with the same title in different suites both
+  match: the tool reports `matched N tests` and the caller disambiguates with the
+  full name. `--name-regex <pattern>` passes a raw `-t` pattern through
   unchanged, for a family of titles; pass exactly one of the two. A `--spec` row
   uses `name` (exact) or `nameRegex` (pattern) the same way.
 - `--json` writes NDJSON on stdout and progress on stderr, so the table is

@@ -63,6 +63,23 @@ describe('clamp', () => {
 });
 `;
 
+/** The same title in two suites: a bare title cannot name one of them. */
+const DUPLICATE = `import { describe, expect, it } from 'vitest';
+import { clamp } from '@fixture/guard';
+
+describe('clamp lower bound', () => {
+  it('clamps a negative value to zero', () => {
+    expect(clamp(-5)).toBe(0);
+  });
+});
+
+describe('clamp upper bound', () => {
+  it('clamps a negative value to zero', () => {
+    expect(clamp(-5)).toBe(0);
+  });
+});
+`;
+
 /**
  * The subject is a separate module from the test so the mutation lands in
  * production code, and the specifier is aliased so this file contains no
@@ -184,7 +201,7 @@ function commit(root: string, message = 'fixture'): void {
   git(root, 'commit', '-qm', message);
 }
 
-function fixture(): string {
+function fixture(file = 'src/guard.test.ts', source = TEST): string {
   mkdirSync(TMP, { recursive: true });
   const root = mkdtempSync(join(TMP, 'mutate-'));
   dirs.push(root);
@@ -192,7 +209,7 @@ function fixture(): string {
   // Vite writes its dependency cache into the fixture's node_modules.
   write(root, '.gitignore', 'node_modules/\n');
   write(root, 'src/guard.ts', GUARD);
-  write(root, 'src/guard.test.ts', TEST);
+  write(root, file, source);
   git(root, 'init', '-q');
   commit(root);
   return root;
@@ -346,6 +363,34 @@ describe('scripts/mutate.ts', () => {
     expect(line?.outcome).toBe('ERROR');
     expect(line?.executed).toBe(0);
     expect(line?.detail).toMatch(/no test matched/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('reports a title that matches two suites as ERROR with both tests executed', () => {
+    // `--name` matches the trailing segment of the full name, so one title in
+    // two suites names two tests. A kill credited to two tests is not proof,
+    // and the caller disambiguates with the full name.
+    const root = fixture('src/duplicate.test.ts', DUPLICATE);
+
+    const result = mutate(root, [
+      '--file',
+      'src/guard.ts',
+      '--find',
+      'if (value < 0) return 0;',
+      '--replace',
+      'if (value < -10) return 0;',
+      '--test',
+      'src/duplicate.test.ts',
+      '--name',
+      'clamps a negative value to zero',
+      '--json',
+    ]);
+
+    expect(result.status).toBe(1);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('ERROR');
+    expect(line?.executed).toBe(2);
+    expect(line?.detail).toMatch(/matched 2 tests .*pass the exact full title/);
     expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
   }, 60_000);
 
@@ -507,6 +552,35 @@ describe('scripts/mutate.ts', () => {
     ]);
     expect(gitStatus(root)).toBe('');
   }, 120_000);
+
+  it('rejects a --spec row that names its test twice', () => {
+    // A row with both keys has no silent winner: exact and pattern selectors
+    // disagree, so the table is wrong and the whole spec is refused.
+    const root = fixture();
+    const specDir = mkdtempSync(join(TMP, 'mutate-spec-'));
+    dirs.push(specDir);
+    const spec = join(specDir, 'mutations.json');
+    writeFileSync(
+      spec,
+      JSON.stringify([
+        {
+          file: 'src/guard.ts',
+          find: 'if (value < 0) return 0;',
+          replace: 'if (value < -10) return 0;',
+          test: 'src/guard.test.ts',
+          name: 'clamps a negative value to zero',
+          nameRegex: 'clamps a negative value to z.ro$',
+        },
+      ]),
+    );
+
+    const result = mutate(root, ['--spec', spec, '--json']);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/spec\[0\]: name and nameRegex are mutually exclusive/);
+    expect(result.out).toBe('');
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
 
   it('refuses to mutate a test file', () => {
     const root = fixture();
