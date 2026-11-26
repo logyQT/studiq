@@ -160,3 +160,22 @@ export function invoiceHistoryPath(accountType: AccountType): string | null {
   if (accountType === AccountType.EDUCATOR) return '/edu/account/payments';
   return null;
 }
+
+/**
+ * The `/app/billing` and `/edu/billing` surfaces read and act on the caller's
+ * own subscription, even when they may bill the active organization
+ * (#1493 follow-up). `/manage/billing` asks for no scope and keeps the
+ * org-first owner.
+ */
+export function billingScopeUrl(url: string, personal: boolean): string {
+  if (!personal) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}scope=personal`;
+}
+
+/** A billing action body that selects the caller's own subscription. */
+export function withPersonalScope<T extends object>(
+  body: T,
+  personal: boolean,
+): T & { scope?: 'personal' } {
+  return personal ? { ...body, scope: 'personal' } : body;
+}

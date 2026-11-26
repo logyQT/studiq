@@ -80,7 +80,7 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : null;
   const isManager = accountType === 'manager';
   const currentPlanKey = organization && isManager ? 'plan' : 'personal-plan';
-  const { data: currentPlan } = useApiQuery<PlanInfo>({
+  const { data: currentPlan, isSuccess: planLoaded } = useApiQuery<PlanInfo>({
     queryKey: ['me', currentPlanKey],
     url: `/api/v1/me/${currentPlanKey}`,
     enabled: !!user,
@@ -91,13 +91,23 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
    * subscription per owner); the row sends that reader to the billing page,
    * which owns the plan change. A free plan — including the organization
    * ladder's `launch` — is not a subscription the reader changes.
+   *
+   * `null` until the plan read succeeds: a pending or failed read must not
+   * turn a subscriber into a checkout, so the row prints no action rather than
+   * guessing. The badge and prices still render.
    */
-  const hasActivePlan = (currentPlan?.priceMonthly ?? 0) > 0;
-  const billingHref = organization
-    ? '/manage/billing'
-    : accountType === 'educator'
-      ? '/edu/billing'
-      : '/app/billing';
+  const hasActivePlan: boolean | null = planLoaded ? currentPlan.priceMonthly > 0 : null;
+
+  /*
+   * The destination follows the plan the reader owns, not the ladder on screen:
+   * an organization plan is changed on the org dashboard, a personal plan on the
+   * reader's own billing page. The plan's scope is the authority; the ladder the
+   * reader opened must not redirect an org plan to a personal surface, or a
+   * personal plan to the org dashboard (#1493 follow-up).
+   */
+  const personalBillingHref = accountType === 'educator' ? '/edu/billing' : '/app/billing';
+  const billingHref =
+    currentPlan?.scope === 'organization' ? '/manage/billing' : personalBillingHref;
 
   const ladders = getPlanLadders(plans ?? []);
 

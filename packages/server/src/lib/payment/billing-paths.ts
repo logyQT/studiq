@@ -13,3 +13,13 @@ export function billingPath(accountType: AccountType): string {
   if (accountType === AccountType.EDUCATOR) return '/edu/billing';
   return '/app/billing';
 }
+
+/**
+ * The personal billing surface for an account type. A manager reads the same
+ * own-subscription page as a student when the subscription is personal; the
+ * organization dashboard is `/manage/billing`.
+ */
+export function personalBillingPath(accountType: AccountType): string {
+  if (accountType === AccountType.EDUCATOR) return '/edu/billing';
+  return '/app/billing';
+}

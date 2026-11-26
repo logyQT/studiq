@@ -12,6 +12,7 @@ import type { NextRequest } from 'next/server';
  * customer/subscription from the authenticated mirror. Detaching the provider
  * schedule never writes an entitlement, so the plan only changes when a later
  * webhook says it should. Same per-user burst guard as the other money routes.
+ * `?scope=personal` selects the caller's own subscription on a personal surface.
  */
 const rateLimiter = createRateLimiter(60_000, 10);
 
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest) {
     const limit = rateLimiter.check(ctx.userId);
     if (!limit.allowed) return rateLimitResponse(limit);
 
-    return toNextResponse(await billingController.releaseScheduledPlan(ctx));
+    return toNextResponse(
+      await billingController.releaseScheduledPlan(ctx, {
+        scope: req.nextUrl.searchParams.get('scope') ?? undefined,
+      }),
+    );
   });
 }

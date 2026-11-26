@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { pricingPlanAction, type PlanAction } from '@/lib/pricing-plan-action';
 
-const reader = {
+type PlanActionInput = Parameters<typeof pricingPlanAction>[0];
+
+const reader: PlanActionInput = {
   signedIn: false,
   isCurrent: false,
   isFree: false,
@@ -9,7 +11,7 @@ const reader = {
   hasActivePlan: false,
 };
 
-function action(overrides: Partial<typeof reader>): PlanAction {
+function action(overrides: Partial<PlanActionInput>): PlanAction {
   return pricingPlanAction({ ...reader, ...overrides });
 }
 
@@ -27,6 +29,12 @@ describe('pricingPlanAction', () => {
     expect(action({ signedIn: true, isFree: true })).toBe('none');
   });
 
+  it('prints no action on a free row even when the reader pays for another plan', () => {
+    // The free row is not a subscription to change: the subscriber's action is
+    // the change-plan link on the paid rows, never a free-row checkout.
+    expect(action({ signedIn: true, isFree: true, hasActivePlan: true })).toBe('none');
+  });
+
   it('prints no action on the row of the plan the reader owns', () => {
     expect(action({ signedIn: true, isCurrent: true, hasActivePlan: true })).toBe('none');
   });
@@ -37,6 +45,12 @@ describe('pricingPlanAction', () => {
 
   it('starts a checkout for a signed-in reader without a subscription', () => {
     expect(action({ signedIn: true })).toBe('checkout');
+  });
+
+  it('prints no action while the plan read is pending or failed', () => {
+    // `null` is "not known yet", not "no subscription": a failed read must not
+    // turn a subscriber into a checkout that the server refuses.
+    expect(action({ signedIn: true, hasActivePlan: null })).toBe('none');
   });
 
   it('keeps contact above the signed-out rule', () => {

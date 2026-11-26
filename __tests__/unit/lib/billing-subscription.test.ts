@@ -5,6 +5,7 @@ import {
   activatedPlanLabel,
   alternativePlans,
   billingPlanFamily,
+  billingScopeUrl,
   billingStatusKey,
   hasProviderActions,
   invoiceHistoryPath,
@@ -13,6 +14,7 @@ import {
   periodRow,
   planChangeFeedback,
   seatsSummary,
+  withPersonalScope,
 } from '@/lib/billing-subscription';
 import { describe, expect, it } from 'vitest';
 
@@ -272,5 +274,36 @@ describe('invoiceHistoryPath', () => {
     expect(invoiceHistoryPath(AccountType.STUDENT)).toBe('/app/account/payments');
     expect(invoiceHistoryPath(AccountType.EDUCATOR)).toBe('/edu/account/payments');
     expect(invoiceHistoryPath(AccountType.MANAGER)).toBeNull();
+  });
+});
+
+describe('billingScopeUrl', () => {
+  it('asks for the caller’s own row on a personal surface only', () => {
+    expect(billingScopeUrl('/api/v1/billing/subscription', true)).toBe(
+      '/api/v1/billing/subscription?scope=personal',
+    );
+    expect(billingScopeUrl('/api/v1/billing/subscription', false)).toBe(
+      '/api/v1/billing/subscription',
+    );
+  });
+
+  it('appends to an existing query string', () => {
+    expect(billingScopeUrl('/api/v1/stripe/portal?locale=pl', true)).toBe(
+      '/api/v1/stripe/portal?locale=pl&scope=personal',
+    );
+  });
+});
+
+describe('withPersonalScope', () => {
+  it('adds the personal scope to a billing action body', () => {
+    expect(withPersonalScope({ planKey: 'ace' }, true)).toEqual({
+      planKey: 'ace',
+      scope: 'personal',
+    });
+    expect(withPersonalScope({ cancel: true }, true)).toEqual({ cancel: true, scope: 'personal' });
+  });
+
+  it('leaves the body untouched off a personal surface', () => {
+    expect(withPersonalScope({ planKey: 'ace' }, false)).toEqual({ planKey: 'ace' });
   });
 });

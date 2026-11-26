@@ -13,8 +13,11 @@ interface PlanRowProps {
   plan: PlanInfo;
   isCurrent: boolean;
   signedIn: boolean;
-  /** The reader already owns a paid subscription, so checkout would be refused. */
-  hasActivePlan: boolean;
+  /**
+   * The reader owns a paid subscription, so checkout would be refused. `null`
+   * while that answer is pending or failed: the row then prints no action.
+   */
+  hasActivePlan: boolean | null;
   /** Where a subscriber changes plan: their own billing page or the org's. */
   billingHref: string;
   /** Active organization; organization plans are bought for it. */

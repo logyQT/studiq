@@ -103,8 +103,14 @@ export class StripeController {
     }
 
     // The owner is resolved from `ctx` inside BillingService; the portal call
-    // requires `org.billing.manage` for an org owner and the customer mapping there.
-    const result = await this.billing.createPortalSession(ctx, parsed.data.locale ?? 'pl');
+    // requires `org.billing.manage` for an org owner and the customer mapping
+    // there. A personal surface names `scope=personal` to open the caller's own
+    // portal instead.
+    const result = await this.billing.createPortalSession(
+      ctx,
+      parsed.data.locale ?? 'pl',
+      parsed.data.scope === 'personal',
+    );
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

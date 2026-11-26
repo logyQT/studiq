@@ -125,6 +125,20 @@ describe('BillingService.releaseScheduledChange ("keep current plan")', () => {
     );
   });
 
+  it('releases the caller’s own schedule in personal mode even when they may bill the org', async () => {
+    await service.releaseScheduledChange(managerCtx, true);
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.releaseScheduledPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
+  });
+
   it('returns NOT_FOUND when there is no active subscription', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(success(null));
 

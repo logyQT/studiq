@@ -27,8 +27,20 @@ const data = vi.hoisted((): QueryData => ({
   subscription: undefined,
 }));
 
+const readUrls = vi.hoisted(() => ({ urls: [] as string[] }));
+
+const card = vi.hoisted(() => ({ personal: null as boolean | null }));
+
+vi.mock('@/components/billing/BillingSubscriptionCard', () => ({
+  BillingSubscriptionCard: ({ personal }: { personal?: boolean }) => {
+    card.personal = personal ?? false;
+    return null;
+  },
+}));
+
 vi.mock('@/hooks/use-api', () => ({
   useApiQuery: ({ url }: { url: string }) => {
+    readUrls.urls.push(url);
     if (url === '/api/v1/me/plan') return { data: data.plan, isLoading: false };
     if (url === '/api/v1/subscription-plans') return { data: data.plans };
     return { data: data.subscription, isError: false, refetch: () => {} };
@@ -63,7 +75,9 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key' | 'limits'>): 
   };
 }
 
-function render(): string {
+function render(personal = false): string {
+  readUrls.urls = [];
+  card.personal = null;
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
@@ -71,6 +85,7 @@ function render(): string {
       createElement(BillingPage, {
         accountType: AccountType.EDUCATOR,
         upgradePath: '/edu/upgrade',
+        personal,
       }),
     ),
   );
@@ -125,5 +140,20 @@ describe('BillingPage current-plan card', () => {
     expect(markup).toContain('Pro effective');
     expect(markup).not.toContain('tabular-nums');
     expect(markup).not.toContain(pt('feature_branding'));
+  });
+
+  it('reads the caller’s own subscription on the personal surface', () => {
+    render(true);
+
+    expect(readUrls.urls).toContain('/api/v1/billing/subscription?scope=personal');
+    expect(card.personal).toBe(true);
+  });
+
+  it('keeps the org-first read off the personal surface', () => {
+    render();
+
+    expect(readUrls.urls).toContain('/api/v1/billing/subscription');
+    expect(readUrls.urls).not.toContain('/api/v1/billing/subscription?scope=personal');
+    expect(card.personal).toBe(false);
   });
 });

@@ -481,6 +481,27 @@ describe('BillingService.getSubscription', () => {
     });
   });
 
+  it('reads the caller’s own row in personal mode even when they may bill the org', async () => {
+    reads = createReads({
+      findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
+    });
+    service = new BillingService(gateway, repository, reads, plans);
+
+    // `/app/billing` and `/edu/billing` are the personal surfaces: the same
+    // manager who reads the org row by default reads only their own row here.
+    await service.getSubscription(managerCtx, true);
+
+    expect(reads.findSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(reads.findLatestHostedInvoiceUrl).toHaveBeenCalledWith({
+      userId: 'u-9',
+      organizationId: null,
+      stripeSubscriptionId: 'sub_1',
+    });
+  });
+
   it('resolves a student holding org.billing.manage to the org row', async () => {
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
@@ -604,6 +625,21 @@ describe('BillingService.createPortalSession', () => {
       returnUrl: 'https://studiq.test/edu/billing',
       locale: 'en',
     });
+  });
+
+  it('opens the caller’s own portal and returns to the personal page in personal mode', async () => {
+    await service.createPortalSession(managerCtx, 'pl', true);
+
+    expect(repository.findCustomer).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.createPortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+        returnUrl: 'https://studiq.test/app/billing',
+      }),
+    );
   });
 
   it('resolves a manager without an organization as a personal owner, key or not', async () => {

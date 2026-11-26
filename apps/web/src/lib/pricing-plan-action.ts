@@ -8,19 +8,25 @@ export type PlanAction = 'none' | 'register' | 'checkout' | 'change-plan' | 'con
  * server refuses one subscription per owner — so their upgrade, downgrade and
  * proration belong to the billing page. The current plan's own row carries no
  * action: the badge says the reader already has it.
+ *
+ * `hasActivePlan` is tri-state: `null` means the plan read is still pending or
+ * failed. A failed read must not claim the reader has no subscription, so the
+ * row prints no action until the answer is known (the badge and prices stay).
  */
 export function pricingPlanAction(input: {
   signedIn: boolean;
   isCurrent: boolean;
   isFree: boolean;
   contactOnly: boolean;
-  hasActivePlan: boolean;
+  hasActivePlan: boolean | null;
 }): PlanAction {
   // Campus is a sales conversation in every state, including for a subscriber.
   if (input.contactOnly) return 'contact';
   if (!input.signedIn) return 'register';
+  // A free row is never a subscription the reader changes, even when they pay.
   if (input.isFree) return 'none';
   if (input.isCurrent) return 'none';
+  if (input.hasActivePlan === null) return 'none';
   if (input.hasActivePlan) return 'change-plan';
   return 'checkout';
 }

@@ -12,7 +12,7 @@ import { BillingPageShell, CurrentPlanCardHeader } from '@/components/billing/bi
 import { PlanUnionBadge } from '@/components/billing/plan-union-badge';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import { invoiceHistoryPath } from '@/lib/billing-subscription';
+import { billingScopeUrl, invoiceHistoryPath } from '@/lib/billing-subscription';
 import { getFeatureLabel } from '@/lib/pricing-features';
 import { getLimitLabel, getVisibleLimitKeys } from '@/lib/pricing-limits';
 import { invalidateAuthority } from '@/lib/query-cache';
@@ -22,6 +22,12 @@ interface BillingPageProps {
   accountType: AccountType;
   /** Dashboard the "upgrade" button sends the user to (`/app/upgrade`, `/edu/upgrade`). */
   upgradePath: string;
+  /**
+   * `/app/billing` and `/edu/billing` are the personal surfaces: the read and
+   * every action select the caller's own subscription, even when they may bill
+   * the active organization (#1493 follow-up).
+   */
+  personal?: boolean;
 }
 
 /**
@@ -29,7 +35,7 @@ interface BillingPageProps {
  * feature/limit breakdown, the invoice-history link and the subscription
  * actions. The organization dashboard has its own plan/seats read model.
  */
-export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
+export function BillingPage({ accountType, upgradePath, personal = false }: BillingPageProps) {
   const t = useTranslations('BillingPage');
   const pt = useTranslations('PricingPage');
   const locale = useLocale();
@@ -51,8 +57,8 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
     isError: subscriptionError,
     refetch: refetchSubscription,
   } = useApiQuery<BillingSubscriptionView>({
-    queryKey: billingKeys.subscription(),
-    url: '/api/v1/billing/subscription',
+    queryKey: billingKeys.subscription(undefined, personal ? 'personal' : null),
+    url: billingScopeUrl('/api/v1/billing/subscription', personal),
     enabled: !!user,
     staleTime: 0,
   });
@@ -164,6 +170,7 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
         }}
         plans={plans}
         accountType={accountType}
+        personal={personal}
         onChanged={() => {
           // A checkout changes the plan layer the resolver reads, so every
           // derived authority answer is stale, not just the plan badge.

@@ -11,12 +11,14 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   alternativePlans,
+  billingScopeUrl,
   billingStatusKey,
   hasProviderActions,
   invoiceHref,
   noActionsMessageKey,
   periodRow,
   planChangeFeedback,
+  withPersonalScope,
 } from '@/lib/billing-subscription';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
@@ -27,6 +29,8 @@ interface BillingSubscriptionCardProps {
   onRetry?: () => void;
   plans: PlanInfo[] | undefined;
   accountType: AccountType;
+  /** Personal surface (`/app/billing`, `/edu/billing`): act on the caller's own row. */
+  personal?: boolean;
   /** Re-read the shared model (and the plan) after a provider action. */
   onChanged: () => void;
 }
@@ -38,7 +42,9 @@ const APPLIED_REFRESH_MS = 2_500;
  * Provider actions shared by the three billing dashboards (#662 §7.4).
  *
  * Every action hits an authenticated endpoint that resolves the owner from the
- * request context; nothing here decides who owns the subscription. The read
+ * request context; nothing here decides who owns the subscription. On a
+ * personal surface (`personal`) the request names `scope: 'personal'`, so the
+ * endpoint selects the caller's own row instead of the active org's. The read
  * model is re-fetched after a mutation, and the plan itself only changes when
  * the webhook arrives.
  *
@@ -53,6 +59,7 @@ export function BillingSubscriptionCard({
   onRetry,
   plans,
   accountType,
+  personal = false,
   onChanged,
 }: BillingSubscriptionCardProps) {
   const t = useTranslations('BillingPage');
@@ -107,7 +114,9 @@ export function BillingSubscriptionCard({
   async function openPortal() {
     setBusy('portal');
     try {
-      const { url } = await apiGet<{ url: string }>(`/api/v1/stripe/portal?locale=${locale}`);
+      const { url } = await apiGet<{ url: string }>(
+        billingScopeUrl(`/api/v1/stripe/portal?locale=${locale}`, personal),
+      );
       window.location.href = url;
     } catch (error) {
       toast.error(
@@ -124,9 +133,10 @@ export function BillingSubscriptionCard({
     const cancel = !subscription?.cancelAtPeriodEnd;
     setBusy('cancel');
     try {
-      const result = await apiPost<{ cancelAtPeriodEnd: boolean }>('/api/v1/billing/cancel', {
-        cancel,
-      });
+      const result = await apiPost<{ cancelAtPeriodEnd: boolean }>(
+        '/api/v1/billing/cancel',
+        withPersonalScope({ cancel }, personal),
+      );
       toast.success(result.cancelAtPeriodEnd ? t('cancel_success') : t('resume_success'));
       onChanged();
     } catch {
@@ -140,7 +150,7 @@ export function BillingSubscriptionCard({
     setBusy('keep');
     try {
       const result = await apiPost<{ released: boolean }>(
-        '/api/v1/billing/release-scheduled-plan',
+        billingScopeUrl('/api/v1/billing/release-scheduled-plan', personal),
         {},
       );
       if (result.released) {
@@ -161,7 +171,10 @@ export function BillingSubscriptionCard({
   async function changePlan(planKey: string) {
     setBusy(planKey);
     try {
-      const result = await apiPost<ChangePlanResult>('/api/v1/billing/change-plan', { planKey });
+      const result = await apiPost<ChangePlanResult>(
+        '/api/v1/billing/change-plan',
+        withPersonalScope({ planKey }, personal),
+      );
       const feedback = planChangeFeedback(result);
 
       setPendingInvoiceUrl(feedback.hostedInvoiceUrl);

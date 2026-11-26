@@ -263,6 +263,34 @@ describe('BillingService.changePlan', () => {
     );
   });
 
+  it('changes the organization plan on the org owner by default', async () => {
+    await service.changePlan(managerCtx, 'hub');
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.changePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'org', orgId: 'org-1', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
+  });
+
+  it('changes the caller’s own plan in personal mode even when they may bill the org', async () => {
+    await service.changePlan(managerCtx, 'solo', true);
+
+    expect(repository.findActiveSubscription).toHaveBeenCalledWith(
+      { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      false,
+    );
+    expect(gateway.changePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: { type: 'user', userId: 'u-9', accountType: AccountType.MANAGER },
+      }),
+    );
+  });
+
   it('returns NOT_FOUND when the owner has no active subscription', async () => {
     vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(success(null));
 
