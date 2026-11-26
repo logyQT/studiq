@@ -86,6 +86,19 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
     enabled: !!user,
   });
 
+  /*
+   * A paid plan in hand means a second checkout would be refused (one active
+   * subscription per owner); the row sends that reader to the billing page,
+   * which owns the plan change. A free plan — including the organization
+   * ladder's `launch` — is not a subscription the reader changes.
+   */
+  const hasActivePlan = (currentPlan?.priceMonthly ?? 0) > 0;
+  const billingHref = organization
+    ? '/manage/billing'
+    : accountType === 'educator'
+      ? '/edu/billing'
+      : '/app/billing';
+
   const ladders = getPlanLadders(plans ?? []);
 
   const sections: Array<{
@@ -180,6 +193,8 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
                           plan={plan}
                           isCurrent={currentPlan?.key === plan.key}
                           signedIn={!!user}
+                          hasActivePlan={hasActivePlan}
+                          billingHref={billingHref}
                           orgId={activeOrg?.id}
                         />
                       ))}

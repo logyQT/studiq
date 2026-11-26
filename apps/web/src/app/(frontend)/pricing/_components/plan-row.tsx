@@ -6,12 +6,17 @@ import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { formatPlanPrice } from '@/lib/landing-pricing';
 import { ctaMessageKey, isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { pricingPlanAction } from '@/lib/pricing-plan-action';
 import { cn } from '@/lib/utils';
 
 interface PlanRowProps {
   plan: PlanInfo;
   isCurrent: boolean;
   signedIn: boolean;
+  /** The reader already owns a paid subscription, so checkout would be refused. */
+  hasActivePlan: boolean;
+  /** Where a subscriber changes plan: their own billing page or the org's. */
+  billingHref: string;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }
@@ -21,7 +26,14 @@ interface PlanRowProps {
  * not a card. The comparison tables are the feature surface, so no bullet list
  * repeats them here.
  */
-export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
+export function PlanRow({
+  plan,
+  isCurrent,
+  signedIn,
+  hasActivePlan,
+  billingHref,
+  orgId,
+}: PlanRowProps) {
   const t = useTranslations('PricingPage');
   const locale = useLocale();
 
@@ -36,6 +48,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
   const note = t.has(noteKey) ? t(noteKey) : null;
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
+  const action = pricingPlanAction({ signedIn, isCurrent, isFree, contactOnly, hasActivePlan });
 
   return (
     <li className="border-b border-border py-6 md:grid md:grid-cols-12 md:items-start md:gap-x-8">
@@ -75,7 +88,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
       </div>
 
       <div className="mt-4 md:col-span-2 md:col-start-11 md:row-start-1 md:mt-0 md:justify-self-end">
-        {contactOnly ? (
+        {action === 'contact' ? (
           /*
            * Campus is a 699 zł conversation, not a self-serve checkout, and the
            * label says so in both states: signing in must not turn a sales
@@ -84,30 +97,7 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
           <CtaButton href="/contact" tone="quiet" fullWidth className="whitespace-nowrap">
             {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
           </CtaButton>
-        ) : signedIn ? (
-          /*
-           * Every signed-in reader may buy any active personal plan since #1193.
-           * An organization plan still needs an org the caller may bill; the
-           * server decides and the button reports its refusal.
-           */
-          isFree ? null : (
-            <CheckoutButton
-              planKey={plan.key}
-              orgId={plan.scope === 'organization' ? orgId : undefined}
-              variant={recommended ? 'default' : 'outline'}
-              className={cn(
-                'h-11 w-full rounded-control px-6 text-sm font-semibold',
-                // The kit's outline edge is the decorative `--border` (1.32:1); a
-                // button identified by its edge needs `--input` (3.23:1).
-                recommended
-                  ? 'border-transparent bg-signal text-signal-foreground hover:bg-signal/90'
-                  : 'border-input',
-              )}
-            >
-              {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
-            </CheckoutButton>
-          )
-        ) : (
+        ) : action === 'register' ? (
           <CtaButton
             href="/register"
             tone={recommended ? 'signal' : 'quiet'}
@@ -116,7 +106,41 @@ export function PlanRow({ plan, isCurrent, signedIn, orgId }: PlanRowProps) {
           >
             {isFree ? t('cta_free') : t('cta_register')}
           </CtaButton>
-        )}
+        ) : action === 'change-plan' ? (
+          /*
+           * A second subscription is refused by the server, so the subscriber's
+           * upgrade, downgrade and proration run on the billing page, which owns
+           * the plan change.
+           */
+          <CtaButton
+            href={billingHref}
+            tone={recommended ? 'signal' : 'quiet'}
+            fullWidth
+            className="whitespace-nowrap"
+          >
+            {t('cta_change_plan')}
+          </CtaButton>
+        ) : action === 'checkout' ? (
+          /*
+           * The server decides whether an organization plan is billable by this
+           * caller; the button reports its refusal.
+           */
+          <CheckoutButton
+            planKey={plan.key}
+            orgId={plan.scope === 'organization' ? orgId : undefined}
+            variant={recommended ? 'default' : 'outline'}
+            className={cn(
+              'h-11 w-full rounded-control px-6 text-sm font-semibold',
+              // The kit's outline edge is the decorative `--border` (1.32:1); a
+              // button identified by its edge needs `--input` (3.23:1).
+              recommended
+                ? 'border-transparent bg-signal text-signal-foreground hover:bg-signal/90'
+                : 'border-input',
+            )}
+          >
+            {t.has(ctaKey) ? t(ctaKey) : t('cta_generic')}
+          </CheckoutButton>
+        ) : null}
       </div>
     </li>
   );
