@@ -25,7 +25,7 @@ AI włączone; skonfigurowany LLM_API_KEY. Bez klucza oznacz N/D.
 - UI notes (walk 2026-11-15): the counter reads „X/Y tokenów AI wykorzystanych
   dzisiaj" (tokens, not requests); „Wyjaśnij pojęcie" on the greeting is a canned
   local reply and the model is only asked once the user sends the question; the
-  thinking trace is a toggle labelled „Pokaż myślenie".
+  model's reasoning stays server-side, so there is no „Pokaż myślenie" toggle.
 
 ## Steps
 
@@ -36,6 +36,6 @@ AI włączone; skonfigurowany LLM_API_KEY. Bez klucza oznacz N/D.
 ## Expected result
 
 - Powitanie „Cześć … Jak mogę pomóc Ci w nauce?”, pole „Zapytaj Q”.
-- Odpowiedź strumieniowana; widoczna ikona „Pokaż myślenie”.
+- Odpowiedź strumieniowana; rozumowanie modelu pozostaje ukryte.
 - Na dole ostrzeżenie „Sztuczna inteligencja może popełniać błędy…”.
 - Licznik „X/Y zapytań użytych dzisiaj” (jeśli skonfigurowany).

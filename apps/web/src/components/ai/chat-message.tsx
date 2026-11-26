@@ -1,14 +1,11 @@
 'use client';
 
-import { AlertCircle, FileText, Sparkles } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { memo, useState } from 'react';
+import { AlertCircle, FileText } from 'lucide-react';
+import { memo } from 'react';
 import type { FlashcardData } from '@/components/ai/generated-cards';
 import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
 import { QuestionBlock } from '@/components/ai/question-block';
-import { ThinkingBlock } from '@/components/ai/thinking-block';
 import { ToolCallBlock } from '@/components/ai/tool-call-block';
-import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 import { cn } from '@/lib/utils';
@@ -35,12 +32,7 @@ function toFlashcardData(value: unknown): FlashcardData[] {
 export const ChatMessage = memo(
   function ChatMessageContent({ message, onAnswer, deckTarget }: ChatMessageProps) {
     const isUser = message.role === 'user';
-    const isThought = message.role === 'thought';
     const isToolCall = message.role === 'tool_call';
-
-    if (isThought) {
-      return <ThoughtMessage message={message} />;
-    }
 
     if (
       isToolCall &&
@@ -61,7 +53,6 @@ export const ChatMessage = memo(
               status={message.status === 'running' ? 'running' : 'complete'}
               args={message.args}
               result={message.toolResult}
-              durationMs={message.durationMs}
             />
           </div>
         </div>
@@ -70,9 +61,7 @@ export const ChatMessage = memo(
 
     const isStreaming = message.status === 'streaming';
     const isError = message.status === 'error';
-    const isThinking = message.status === 'thinking';
 
-    const hasThinkingTraces = message.thinkingTraces.length > 0;
     const isFlashcardResult = message.result?.type === 'flashcards';
     const result = message.result;
     const flashcardCards = toFlashcardData(result?.data);
@@ -104,10 +93,6 @@ export const ChatMessage = memo(
             </div>
           ) : (
             <MarkdownRenderer content={message.content} />
-          )}
-
-          {(isThinking || hasThinkingTraces) && (
-            <ThinkingBlock traces={message.thinkingTraces} isComplete={isComplete || isError} />
           )}
 
           {isFlashcardResult &&
@@ -167,34 +152,7 @@ export const ChatMessage = memo(
       a.error === b.error &&
       a.question?.id === b.question?.id &&
       a.question?.question === b.question?.question &&
-      a.question?.answered === b.question?.answered &&
-      a.thinkingTraces.length === b.thinkingTraces.length
+      a.question?.answered === b.question?.answered
     );
   },
 );
-
-function ThoughtMessage({ message }: { message: ChatMessageType }) {
-  const t = useTranslations('AiChatPage');
-  const [open, setOpen] = useState(false);
-
-  if (!message.content) return null;
-
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%] rounded-md border border-border/50 bg-muted/10 text-xs">
-        <CollapsibleToggle
-          compact
-          open={open}
-          onToggle={() => setOpen(!open)}
-          icon={<Sparkles className="h-3 w-3 shrink-0" />}
-          label={t('thinking_title')}
-        />
-        {open && (
-          <div className="whitespace-pre-wrap px-3 pb-2 text-muted-foreground/80">
-            {message.content}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

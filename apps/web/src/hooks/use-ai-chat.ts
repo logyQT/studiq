@@ -103,24 +103,17 @@ function toQuestionData(value: unknown): QuestionData | undefined {
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'thought' | 'tool_call';
+  role: 'user' | 'assistant' | 'tool_call';
   content: string;
   result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
-  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
+  status: 'sending' | 'streaming' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
-  thinkingTraces: string[];
   question?: QuestionData;
-  step?: number;
-  reasoning?: string;
-  agent?: string;
   toolName?: string;
   label?: string;
-  subTask?: string;
-  subToolCount?: number;
   args?: unknown;
   toolResult?: unknown;
-  durationMs?: number;
 }
 
 export interface UsageInfo {
@@ -178,9 +171,8 @@ function toolResultLabel(toolName: string, output: unknown): string {
   }
 }
 
-function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
-  if (state === 'input-streaming') return 'thinking';
-  if (state === 'input-available') return 'running';
+function toolStateToStatus(state: string): 'running' | 'complete' {
+  if (state === 'input-streaming' || state === 'input-available') return 'running';
   return 'complete';
 }
 
@@ -238,7 +230,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           role: 'user',
           content: m.parts?.find((p) => p.type === 'text')?.text || '',
           status: 'complete',
-          thinkingTraces: [],
         });
         continue;
       }
@@ -258,18 +249,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
             role: 'assistant',
             content: part.text || '',
             status: isActiveStream ? 'streaming' : 'complete',
-            thinkingTraces: [],
-          });
-          continue;
-        }
-
-        if (part.type === 'reasoning') {
-          mapped.push({
-            id: `${m.id}-thought-${i}`,
-            role: 'thought',
-            content: part.text || '',
-            status: 'complete',
-            thinkingTraces: [],
           });
           continue;
         }
@@ -292,7 +271,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
             args: input,
             toolResult: state === 'output-available' ? part.output : undefined,
             status: toolStatus,
-            thinkingTraces: [],
           });
 
           if (toolName === 'generate_flashcards') {
@@ -304,7 +282,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 toolName,
                 label: `❌ ${toolName} failed`,
                 status: 'error' as const,
-                thinkingTraces: [],
               });
               continue;
             }
@@ -338,7 +315,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 role: 'assistant',
                 content: '',
                 status: 'complete',
-                thinkingTraces: [],
                 result: {
                   type: 'flashcards',
                   data: pendingCards,
@@ -371,7 +347,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 role: 'assistant',
                 content: '',
                 status: 'complete',
-                thinkingTraces: [],
                 result: {
                   type: 'flashcards',
                   data: cards,
@@ -392,7 +367,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
                 role: 'assistant',
                 content: text,
                 status: 'complete',
-                thinkingTraces: [],
               });
             }
           }
@@ -405,7 +379,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
           role: 'assistant',
           content: '',
           status: 'complete',
-          thinkingTraces: [],
           result: {
             type: 'flashcards',
             data: pendingCards,
