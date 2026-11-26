@@ -33,17 +33,26 @@ function render({
   isCurrentPlan = false,
   hasActivePlan,
   paid = true,
+  planKey = 'ace',
 }: {
   isCurrentPlan?: boolean;
   hasActivePlan: boolean | null;
   paid?: boolean;
+  planKey?: string;
 }): string {
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
       { locale, messages: pl, timeZone: 'UTC' },
       createElement(PlanCard, {
-        plan: plan(paid ? {} : { key: 'base', name: 'StudiQ Base', priceMonthly: 0 }),
+        plan: plan(
+          paid
+            ? {
+                key: planKey,
+                name: `StudiQ ${planKey.charAt(0).toUpperCase()}${planKey.slice(1)}`,
+              }
+            : { key: 'base', name: 'StudiQ Base', priceMonthly: 0 },
+        ),
         isCurrentPlan,
         user: { id: 'u-1' },
         t,
@@ -94,5 +103,21 @@ describe('PlanCard action', () => {
 
     expect(markup).toContain('href="/app"');
     expect(markup).not.toContain('href="/app/billing"');
+  });
+});
+
+describe('PlanCard badges', () => {
+  it('prints the current badge and not the recommended badge on a current recommended plan', () => {
+    const markup = render({ planKey: 'spark', isCurrentPlan: true, hasActivePlan: true });
+
+    expect(markup).toContain(t('current_plan_badge'));
+    expect(markup).not.toContain(t('recommended_badge'));
+  });
+
+  it('prints the recommended badge on a recommended plan the reader does not own', () => {
+    const markup = render({ planKey: 'spark', hasActivePlan: true });
+
+    expect(markup).toContain(t('recommended_badge'));
+    expect(markup).not.toContain(t('current_plan_badge'));
   });
 });

@@ -52,7 +52,7 @@ export function PlanCard({
     <Card
       className={`flex flex-col relative ${recommended ? 'border-primary shadow-lg' : 'border-border/50'}`}
     >
-      {recommended && (
+      {recommended && !isCurrentPlan && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
           <Sparkles className="size-3 mr-1" />
           {t('recommended_badge')}
