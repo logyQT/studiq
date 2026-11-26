@@ -216,7 +216,11 @@ describe('EntitlementResolver', () => {
       ]);
     });
 
-    it('ignores non-catalog keys in plan rows', async () => {
+    it('the all profile intersects the catalog with the plan ceiling, unknown rows included or not', async () => {
+      // `applyProfile` iterates ENTITLEMENT_KEYS and checks membership in the
+      // ceiling, so an unknown plan row cannot reach the payload through the
+      // profile arm. (The 2026-11-25 mutation proved this assertion is *not*
+      // the guard for the plan-row filter: it passes with the filter removed.)
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
       mockTables({
         roleProfile: 'all',
@@ -228,6 +232,63 @@ describe('EntitlementResolver', () => {
 
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('ignores non-catalog keys in the personal plan rows (the catalog filter is load-bearing)', async () => {
+      // Outside an org the personal layer adds every key of the plan row and the
+      // flag pass dereferences `ENTITLEMENTS[key]` — so an unknown row would
+      // throw without the `isEntitlementKey` filter on `plan_entitlements`.
+      // Phase 8, matrix cell E: DB ahead of code must be inert, not a crash.
+      mockTables({
+        personalPlanKey: 'base',
+        planEntitlements: {
+          base: ['flashcards', 'quiz', 'test.fictional', 'test.other', 'test.legacy'],
+        },
+      });
+
+      const { entitlements } = await resolver.resolveEntitlements(baseCtx);
+      expect(entitlements).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('ignores a non-catalog key in user_feature_overrides (DB ahead of code)', async () => {
+      // Phase 8 matrix cell F: a row for a key the TypeScript catalog does not
+      // know is inert, in both directions, and never reaches `ENTITLEMENTS[key]`.
+      mockTables({
+        personalPlanKey: 'base',
+        overrides: [
+          { feature_key: 'test.dbonly', is_enabled: true },
+          { feature_key: 'test.dbonly.revoked', is_enabled: false },
+        ],
+      });
+
+      const { entitlements, sources } = await resolver.resolveEntitlements(baseCtx);
+      expect(entitlements).toEqual(['flashcards', 'quiz']);
+      expect(sources.overrides).toEqual([]);
+      expect(sources.revokedOverrides).toEqual([]);
+    });
+
+    it('picks up a plan row added between resolutions (no restart, no prune job)', async () => {
+      // Phase 8 matrix cell D: the org layer is derived per request, so a plan
+      // that gains a key serves it on the next resolution with no backfill row
+      // and no cache flush. A fresh ctx per resolution is what a new request is.
+      const adminCtx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
+      mockTables({ roleProfile: 'all', orgPlan: 'launch' });
+      expect((await resolver.resolveEntitlements(adminCtx)).entitlements).toEqual([
+        'flashcards',
+        'quiz',
+      ]);
+
+      mockTables({
+        roleProfile: 'all',
+        orgPlan: 'launch',
+        planEntitlements: { launch: ['flashcards', 'quiz', 'quiz.templates'] },
+      });
+      const after = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
+      expect((await resolver.resolveEntitlements(after)).entitlements).toEqual([
+        'flashcards',
+        'quiz',
+        'quiz.templates',
+      ]);
     });
 
     it('does not add non-portable personal keys inside an org (whitelist, D3)', async () => {
@@ -355,6 +416,27 @@ describe('EntitlementResolver', () => {
       const { entitlements } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual([]);
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
+    });
+
+    it('resolves nothing when the stored role profile is unrecognised, never the learner set', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      // A value a migration could ship before the code knows it (the `role_v2`
+      // shape), on a plan that carries the whole learner set. `applyProfile` takes
+      // its learner arm for anything that is not `all`/`none`, so the
+      // `isEntitlementProfile` guard in the resolver is the only thing between this
+      // role and a silent learner grant.
+      mockTables({ roleProfile: 'role_v2', orgPlan: 'hub', personalPlanKey: null });
+
+      const { entitlements } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toEqual([]);
+    });
+
+    it('resolves nothing when the membership row carries no role embed', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      mockTables({ roleProfile: null, orgPlan: 'hub', personalPlanKey: null });
+
+      const { entitlements } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toEqual([]);
     });
 
     it('applies user_feature_overrides as the strongest plan layer', async () => {

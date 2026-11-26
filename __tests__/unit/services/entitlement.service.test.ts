@@ -92,18 +92,10 @@ const PLANS: FakePlanRow[] = [
   {
     key: 'base',
     scope: 'personal',
-    audience: 'student',
+    audience: null,
     price_monthly: 0,
     is_active: true,
     sort_order: 1,
-  },
-  {
-    key: 'lite',
-    scope: 'personal',
-    audience: 'educator',
-    price_monthly: 0,
-    is_active: true,
-    sort_order: 2,
   },
   {
     key: 'launch',
@@ -111,39 +103,39 @@ const PLANS: FakePlanRow[] = [
     audience: null,
     price_monthly: 0,
     is_active: true,
-    sort_order: 3,
+    sort_order: 5,
   },
   {
     key: 'spark',
     scope: 'personal',
-    audience: 'student',
-    price_monthly: 999,
-    is_active: true,
-    sort_order: 4,
-  },
-  {
-    key: 'guide',
-    scope: 'personal',
-    audience: 'educator',
+    audience: null,
     price_monthly: 1999,
     is_active: true,
-    sort_order: 5,
+    sort_order: 2,
+  },
+  {
+    key: 'ace',
+    scope: 'personal',
+    audience: null,
+    price_monthly: 3999,
+    is_active: true,
+    sort_order: 3,
+  },
+  {
+    key: 'pro',
+    scope: 'personal',
+    audience: null,
+    price_monthly: 7999,
+    is_active: true,
+    sort_order: 4,
   },
   {
     key: 'hub',
     scope: 'organization',
     audience: null,
-    price_monthly: 9999,
+    price_monthly: 29900,
     is_active: true,
-    sort_order: 6,
-  },
-  {
-    key: 'solo',
-    scope: 'personal',
-    audience: 'manager',
-    price_monthly: 0,
-    is_active: true,
-    sort_order: 13,
+    sort_order: 7,
   },
 ];
 
@@ -232,8 +224,8 @@ describe('EntitlementService', () => {
   describe('downgradeToFree', () => {
     it.each([
       ['spark', 'base'],
-      ['guide', 'lite'],
-      ['solo', 'solo'],
+      ['ace', 'base'],
+      ['pro', 'base'],
     ])('downgrades a %s personal plan to the %s free tier', async (previous, expected) => {
       const { admin, updates } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
@@ -258,7 +250,7 @@ describe('EntitlementService', () => {
       });
     });
 
-    it('falls back to the free personal plan of the same scope/audience when the previous plan is gone', async () => {
+    it('falls back to the free personal plan of the same scope when the previous plan is gone', async () => {
       const { admin, updates } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
 
@@ -268,7 +260,7 @@ describe('EntitlementService', () => {
       expect(updates[0]?.values).toEqual({ personal_plan_key: 'base' });
     });
 
-    it('fails closed when no free plan exists for the family', async () => {
+    it('fails closed when no free plan exists for the scope', async () => {
       const { admin, updates } = createFakeAdmin({
         plans: PLANS.filter((plan) => plan.key !== 'launch'),
       });

@@ -26,26 +26,33 @@ function plan(key: string, priceMonthly: number, currency = 'PLN'): PlanInfo {
   };
 }
 
-const student = [plan('base', 0), plan('spark', 999), plan('ace', 1999), plan('pro', 4999)];
-const manager = [plan('launch', 0), plan('team', 999), plan('hub', 1999), plan('campus', 4999)];
+const personal = [plan('base', 0), plan('spark', 1999), plan('ace', 3999), plan('pro', 7999)];
+const organization = [
+  plan('launch', 0),
+  plan('team', 9900),
+  plan('hub', 29900),
+  plan('campus', 69900),
+];
 
 describe('pickLandingPlans', () => {
-  it('picks the free student plan, Ace as Premium and the cheapest paid org plan', () => {
-    const picked = pickLandingPlans(student, manager);
+  it('picks the free personal plan, Plus as the paid tier and the cheapest paid org plan', () => {
+    const picked = pickLandingPlans(personal, organization);
 
     expect(picked.free?.key).toBe('base');
-    expect(picked.premium?.key).toBe('ace');
+    expect(picked.premium?.key).toBe('spark');
     expect(picked.organizationFrom?.key).toBe('team');
   });
 
   it('never advertises the free organization plan as "from"', () => {
-    expect(pickLandingPlans(student, manager).organizationFrom?.priceMonthly).toBeGreaterThan(0);
+    expect(pickLandingPlans(personal, organization).organizationFrom?.priceMonthly).toBeGreaterThan(
+      0,
+    );
   });
 
-  it('falls back to the cheapest paid student plan when Ace is missing', () => {
-    const picked = pickLandingPlans([plan('base', 0), plan('pro', 4999), plan('spark', 999)], []);
+  it('falls back to the cheapest paid personal plan when Plus is missing', () => {
+    const picked = pickLandingPlans([plan('base', 0), plan('pro', 7999), plan('ace', 3999)], []);
 
-    expect(picked.premium?.key).toBe('spark');
+    expect(picked.premium?.key).toBe('ace');
   });
 
   it('returns nulls while the plans are not loaded', () => {
@@ -89,6 +96,16 @@ describe('landing pricing messages', () => {
     'pricing_university_feature_analytics',
     'pricing_university_feature_support',
   ] as const;
+
+  it.each([
+    ['pl', pl],
+    ['en', en],
+  ])('names the paid landing column Plus in %s', (_locale, messages) => {
+    const landing = messages.LandingPage as Record<string, string>;
+
+    expect(landing.pricing_premium_name).toBe('Plus');
+    expect(landing.pricing_premium_cta).toContain('Plus');
+  });
 
   it.each([
     ['pl', pl],

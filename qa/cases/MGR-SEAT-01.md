@@ -60,16 +60,16 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   żadnych miejsc”.
 - „Kup miejsca” otwiera okno „Kup licencje na miejsca” z listą planów („Wybierz plan”:
   pule można kupić dla planów osobistych z katalogu, aktywnych i `seatEligible` —
-  StudiQ Base / Lite / Spark / Guide / Ace / Creator / Pro / Master / Solo; plan
-  organizacji „StudiQ Campus” nie jest już oferowany, a „StudiQ Solo” tak), polem
+  StudiQ Free / Plus / Pro / Max; plan organizacji „StudiQ Campus” nie jest
+  oferowany, a „StudiQ Free” tak), polem
   „Ilość” (domyślnie `1`) oraz przyciskami „Anuluj” / „Kup”. Bez wybranego planu „Kup”
   jest nieaktywny; przy ilości 0 lub ujemnej również jest nieaktywny i pod polem
   pojawia się komunikat „Podaj liczbę całkowitą miejsc (co najmniej 1).”. Ilość `1`
   ponownie aktywuje przycisk.
-- Krok 1 — wybór „StudiQ Ace” i ilości `3`, następnie „Kup” wysyła
+- Krok 1 — wybór „StudiQ Pro” i ilości `3`, następnie „Kup” wysyła
   `POST /api/v1/organization/seats/pools` `{"planKey":"ace","quantity":3}` → **201**
   `{"success":true,...}`, zamyka okno i pokazuje toast **„Miejsca dodane do puli”**.
-  W tabeli pojawia się wiersz „StudiQ Ace” z wartościami **3 / 0 / 3**. Wartości są
+  W tabeli pojawia się wiersz „StudiQ Pro” z wartościami **3 / 0 / 3**. Wartości są
   liczone po stronie serwera (`total` / `assigned`), a „Dostępne” to `total - assigned`.
 - Krok 2 — dla ilości `0` i `-2` strona nie wysyła żadnego żądania (przycisk jest
   wyłączony); ten sam limit egzekwuje API: `POST` z `quantity: 0` lub `quantity: -2`

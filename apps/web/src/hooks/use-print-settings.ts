@@ -20,13 +20,22 @@ const DEFAULT_SETTINGS: PrintSettings = {
   includeAnswerKey: true,
 };
 
+/** Only a boolean value of a known setting comes from the saved entry. */
+function knownSettings(entry: object): Partial<PrintSettings> {
+  return Object.fromEntries(
+    Object.entries(entry).filter(
+      ([key, value]) => Object.hasOwn(DEFAULT_SETTINGS, key) && typeof value === 'boolean',
+    ),
+  );
+}
+
 function readSettings(): PrintSettings {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed: unknown = JSON.parse(saved);
       if (typeof parsed === 'object' && parsed !== null) {
-        return { ...DEFAULT_SETTINGS, ...parsed };
+        return { ...DEFAULT_SETTINGS, ...knownSettings(parsed) };
       }
     }
   } catch {
@@ -38,25 +47,36 @@ function readSettings(): PrintSettings {
 /**
  * The device-side print settings of assignments, shared by the settings page and the print view.
  *
- * The first render always holds the defaults and the stored settings arrive in an effect.
- * The server has no `localStorage`, and React does not patch attributes that differ at
- * hydration, so reading it during the first render left the switches showing the defaults
- * while the state held the saved values (#852).
+ * The first render does not read `localStorage`, because the server has none and React does not
+ * patch attributes that differ at hydration (#852). An effect reads it. Until then, `ready` is
+ * false and `settings` holds the defaults. The settings page must not show or save them then.
  */
 export function usePrintSettings() {
-  const [settings, setSettings] = useState<PrintSettings>(DEFAULT_SETTINGS);
+  const [stored, setStored] = useState<PrintSettings | null>(null);
 
   useEffect(() => {
-    setSettings(readSettings());
+    setStored(readSettings());
   }, []);
 
   const updateSetting = (key: keyof PrintSettings, value: boolean) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    setStored((prev) => prev && { ...prev, [key]: value });
   };
 
-  const saveSettings = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  /** False when nothing was saved: the settings are not read yet, or storage refused them. */
+  const saveSettings = (): boolean => {
+    if (!stored) return false;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      return true;
+    } catch {
+      return false;
+    }
   };
 
-  return { settings, updateSetting, saveSettings };
+  return {
+    settings: stored ?? DEFAULT_SETTINGS,
+    ready: stored !== null,
+    updateSetting,
+    saveSettings,
+  };
 }

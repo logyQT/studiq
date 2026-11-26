@@ -686,6 +686,7 @@ function stackEnvFromStatus(status: StackStatus): StackEnv {
     publishableKey: null,
     secretKey: null,
     mailUrl: status.mailUrl,
+    mailSmtpPort: status.ports.mailSmtp || null,
     studioUrl: status.studioUrl,
   };
 }

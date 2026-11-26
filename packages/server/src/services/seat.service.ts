@@ -250,10 +250,10 @@ export class SeatService {
 
     const supabase = await this.clientFactory();
 
-    // Verify pool belongs to active org; the plan rides the pool's FK embed.
+    // Verify pool belongs to active org.
     const { data: pool, error: poolErr } = await supabase
       .from('org_seat_pools')
-      .select('id, plan_key, subscription_plans(scope, audience)')
+      .select('id, plan_key')
       .eq('id', input.poolId)
       .eq('organization_id', ctx.activeOrgId)
       .maybeSingle();
@@ -261,25 +261,17 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
-    // Persona validation (D33): the pool's plan `audience` must equal the
-    // target's `profiles.account_type` — the one server-side use of the persona,
-    // not a role-name tier map. An unresolvable audience refuses rather than
-    // skipping the check.
-    const poolPlan = dbNested(pool.subscription_plans);
-    const poolAudience = poolPlan?.audience ?? null;
-    if (!poolAudience) return failure('BAD_REQUEST');
-
-    // Verify user exists
+    // A personal plan carries no audience since #1193, so a pool is offerable
+    // to any member of the org. The licence rules (scope, seat eligibility)
+    // already held when the pool was created.
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('email, account_type')
+      .select('email')
       .eq('id', input.userId)
       .maybeSingle();
 
     if (profileErr) return toDbFailure(profileErr);
     if (!profile) return failure('NOT_FOUND');
-
-    if (profile.account_type !== poolAudience) return failure('BAD_REQUEST');
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)
     const { data: existing } = await supabase

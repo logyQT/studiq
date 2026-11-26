@@ -12,9 +12,9 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts EDU-GRP-01 --fresh
  *
- * The case's prerequisite is „T1 (plan Lite – group.manage)”: an educator who may
- * manage classes, which is what shows the „Grupa” sidebar item, the „Nowa grupa”
- * button and the actions column. Since 2b-2 that is the `group.*` permission on the
+ * The case's prerequisite is „T1 (rola organizacyjna teacher – group.manage)”:
+ * an educator who may manage classes, which is what shows the „Grupa” sidebar
+ * item, the „Nowa grupa” button and the actions column. Since 2b-2 that is the `group.*` permission on the
  * active org's role (ADR-0015 §4.3), not the `group.manage` entitlement: the org
  * `teacher` role holds every group key at `group` scope, so its educator manages the
  * classes they teach — and, since 2b-2, creates their own (§10: a class is the

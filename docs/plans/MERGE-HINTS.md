@@ -60,7 +60,7 @@ Already archived. No merge.
 
 B.5 landed: `20260915000003_drop_plan_seat_allocations.sql` removed default allocation; `seat.service.ts` is role-aware; `feature.resolver.ts` / `limits.resolver.ts` have the seat branch. Only the Stripe quantity wiring remains deferred (owned by #662 / #1019). The PRD was archived 2026-11-12.
 
-Do **not** re-plan B.5 or fold it into a new seat-licensing execution plan; the work is done.
+Do **not** re-plan B.5 or fold it into a new seat-licensing plan; the work is done.
 
 ---
 
@@ -108,10 +108,10 @@ No merge. If a new AI spec is written, point it at `docs/ai.md` and `agent-secur
 
 ## Group 5: Environment / deployment — related, not duplicates
 
-| File                     | Lines | Status                                                         |
-| ------------------------ | ----- | -------------------------------------------------------------- |
-| `env-tool.md`            | 341   | Phase 0 complete; phases 1–3 unblocked. Active execution plan. |
-| `staging-environment.md` | 410   | Proposed, not started.                                         |
+| File                     | Lines | Status                                               |
+| ------------------------ | ----- | ---------------------------------------------------- |
+| `env-tool.md`            | 341   | Phase 0 complete; phases 1–3 unblocked. Active plan. |
+| `staging-environment.md` | 410   | Proposed, not started.                               |
 
 Keep separate: local developer environment vs. hosted staging are different layers. The three docs now cross-link; do not merge them.
 

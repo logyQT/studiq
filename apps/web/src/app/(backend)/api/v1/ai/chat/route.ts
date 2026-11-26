@@ -2,7 +2,6 @@ import type { RequestContext } from '@studiq/authz';
 import { partialList, partialObject, partialText } from '@studiq/server/lib/partial-result';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
-import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
 import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluate-quality.tool';
 import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract-concepts.tool';
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
@@ -91,7 +90,6 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
       system: systemPrompt,
       messages: await convertToModelMessages(messages),
       tools: {
-        create_plan: createPlanTool,
         ask_user: askUserTool,
         fetch_material: fetchMaterialTool,
         webfetch: webfetchTool,
@@ -200,6 +198,8 @@ async function runAgentChat(ctx: RequestContext, conversationId: string, message
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // The model's reasoning stays server-side: showing it leaks prompt text and
+    // turns the chat into a chain-of-thought viewer instead of a study tool.
+    return result.toUIMessageStreamResponse({ sendReasoning: false });
   });
 }

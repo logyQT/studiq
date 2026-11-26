@@ -506,6 +506,14 @@ the hub allowance, never 0 tokens — and is off only when the profile is `none`
 
 ### 7 — delete and close
 
+**Shipped 2026-11-25** in #1475 (`7fa5663f`) plus the `docs/authority-7-close`
+PR. The corpus evidence (all cases + E2E on a disposable stack) and the grep
+classification are recorded in the phase-7 block of
+[role-authority-plan.md](role-authority-plan.md#phase-7--delete-and-close).
+Note the correction found in review: the first `reserve_ai_tokens` refused the
+write, which made the ceiling unenforceable; the write now always records and
+the pre-stream gate is the refuser (R50).
+
 - Delete `FEATURES`, `ADMIN_ONLY_FEATURES`, `ORG_SCOPED_FEATURES`,
   `org_role_features`, `has_org_feature`, the old resolvers, the dead keys and
   headers, and the `assignment.*` decision (mapped or deleted).
@@ -555,6 +563,45 @@ unit test.
 **Exit:** the checklist is committed; the live simulation recorded one migration,
 one catalog constant and one surface call, with zero resolver changes; both org
 vintages and the full 188-case suite + E2E are green.
+
+> **Delivered 2026-11-25 (`feat/authority-8`, on top of `b08321d8`).** The
+> simulation shipped the fictional `voice.notes` on a served production build
+> and measured the gate:
+>
+> - **one migration** (`entitlement_catalog` + `entitlement_flags` +
+>   `plan_entitlements` rows; no grant, policy or type change), **one
+>   `ENTITLEMENTS` entry**, **one `requireEntitlement(ctx, 'voice.notes')`** on
+>   `GET /api/v1/stats/teacher/quizzes` (`stats.controller.ts`), plus that
+>   surface's own UI copy. **Resolver diff: 0 lines.** The first attempt put the
+>   gate on `GET /api/v1/teacher/quizzes` and broke `AUT-19`, `SEC-05` and
+>   `EDU-QZ-06`: a free read shared by students and free teachers is not a
+>   gateable surface (extendability.md, "Retrofitting a gate onto a free read").
+> - `/me/entitlements` delta for a hub-org educator:
+>   `[… six existing keys …]` → `[… six existing keys …, "voice.notes"]` — an
+>   append, same order, no value changed. Applying the DB rows **before** the
+>   rebuild changed nothing (the TS constant is what makes a DB row resolvable);
+>   after the rebuild the key appeared.
+> - Both vintages identical: an org created before the key and one created after
+>   resolve it the same once on a plan that carries it; `launch → hub` on an
+>   existing org backfills it with no prune job (`change_org_plan` is a plan move
+>   only).
+> - Retirement narrows cleanly: removing the `hub` plan row drops the key from
+>   `/me/entitlements` and turns the surface into `403`, and every other checked
+>   endpoint stays `200` — no 404, no 500. Order is forced by the FKs: plan rows
+>   → flag (its delete **cascades** the plan rows and overrides) → catalog
+>   (catalog-first is `23503`) with the TS constant in the same change.
+> - Drift: `catalog-invariants` goes red for a bogus TS key (2 assertions) and
+>   for a bogus DB row (1), both reverted. **D36** (ADR-0015 §15): no CI
+>   regeneration/diff of `database.ts` (schema types, not catalog rows; the
+>   pinned CLI cannot reproduce the file byte-for-byte).
+> - The 37 at-risk cases and the EDU shard around the touched surface stayed
+>   green (see the phase-8 block of
+>   [role-authority-plan.md](role-authority-plan.md#phase-8--extendability-release-gate)).
+>
+> Deliverable: [extendability.md](extendability.md) — the adding and retiring
+> checklists, the "steps that are still code" table with owners, and this
+> evidence. The simulation itself is reverted; the branch commits only the doc,
+> the two checklists' plan/ADR links and this record.
 
 ## 6. Gates
 

@@ -9,15 +9,15 @@ import type { CatalogPlan } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { describe, expect, it, vi } from 'vitest';
 
-const studentPlan: CatalogPlan = {
+const personalPlan: CatalogPlan = {
   key: 'spark',
-  name: 'StudiQ Spark',
-  priceMonthly: 999,
+  name: 'StudiQ Plus',
+  priceMonthly: 1999,
   currency: 'PLN',
   isActive: true,
   scope: 'personal',
-  audience: 'student',
-  sortOrder: 1,
+  audience: null,
+  sortOrder: 2,
 };
 const orgPlan: CatalogPlan = {
   key: 'hub',
@@ -29,86 +29,87 @@ const orgPlan: CatalogPlan = {
   audience: null,
   sortOrder: 7,
 };
-const freeStudentPlan: CatalogPlan = {
-  ...studentPlan,
+const freePersonalPlan: CatalogPlan = {
+  ...personalPlan,
   key: 'base',
   priceMonthly: 0,
 };
-const soloPlan: CatalogPlan = {
-  ...studentPlan,
-  key: 'solo',
-  priceMonthly: 0,
-  audience: 'manager',
-};
-const educatorPlan: CatalogPlan = { ...studentPlan, key: 'guide', audience: 'educator' };
+/**
+ * A personal row written before #1193 still names an audience. It is a legal
+ * catalogue row until the migration re-points or deletes it, so the checkout
+ * must not refuse it by persona.
+ */
+const legacyAudiencePlan: CatalogPlan = { ...personalPlan, key: 'ace', audience: 'student' };
 
 function planPort(plan: CatalogPlan | null) {
   return { getPlan: vi.fn().mockResolvedValue(success(plan)) };
 }
 
 describe('resolveApplicablePlan', () => {
-  it('accepts a free plan of the caller audience (lifecycle, not purchase)', async () => {
-    await expect(
-      resolveApplicablePlan(planPort(freeStudentPlan), 'base', AccountType.STUDENT),
-    ).resolves.toEqual(success({ plan: freeStudentPlan, isOrgPlan: false }));
+  it('accepts a free personal plan (lifecycle, not purchase)', async () => {
+    await expect(resolveApplicablePlan(planPort(freePersonalPlan), 'base')).resolves.toEqual(
+      success({ plan: freePersonalPlan, isOrgPlan: false }),
+    );
   });
 
-  it('checks the audience before the price', async () => {
-    await expect(
-      resolveApplicablePlan(planPort(freeStudentPlan), 'base', AccountType.EDUCATOR),
-    ).resolves.toEqual(failure('FORBIDDEN'));
+  it('accepts a paid personal plan for any caller: the ladder has no audience (#1193)', async () => {
+    for (const plan of [personalPlan, legacyAudiencePlan]) {
+      await expect(resolveApplicablePlan(planPort(plan), plan.key)).resolves.toEqual(
+        success({ plan, isOrgPlan: false }),
+      );
+    }
   });
 
-  it('accepts an organization plan for any account type — it has no audience check (D34)', async () => {
-    await expect(
-      resolveApplicablePlan(planPort(orgPlan), 'hub', AccountType.STUDENT),
-    ).resolves.toEqual(success({ plan: orgPlan, isOrgPlan: true }));
+  it('accepts an organization plan; the owner rule decides who may buy it', async () => {
+    await expect(resolveApplicablePlan(planPort(orgPlan), 'hub')).resolves.toEqual(
+      success({ plan: orgPlan, isOrgPlan: true }),
+    );
   });
 
   it.each([
-    ['missing', null, 'BAD_REQUEST'],
-    ['inactive', { ...studentPlan, isActive: false }, 'BAD_REQUEST'],
-    ['organization plan for a student is not an audience refusal', orgPlan, undefined],
-    ['another audience', educatorPlan, 'FORBIDDEN'],
-    ['manager personal plan for a student', soloPlan, 'FORBIDDEN'],
-  ])('resolveApplicablePlan: %s', async (_label, plan, error) => {
-    const result = await resolveApplicablePlan(planPort(plan), 'spark', AccountType.STUDENT);
-    if (error === undefined) {
-      expect(result).toEqual(success({ plan, isOrgPlan: plan === orgPlan }));
-    } else {
-      expect(result).toEqual(failure(error));
-    }
+    ['missing', null],
+    ['inactive', { ...personalPlan, isActive: false }],
+  ])('rejects a %s plan with BAD_REQUEST', async (_label, plan) => {
+    await expect(resolveApplicablePlan(planPort(plan), 'spark')).resolves.toEqual(
+      failure('BAD_REQUEST'),
+    );
+  });
+
+  it('propagates a catalog read failure', async () => {
+    const port = { getPlan: vi.fn().mockResolvedValue(failure('INTERNAL_SERVER')) };
+    await expect(resolveApplicablePlan(port, 'spark')).resolves.toEqual(failure('INTERNAL_SERVER'));
   });
 });
 
 describe('resolvePurchasablePlan', () => {
-  it('accepts an active paid plan of the caller audience', async () => {
-    await expect(
-      resolvePurchasablePlan(planPort(studentPlan), 'spark', AccountType.STUDENT),
-    ).resolves.toEqual(success({ plan: studentPlan, isOrgPlan: false }));
+  it('accepts an active paid personal plan', async () => {
+    await expect(resolvePurchasablePlan(planPort(personalPlan), 'spark')).resolves.toEqual(
+      success({ plan: personalPlan, isOrgPlan: false }),
+    );
+  });
+
+  it('accepts a legacy personal row that still names an audience', async () => {
+    await expect(resolvePurchasablePlan(planPort(legacyAudiencePlan), 'ace')).resolves.toEqual(
+      success({ plan: legacyAudiencePlan, isOrgPlan: false }),
+    );
   });
 
   it('flags an organization-scope plan as an organization plan for any caller', async () => {
-    const result = await resolvePurchasablePlan(planPort(orgPlan), 'hub', AccountType.STUDENT);
+    const result = await resolvePurchasablePlan(planPort(orgPlan), 'hub');
     expect(result.success && result.data.isOrgPlan).toBe(true);
   });
 
   it.each([
     ['missing', null, 'BAD_REQUEST'],
-    ['inactive', { ...studentPlan, isActive: false }, 'BAD_REQUEST'],
-    ['free', freeStudentPlan, 'BAD_REQUEST'],
-    ['another audience', educatorPlan, 'FORBIDDEN'],
-    ['free from another audience', { ...freeStudentPlan, audience: 'educator' }, 'FORBIDDEN'],
-    ['manager personal plan for a student', soloPlan, 'FORBIDDEN'],
+    ['inactive', { ...personalPlan, isActive: false }, 'BAD_REQUEST'],
+    ['free', freePersonalPlan, 'BAD_REQUEST'],
   ])('rejects a %s plan', async (_label, plan, error) => {
-    await expect(
-      resolvePurchasablePlan(planPort(plan), 'spark', AccountType.STUDENT),
-    ).resolves.toEqual(failure(error));
+    await expect(resolvePurchasablePlan(planPort(plan), 'spark')).resolves.toEqual(failure(error));
   });
 
   it('propagates a catalog read failure', async () => {
     const port = { getPlan: vi.fn().mockResolvedValue(failure('INTERNAL_SERVER')) };
-    await expect(resolvePurchasablePlan(port, 'spark', AccountType.STUDENT)).resolves.toEqual(
+    await expect(resolvePurchasablePlan(port, 'spark')).resolves.toEqual(
       failure('INTERNAL_SERVER'),
     );
   });
@@ -129,7 +130,7 @@ describe('resolveCheckoutOwner', () => {
     await expect(
       resolveCheckoutOwner(
         port,
-        { plan: studentPlan, isOrgPlan: false },
+        { plan: personalPlan, isOrgPlan: false },
         { userId: 'u-1', accountType: AccountType.STUDENT },
         'org-1',
       ),

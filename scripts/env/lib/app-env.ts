@@ -37,6 +37,8 @@ export function sharedStackEnv(): StackEnv {
     publishableKey: null,
     secretKey: null,
     mailUrl: process.env.SUPABASE_MAIL_URL ?? null,
+    // Only a stack status names the SMTP port, so there is nothing to relay here.
+    mailSmtpPort: null,
     studioUrl: process.env.SUPABASE_STUDIO_URL ?? null,
   };
 }
@@ -67,6 +69,7 @@ export function exportedStackEnv(): StackEnv | null {
     publishableKey: null,
     secretKey: null,
     mailUrl: process.env.SUPABASE_MAIL_URL || null,
+    mailSmtpPort: null,
     studioUrl: process.env.SUPABASE_STUDIO_URL || null,
   };
 }

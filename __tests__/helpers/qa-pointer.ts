@@ -48,7 +48,7 @@ const SHARED_QA_APP_URL = 'http://localhost:3010';
  * Many tools export `CI=false` or `CI=0` on a developer box, so presence is not a signal: only
  * an affirmative value counts, and it is trimmed and compared case-insensitively.
  */
-function isCi(env: NodeJS.ProcessEnv): boolean {
+export function isCi(env: NodeJS.ProcessEnv): boolean {
   const value = env.CI?.trim().toLowerCase();
   return value === '1' || value === 'true';
 }

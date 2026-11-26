@@ -29,6 +29,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { readTrackedFile } from './lib/read-tracked-file';
 
 const ROOT = process.cwd();
 const SCHEMA_FILE = '.env.schema';
@@ -235,13 +236,14 @@ function secretLiteralScan(): { scanned: number; findings: string[] } {
   }
 
   for (const file of files) {
-    let source: string;
+    let source: string | null;
     try {
-      source = readFileSync(join(ROOT, file), 'utf8');
+      source = readTrackedFile(join(ROOT, file));
     } catch {
       findings.push(`${file}: cannot read tracked file for the secret scan`);
       continue;
     }
+    if (source === null) continue;
     const lines = source.split('\n');
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index] ?? '';

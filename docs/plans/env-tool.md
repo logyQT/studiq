@@ -98,10 +98,11 @@ exits 1 on problems.
 thin wrappers — full + tenant seed + build + serve — with no extra commands, run ids or markers.
 
 Start contract: `database` is always on; `db` excludes `rest,studio,mail,realtime,functions,analytics,pooler`;
-`api` adds `rest`; others exclude `studio,realtime,functions,analytics,pooler`. `--studio`/`--mail`/`--realtime`/
-`--functions`/`--analytics` remove their entry; `--pooler` exits 2. Reject impossible combinations (exit 2).
+`api` adds `rest`; others exclude `studio,realtime,functions,analytics,pooler`. `--studio`/`--mail`/
+`--functions`/`--analytics` remove their entry; `--pooler` exits 2. Realtime has no atom: `[realtime]
+enabled = false` means the CLI never starts it. Reject impossible combinations (exit 2).
 
-Atoms: `--db --rest --auth --storage --studio --mail --realtime --functions --analytics --seed --no-seed
+Atoms: `--db --rest --auth --storage --studio --mail --functions --analytics --seed --no-seed
 --web --build --force-build --prod --runtime <native|docker> --stack <name> --app-port <n> --wait <s>
 --json --yes --quiet --verbose`. `--prod` implies build + serve; `--web` without `--prod` exits 2. `--no-seed`
 wins over a profile default; `--seed` forces it.

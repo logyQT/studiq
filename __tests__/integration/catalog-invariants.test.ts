@@ -15,9 +15,9 @@ import { createServiceClient } from '#test/integration/helpers';
 
 // Catalog invariants for the role-authority programme (ADR-0015 §8.2).
 //
-// The catalogs exist in three places — TypeScript (`PERMISSIONS`,
-// `ENTITLEMENTS`, `LIMITS`), the migrations and the seeds — and only the
-// database knows whether they agree. Every assertion here reads the live
+// The catalogs exist in two places — TypeScript (`PERMISSIONS`,
+// `ENTITLEMENTS`, `LIMITS`) and the migrations — and only the database knows
+// whether they agree. Every assertion here reads the live
 // catalog:
 //
 //  - `permissions` is exactly `PERMISSIONS` (key, category, allowed_scopes,

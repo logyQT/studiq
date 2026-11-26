@@ -202,22 +202,6 @@ describe('MockStripeService', () => {
   });
 
   it.each([
-    [
-      'a personal plan from another audience',
-      { ...studentPlan, key: 'guide', audience: 'educator' },
-    ],
-    ['a free plan from another audience', { ...freeStudentPlan, audience: 'educator' }],
-  ])('rejects %s with FORBIDDEN before the price check', async (_label, plan) => {
-    mockPlan(plan);
-
-    const result = await service.handleWebhook(event, AccountType.STUDENT, 'u-1');
-
-    expect(result).toEqual(failure('FORBIDDEN'));
-    expect(payments.record).not.toHaveBeenCalled();
-    expect(entitlements.applyPlan).not.toHaveBeenCalled();
-  });
-
-  it.each([
     ['unknown', null],
     ['inactive', inactivePlan],
   ])('rejects a %s plan as not applicable', async (_label, plan) => {

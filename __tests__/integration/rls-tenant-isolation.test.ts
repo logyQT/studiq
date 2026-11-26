@@ -31,9 +31,11 @@ const PASSWORD = 'Rls191Test!';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // `entitlement_catalog` joined the public set in phase 4a: `PlanInfo.seatEligible`
-// embeds it from `plan_entitlements` on every plan read.
+// embeds it from `plan_entitlements` on every plan read. `entitlement_flags`
+// joined in #1484: the public plan list drops a kill-switched surface key.
 const PUBLIC_TABLES = [
   'entitlement_catalog',
+  'entitlement_flags',
   'plan_entitlements',
   'plan_limits',
   'subscription_plans',
@@ -1194,7 +1196,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'master', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1219,7 +1221,7 @@ describe('RLS tenant isolation (#191)', () => {
       expect(unseatedEntitlements).toEqual([]);
 
       // A seat adds seat-eligible surface keys only, through
-      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `master`.
+      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `pro`.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,

@@ -4,6 +4,7 @@ import {
   questionTextIssues,
 } from '@studiq/server/lib/question-explanation';
 import { groupsParamSchema } from '@studiq/server/lib/query-list';
+import { QUESTION_SEARCH_MAX_LENGTH } from '@studiq/server/lib/question-search';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
@@ -31,7 +32,11 @@ export const QuestionListQuerySchema = registry.register(
     // 22P02 from the database.
     topicIds: groupsParamSchema,
     type: QuestionTypeEnum.optional(),
-    search: z.string().trim().max(100, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    search: z
+      .string()
+      .trim()
+      .max(QUESTION_SEARCH_MAX_LENGTH, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
     page: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
     sortBy: z.enum(['created_at', 'content', 'type']).optional(),

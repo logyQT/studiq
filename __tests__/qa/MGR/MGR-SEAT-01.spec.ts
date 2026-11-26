@@ -28,7 +28,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * - „Kup” is inert without a plan and for a quantity below 1 (0 and negative);
  *   the dialog explains the minimum and no write is sent.
  * - The plan picker lists the catalogue's seat-licence plans — active,
- *   personal-scope, `seatEligible` (D33) — labelled by plan name: Solo is
+ *   personal-scope, `seatEligible` (D33) — labelled by plan name: Free is
  *   offered, the organization plan Campus is not.
  * - Buying 3 of a plan shows the „Miejsca dodane do puli” toast and the pool row
  *   reads 3 purchased / 0 assigned / 3 available, also after a reload.
@@ -42,7 +42,7 @@ const POOLS_API = '/api/v1/organization/seats/pools';
 
 /** Pool the test buys in; the label is the dialog's own option copy. */
 const PLAN_KEY = 'ace';
-const PLAN_LABEL = 'StudiQ Ace';
+const PLAN_LABEL = 'StudiQ Pro';
 const QUANTITY = 3;
 
 const COPY = {
@@ -161,7 +161,7 @@ test('a manager buys three seats and the purchase dialog refuses quantities belo
   let dialog = await openPurchaseDialog(page);
 
   // The plan picker offers exactly the catalogue's seat-licence plans (active,
-  // personal-scope, seatEligible — D33), labelled by plan name: Solo is in,
+  // personal-scope, seatEligible — D33), labelled by plan name: Free is in,
   // the organization plan Campus is out.
   const catalogue = (
     await json<{ success: boolean; data: PlanInfo[] }>(
@@ -172,7 +172,7 @@ test('a manager buys three seats and the purchase dialog refuses quantities belo
     .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.seatEligible)
     .map((plan) => plan.name);
   expect(seatLicencePlans.length, 'the catalogue lists seat-licence plans').toBeGreaterThan(0);
-  expect(seatLicencePlans).toContain('StudiQ Solo');
+  expect(seatLicencePlans).toContain('StudiQ Free');
   expect(seatLicencePlans).not.toContain('StudiQ Campus');
   await dialog.getByRole('combobox').click();
   await expect(page.getByRole('listbox')).toBeVisible();

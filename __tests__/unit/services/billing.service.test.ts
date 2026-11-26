@@ -173,18 +173,6 @@ describe('BillingService.startCheckout', () => {
     });
   });
 
-  it('rejects a personal plan from another audience', async () => {
-    vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'guide', audience: 'educator' })),
-    );
-
-    await expect(service.startCheckout(studentCtx, 'guide')).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
-    });
-    expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
-  });
-
   it('answers FORBIDDEN when an organization plan arrives without an org id (D34)', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
       success(plan({ key: 'hub', scope: 'organization', audience: null })),

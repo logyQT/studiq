@@ -224,7 +224,7 @@ test('withdraws the logo and shows the branding lock card after a plan downgrade
   await expect(page.locator(`img[src="${logoUrl}"]`)).toHaveCount(0);
 
   // The subscription card reflects the plan the org now runs on. The badge names
-  // every layer — the personal `solo` layer is part of a manager's plan — so the
+  // every layer — the personal `base` layer is part of a manager's plan — so the
   // org plan is asserted as a substring.
   await expect(settings.locator('[data-plan-union]')).toContainText(COPY.launchPlan);
 

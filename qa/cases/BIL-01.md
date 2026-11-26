@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Zalogowany student1 (plan Base).
+Zalogowany student1 (plan Free).
 
 ## Steps
 
@@ -17,7 +17,7 @@ Zalogowany student1 (plan Base).
 
 ## Expected result
 
-- Tytuł „Rozliczenia”, karta „Aktualny plan: StudiQ Base”, plakietka „Darmowy”.
+- Tytuł „Rozliczenia”, karta „Aktualny plan: StudiQ Free”, plakietka „Darmowy”.
 - Lista funkcji (Fiszki, Testy) i limitów (m.in. Maks. fiszki 100, Maks. talie 10, Maks. pytania 50, Próby dziennie 10, Tokeny AI / dzień 0) bez „NaN”.
 - Przycisk „Wybierz plan” prowadzi do /app/upgrade.
 
@@ -36,11 +36,11 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
   (still deterministic) ids via `tenantId(key, entity)`.
 - **User**: the tenant's `student` (password `Seed4Test!`), seeded as an org `member`
   without a seat assignment, so `/api/v1/me/plan` resolves their **personal** plan —
-  `profiles.personal_plan_key`, default `base` (#270/#181). That is the "plan Base"
+  `profiles.personal_plan_key`, default `base` (#270/#181). That is the "plan Free"
   of the prerequisite; `--plan` is not needed.
 - **Profile**: `content` (the default, so `__tests__/qa/profiles/BIL-01.json` needs no
   entry).
-- **Read-only shared data**: the Base plan row and its features/limits are part of the
+- **Read-only shared data**: the Free plan row and its features/limits are part of the
   global plan catalogue. The case can only exist against that catalogue, so the spec
   reads it through `/api/v1/me/plan` and mutates nothing (no admin settings, flags,
   plans or platform rows).
@@ -51,17 +51,17 @@ bun scripts/qa-tenant.ts BIL-01 --fresh   # new org + users per independent run
   showing the student's name and e-mail; „Płatności” is the third entry.
 - „Płatności” opens `/app/billing` with heading „Rozliczenia” and subtitle
   „Zarządzaj subskrypcją i danymi rozliczeniowymi”.
-- One card „Aktualny plan” shows „StudiQ Base”, the „Darmowy” badge, the free price
+- One card „Aktualny plan” shows „StudiQ Free”, the „Darmowy” badge, the free price
   (`0,00 zł`), features „Fiszki” and „Testy”, then the limits: Maks. fiszki 100,
   Maks. talie 10, Maks. pytania 50, Maks. banki pytań 5, Próby dziennie 10,
   Tokeny AI / dzień 0. No value reads `NaN`.
 - The organization-only limits (`Maks. studentów`, `Maks. grup`) are hidden on a
-  student plan even though Base stores `-1` for them.
+  personal plan; no personal plan carries them since #1193.
 - „Wybierz plan” performs a full navigation to `/app/upgrade` (heading „Rozwiń swój
   plan”). The behavior matches the case exactly; no defect to report.
 
 > **2026-11-25 (6d).** The „Aktualny plan” card's description now names every
 > layer of `/me/plan`'s union, so this student in an org reads „StudiQ Launch
-> (organizacja) + StudiQ Base (plan osobisty)” — the personal `solo`/`base` layer
-> is part of the caller's plan. The spec asserts „StudiQ Base” as a substring;
+> (organizacja) + StudiQ Free (plan osobisty)” — the personal `base` layer
+> is part of the caller's plan. The spec asserts „StudiQ Free” as a substring;
 > the „Darmowy” badge, features and limits above are unchanged.

@@ -70,7 +70,7 @@ change not taken. The §8 slices are unblocked.
    token is what Postgres RLS reads. There is no browser Supabase client, so the
    refresh cannot be a `refreshSession()` call in the page.
 7. **The held plan is `personal_plan_key IS NULL`**, not a `pending` catalogue
-   row. The migration defaults and the seed default are both removed, or
+   row. The catalogue migration's default is removed, or
    `db reset` silently makes every untyped account a student with `base`.
 8. **Org creation is self-serve for managers, visually non-peer.** There is no
    sales gate in onboarding: the catalogue already makes the top plan (`campus`)
@@ -147,7 +147,7 @@ where a new step cannot forget the guard or the invalidation.
 | `withAuth()`        | `401` without a valid claim.                                                                                                                                             | Keep unchanged; it is the real API gate.                                                |
 | Token               | In app code, every claim read is `supabase.auth.getUser()` and there is **no** browser Supabase client; RLS reads `auth.jwt()` in 10 policy sites.                       | Refresh the session server-side and set cookies; gate on the token claim, not the row.  |
 | Type trigger        | `handle_new_user()` prefers `app_metadata`, falls back to client-supplied `user_metadata`, raises when missing; `profiles.account_type` is `NOT NULL DEFAULT 'student'`. | Remove the fallback, allow untyped, drop the default.                                   |
-| Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `supabase/seeds/00_plans.sql:9` re-sets the default to `'base'` on every reset.      | Null plan + drop the default in the migration **and** the seed.                         |
+| Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `20261125170000_plan_catalog_owned_by_migrations.sql` sets the default to `'base'`.  | Null plan + drop the default in the plan-catalogue migration.                           |
 | Types               | `packages/server/src/types/database.ts` types `account_type` non-null.                                                                                                   | Regenerate in the schema slice, or null handling reads as dead code.                    |
 | Setup routes        | `/setup` chooser, `/setup/join`, `/setup/classroom` (educator); `/setup/org` (manager); `/app/join` (student).                                                           | All become `/setup`.                                                                    |
 | Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to `/setup/org`, which this ADR deletes.                                                                 | Migrate the manager redirect; the educator one survives.                                |
@@ -322,9 +322,11 @@ guard and the same category.
 While `account_type IS NULL`:
 
 - `profiles.account_type` becomes nullable and loses `DEFAULT 'student'`.
-- `profiles.personal_plan_key` becomes nullable and loses its default — **in the
-  migration and in `supabase/seeds/00_plans.sql`**, which currently re-sets
-  `'base'` on every reset. The effective default today is `'base'`, not `'free'`.
+- `profiles.personal_plan_key` becomes nullable and loses its default — in the
+  plan-catalogue migration
+  (`20261125170000_plan_catalog_owned_by_migrations.sql`), which currently
+  re-sets `'base'` on every reset. The effective default today is `'base'`, not
+  `'free'`.
 - `profiles.setup_completed_at` is added (nullable). It is written once when the
   done screen is reached (a deliberate skip counts); it is a completion fact, not
   a wizard index. It is what stops the bar reappearing on a returning visit, and
@@ -741,7 +743,8 @@ Each assertion names the production line it kills and is proven with
 - `packages/server/src/lib/with-auth.ts` — `401` without a claim.
 - `supabase/migrations/20261122150000_plan_scope_audience_solo.sql` — trigger
   fallback, derived plans, `DEFAULT 'student'`.
-- `supabase/seeds/00_plans.sql` — the `'base'` default re-applied on reset;
+- `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` — the
+  `'base'` default, re-applied on reset;
   `supabase/seeds/01_seed.sql` — fixture users typed through `raw_app_meta_data`.
 - `packages/server/src/types/database.ts` — non-null `account_type`.
 - `apps/web/src/components/providers/AuthProvider.tsx` — `refresh()` calls

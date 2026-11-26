@@ -87,20 +87,31 @@ describe('usePrintSettings (#852)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the defaults first on the server and on a browser with saved settings', () => {
+  it('is not ready on the first render, on the server and on a browser with saved settings', () => {
     // The server has no `localStorage` at all.
-    const server = render().settings;
+    const server = render();
     stubStorage({ [KEY]: JSON.stringify(ALL_OFF) });
-    const browser = render().settings;
+    const browser = render();
 
-    expect(server).toEqual(ALL_ON);
-    expect(browser).toEqual(server);
+    expect([server.settings, server.ready]).toEqual([ALL_ON, false]);
+    expect([browser.settings, browser.ready]).toEqual([server.settings, server.ready]);
+  });
+
+  it('ignores a change and a save before the read, so the saved entry stays', () => {
+    const saved = JSON.stringify(ALL_OFF);
+    const store = stubStorage({ [KEY]: saved });
+
+    render().updateSetting('showPoints', true);
+
+    expect(render().ready).toBe(false);
+    expect(render().saveSettings()).toBe(false);
+    expect(store.get(KEY)).toBe(saved);
   });
 
   it('loads the saved settings once mounted', () => {
     stubStorage({ [KEY]: JSON.stringify(ALL_OFF) });
 
-    expect(renderMounted().settings).toEqual(ALL_OFF);
+    expect(renderMounted()).toMatchObject({ settings: ALL_OFF, ready: true });
   });
 
   it('reads storage on mount only, so a later render cannot undo an unsaved change', () => {
@@ -130,7 +141,7 @@ describe('usePrintSettings (#852)', () => {
     const store = stubStorage();
     renderMounted().updateSetting('includeAnswerKey', false);
 
-    render().saveSettings();
+    expect(render().saveSettings()).toBe(true);
     expect(JSON.parse(store.get(KEY) ?? '')).toEqual({ ...ALL_ON, includeAnswerKey: false });
 
     mount.state = undefined;
@@ -143,10 +154,44 @@ describe('usePrintSettings (#852)', () => {
     ['malformed JSON', { [KEY]: '{"showPoints":' }],
     ['a JSON null', { [KEY]: 'null' }],
     ['a JSON string', { [KEY]: '"off"' }],
+    ['a JSON array', { [KEY]: '[false]' }],
   ])('falls back to the defaults with %s', (_, entries) => {
     stubStorage(entries);
 
-    expect(renderMounted().settings).toEqual(ALL_ON);
+    expect(renderMounted()).toMatchObject({ settings: ALL_ON, ready: true });
+  });
+
+  it('takes only the boolean values of the known settings, and saves only those', () => {
+    const entry = { showNameField: 'false', showClassField: 0, showDateField: null };
+    const store = stubStorage({
+      [KEY]: JSON.stringify({ ...entry, showPoints: false, unknown: false }),
+    });
+
+    const mounted = renderMounted();
+
+    expect(mounted.settings).toStrictEqual({ ...ALL_ON, showPoints: false });
+    mounted.saveSettings();
+    expect(JSON.parse(store.get(KEY) ?? '')).toStrictEqual({ ...ALL_ON, showPoints: false });
+  });
+
+  it.each(['QuotaExceededError', 'SecurityError'])(
+    'reports a save that storage refuses with %s and keeps the choice',
+    (name) => {
+      vi.stubGlobal('localStorage', {
+        getItem: () => null,
+        setItem: () => {
+          throw new DOMException('refused', name);
+        },
+      });
+      renderMounted().updateSetting('showPoints', false);
+
+      expect(render().saveSettings()).toBe(false);
+      expect(render().settings).toEqual({ ...ALL_ON, showPoints: false });
+    },
+  );
+
+  it('is ready with the defaults when the browser has no storage', () => {
+    expect(renderMounted()).toMatchObject({ settings: ALL_ON, ready: true });
   });
 
   it('falls back to the defaults when storage cannot be read', () => {
@@ -156,6 +201,6 @@ describe('usePrintSettings (#852)', () => {
       },
     });
 
-    expect(renderMounted().settings).toEqual(ALL_ON);
+    expect(renderMounted()).toMatchObject({ settings: ALL_ON, ready: true });
   });
 });

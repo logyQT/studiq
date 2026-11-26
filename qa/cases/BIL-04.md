@@ -99,9 +99,9 @@ Confirmed end to end on this case's tenant:
   > i18n keys to `org_not_billing_*` in both locales. The API rule never
   > changed — it was `org.billing.manage` before the page followed it.
 
-  > **2026-11-25 (6d).** The subscription badge now names every layer of
-  > `/me/plan`'s union, so after the purchase it reads „StudiQ Hub (organizacja) +
-  > StudiQ Solo (plan osobisty)” — the personal `solo` layer is part of a
-  > manager's plan. The spec asserts „StudiQ Hub” as a substring of
+  > **2026-11-25 (6d; label updated by #1193).** The subscription badge now names
+  > every layer of `/me/plan`'s union, so after the purchase it reads „StudiQ Hub
+  > (organizacja) + StudiQ Free (plan osobisty)” — the personal `base` layer is part
+  > of a manager's plan. The spec asserts „StudiQ Hub” as a substring of
   > `[data-plan-union]`; the purchase, the payment row and the unlocked branding
   > controls are unchanged.

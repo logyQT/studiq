@@ -29,7 +29,7 @@ bun scripts/qa-tenant.ts LIM-03 --fresh   # profile: __tests__/qa/profiles/LIM-0
 - **Profile**: `bare` / `student` — one student, no organization, no group and
   the default free `base` personal plan written by `handle_new_user`. This is
   the case's TS account: outside an org the personal plan (not an org plan)
-  governs the deck limit (#233), so the Spark purchase visibly raises it.
+  governs the deck limit (#233), so the Plus purchase visibly raises it.
 - **Tenant key**: `tenantKey('qa/cases/LIM-03.md', 'LIM-03#<run>', 'qa-shared')`
   and `tenantId(key, entity)`; user `users.student`, password `Seed4Test!`.
   `--fresh` gives every independent run its own student.
@@ -62,16 +62,16 @@ enforced (an observation for LIM-02, not this case).
 
 ## Steps
 
-1. Kup plan Spark (BIL-03).
+1. Kup plan Plus (BIL-03).
 2. Spróbuj utworzyć 3. talię.
 
 ## Expected result
 
-- Po zakupie obowiązuje limit planu Spark (talie: 50) – 3. talia powstaje bez błędu. Strona rozliczeń pokazuje nowe limity.
+- Po zakupie obowiązuje limit planu Plus (talie: 100) – 3. talia powstaje bez błędu. Strona rozliczeń pokazuje nowe limity.
 
 ## Walk observations (shared app, pl)
 
-- Start: `/app/billing` shows „Aktualny plan: StudiQ Base”, badge „Darmowy”,
+- Start: `/app/billing` shows „Aktualny plan: StudiQ Free”, badge „Darmowy”,
   „Maks. talie 10”, „Maks. fiszki 100”. With 10 decks the flashcards list says
   „10 talii”.
 - Creating the 11th deck (the case's "3rd" under the lowered LIM-02 limits) is
@@ -80,13 +80,13 @@ enforced (an observation for LIM-02, not this case).
   „Nie udało się zapisać talii” appears — a readable message, not a blank screen.
   The copy is generic (LIM-02's "czytelny komunikat o limicie" concern); LIM-03
   only asserts that the attempt fails cleanly and creates no deck.
-- Purchase path: `/pricing` → wiersz „Spark” → „Wybierz Spark” →
-  `/checkout?session_id=…&plan_id=spark` (summary names Spark, „9,99 zł/miesiąc”,
-  „Maks. talie 50”, „Razem”) → card `4242 4242 4242 4242`, `12/30`, `123`,
-  „Test Student” → „Zapłać 9,99 zł/miesiąc” → „Płatność udana!
+- Purchase path: `/pricing` → wiersz „Plus” → „Wybierz Plus” →
+  `/checkout?session_id=…&plan_id=spark` (summary names Plus, „19,99 zł/miesiąc”,
+  „Maks. talie 100”, „Razem”) → card `4242 4242 4242 4242`, `12/30`, `123`,
+  „Test Student” → „Zapłać 19,99 zł/miesiąc” → „Płatność udana!
   Przekierowywanie…” → `/billing/success` „Zakup udany!” → `/app`.
-- `GET /api/v1/me/personal-plan` then reports `spark` with `max_decks: 50`
-  (`max_flashcards: 500`, `max_questions: 200`), `/app/billing` shows
-  „StudiQ Spark”, badge „Aktywny”, „Maks. talie 50”, and creating the 11th deck
+- `GET /api/v1/me/personal-plan` then reports `spark` with `max_decks: 100`
+  (`max_flashcards: 1000`, `max_questions: 500`), `/app/billing` shows
+  „StudiQ Plus”, badge „Aktywny”, „Maks. talie 100”, and creating the 11th deck
   succeeds („Talia utworzona”, dialog closes, the deck appears in the list).
   The behavior matches the case exactly; no defect to report.

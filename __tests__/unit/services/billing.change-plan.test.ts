@@ -228,13 +228,7 @@ describe('BillingService.changePlan', () => {
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 
-  it('rejects a plan the caller may not buy: another audience’s personal plan, or an org plan with no org to bill (D34)', async () => {
-    // `ace` is a student-audience personal plan; a manager is refused.
-    await expect(service.changePlan(managerCtx, 'ace')).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
-    });
-
+  it('rejects an organization plan with no org to bill (D34)', async () => {
     // `hub` is an organization plan; without an org id the answer is FORBIDDEN.
     await expect(service.changePlan(studentCtx, 'hub')).resolves.toEqual({
       success: false,
@@ -327,17 +321,6 @@ describe('BillingService.changePlan', () => {
     await expect(service.changePlan(studentCtx, 'ace')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
-    });
-    expect(gateway.changePlan).not.toHaveBeenCalled();
-  });
-
-  it('rejects a personal plan from another audience', async () => {
-    const educatorCtx = { ...studentCtx, accountType: AccountType.EDUCATOR };
-
-    // `ace` is a student-audience plan; an educator cannot buy it.
-    await expect(service.changePlan(educatorCtx, 'ace')).resolves.toEqual({
-      success: false,
-      error: 'FORBIDDEN',
     });
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });

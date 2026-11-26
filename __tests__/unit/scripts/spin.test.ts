@@ -149,6 +149,58 @@ describe('scripts/spin', () => {
     return { parent, repo, root: parent };
   }
 
+  // A spin worktree that has used the env tool, plus a `bun` that records each
+  // call instead of running it and fails the argument lists named in BUN_FAIL.
+  function makeEnvWorktree(options: { cli?: boolean; stateDir?: boolean } = {}) {
+    const { parent, repo, root } = makeRepo('studiq');
+    writeFileSync(join(repo, '.gitignore'), '.dev/\n');
+    if (options.cli !== false) {
+      mkdirSync(join(repo, 'scripts', 'env'), { recursive: true });
+      writeFileSync(join(repo, 'scripts', 'env', 'cli.ts'), '');
+    }
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'env tool');
+    runSpin(repo, ['feat/env', '--no-install', '--no-seed-cache']);
+    const worktree = join(root, 'feat-env');
+    if (options.stateDir !== false) mkdirSync(join(worktree, '.dev'));
+
+    const bin = join(parent, 'bin');
+    mkdirSync(bin, { recursive: true });
+    const log = join(parent, 'bun-calls');
+    writeFileSync(
+      join(bin, 'bun'),
+      `#!/usr/bin/env bash
+registered=no
+git worktree list --porcelain | grep -qxF "worktree $(pwd -P)" && registered=yes
+inherited=$(env | cut -d= -f1 | grep -E '^(GIT_|SUPABASE_(STACK|SHARED)$)' | tr '\\n' ' ')
+printf '%s|%s|%s|%s\\n' "$(pwd -P)" "$*" "$registered" "$inherited" >> "$BUN_LOG"
+case ",$BUN_FAIL," in
+  *",$*,"*) echo "boom from $*" >&2; exit 3 ;;
+  *) echo "output of $*" ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    const physical = realpathSync(worktree);
+    const clean = (flags: string[] = [], fail: string[] = []) =>
+      runSpinCaptured(repo, ['feat/env', '--clean', ...flags], {
+        ...TEST_ENV,
+        PATH: `${bin}:${TEST_ENV.PATH ?? ''}`,
+        BUN_LOG: log,
+        BUN_FAIL: fail.join(','),
+        SUPABASE_STACK: 'callers-stack',
+        SUPABASE_SHARED: '1',
+      });
+    const calls = () =>
+      existsSync(log)
+        ? readFileSync(log, 'utf8')
+            .trim()
+            .split('\n')
+            .map((line) => line.split('|'))
+        : [];
+    return { worktree, physical, clean, calls };
+  }
+
   it('creates a worktree directly in the parent directory', () => {
     const { repo, root } = makeRepo('studiq');
 
@@ -621,6 +673,85 @@ describe('scripts/spin', () => {
 
     // The real cleanup still works afterwards.
     runSpin(repo, ['feat/stuck', '--clean']);
+  });
+
+  describe('--clean stops the worktree environment (#1383)', () => {
+    const DOWN_ALL = 'run env:down --all --yes';
+    const DOWN = 'run env:down';
+
+    it('runs env:down inside the still-registered worktree, without the caller context', () => {
+      const { worktree, physical, clean, calls } = makeEnvWorktree();
+
+      const result = clean();
+
+      expect(result.status).toBe(0);
+      expect(calls()).toEqual([[physical, DOWN_ALL, 'yes', '']]);
+      expect(existsSync(worktree)).toBe(false);
+    });
+
+    it('runs nothing when the clean is refused', () => {
+      const { worktree, clean, calls } = makeEnvWorktree();
+      writeFileSync(join(worktree, 'PRECIOUS.md'), 'uncommitted work\n');
+
+      const result = clean();
+
+      expect(result.status).not.toBe(0);
+      expect(calls()).toEqual([]);
+      expect(existsSync(worktree)).toBe(true);
+    });
+
+    it('stops the environment of a dirty worktree removed with --force', () => {
+      const { worktree, clean, calls } = makeEnvWorktree();
+      writeFileSync(join(worktree, 'PRECIOUS.md'), 'uncommitted work\n');
+
+      const result = clean(['--force']);
+
+      expect(result.status).toBe(0);
+      expect(calls().map((call) => call[1])).toEqual([DOWN_ALL]);
+      expect(existsSync(worktree)).toBe(false);
+    });
+
+    it('falls back to plain env:down when --all is refused, and says why', () => {
+      const { worktree, physical, clean, calls } = makeEnvWorktree();
+
+      const result = clean([], [DOWN_ALL]);
+
+      expect(result.status).toBe(0);
+      expect(calls()).toEqual([
+        [physical, DOWN_ALL, 'yes', ''],
+        [physical, DOWN, 'yes', ''],
+      ]);
+      expect(result.stdout).toContain(`boom from ${DOWN_ALL}`);
+      // Exit 0 from plain `down` does not prove the server stopped; its output does.
+      expect(result.stdout).toContain(`output of ${DOWN}\n`);
+      expect(result.stdout).not.toContain('Could not stop the environment');
+      expect(existsSync(worktree)).toBe(false);
+    });
+
+    it('warns with both commands and causes, and still removes, when both fail', () => {
+      const { worktree, clean } = makeEnvWorktree();
+
+      const result = clean([], [DOWN_ALL, DOWN]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Could not stop the environment');
+      expect(result.stdout).toContain(`bun run env:down --all --yes:\n    boom from ${DOWN_ALL}`);
+      expect(result.stdout).toContain(`bun run env:down:\n    boom from ${DOWN}\n`);
+      expect(existsSync(worktree)).toBe(false);
+    });
+
+    it.each([
+      ['no .dev/ state directory', { stateDir: false }],
+      ['no env tool', { cli: false }],
+    ])('runs nothing in a worktree with %s', (_label, options) => {
+      const { worktree, clean, calls } = makeEnvWorktree(options);
+
+      const result = clean();
+
+      expect(result.status).toBe(0);
+      expect(calls()).toEqual([]);
+      expect(existsSync(worktree)).toBe(false);
+    });
   });
 
   it('refuses to clean the primary checkout from a linked worktree', () => {

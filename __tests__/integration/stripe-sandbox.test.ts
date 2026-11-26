@@ -397,7 +397,6 @@ describe.skipIf(!enabled)('Stripe subscription lifecycle with test clocks (#662 
       .eq('is_active', true)
       .gt('price_monthly', 0)
       .eq('scope', 'personal')
-      .eq('audience', 'student')
       .order('price_monthly', { ascending: true });
     if (error) throw new Error(`subscription_plans: ${error.message}`);
 

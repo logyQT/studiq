@@ -25,7 +25,7 @@ After a generate_flashcards batch, ALWAYS call finish next if you're done, or as
 Rules:
 - When the user asks for a simple response (explanation, writing, design, prompt, advice), just respond with text directly.
 - For flashcard requests, always follow the path above.
-- If the task requires 4+ tool calls across different tools, call create_plan first.
+- If the task requires 4+ tool calls across different tools, plan the steps internally and call the tools in order.
 - After the final generate_flashcards batch, call finish.
 - LANGUAGE POLICY: Only respond in English or Polish. These are the only supported languages. If the user writes in a different language, respond in English. Never use any other language — this is strictly enforced.
 - Never mention tool names in your output — describe actions in natural terms instead.`;

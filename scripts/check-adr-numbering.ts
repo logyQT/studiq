@@ -41,6 +41,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { readTrackedFile } from './lib/read-tracked-file';
 
 const root = resolve(process.argv[2] ?? '.');
 const adrDir = join(root, 'docs', 'decisions');
@@ -184,13 +185,14 @@ if (adrDirReadable) {
     if (BINARY_EXT_RE.test(file)) continue;
 
     const filePath = join(root, file);
-    let content: string;
+    let content: string | null;
     try {
-      content = readFileSync(filePath, 'utf8');
+      content = readTrackedFile(filePath);
     } catch {
       errors.push(`${file} — cannot be read for the ADR reference scan.`);
       continue;
     }
+    if (content === null) continue;
 
     const lines = content.split('\n');
     const inAdrDir = isInsideAdrDir(filePath);

@@ -6,7 +6,7 @@ Build a regression-testable pipeline for the AI flashcard generation feature.
 The single-agent chat is inherently non-deterministic (LLM decides tool calls), but
 the frontend transformation layer (`use-ai-chat.ts`) is pure — `useChat` output in,
 `ChatMessage[]` out. That's where all recent bugs lived (markdown streaming status,
-flashcard readOnly vs skeleton, plan step tracking). We test that layer exhaustively
+flashcard readOnly vs skeleton). We test that layer exhaustively
 with fixture-driven snapshot tests, then add component render and backend tests.
 
 ---
@@ -106,33 +106,26 @@ describe.each(fixtureFiles)('fixture: %s', (fixtureFile) => {
           expect(actual.result?.deckName).toBe(expectedMsg.result.deckName);
         }
       }
-      if (expectedMsg.planCompleted !== undefined) {
-        expect(actual.planCompleted).toBe(expectedMsg.planCompleted);
-      }
-      if (expectedMsg.completedSteps !== undefined) {
-        expect(actual.completedSteps).toEqual(expectedMsg.completedSteps);
-      }
     });
   });
 });
 ```
 
-### 10 Fixture Scenarios
+### 9 Fixture Scenarios
 
 See Appendix A below for the full 100 test cases.
 
 | #   | Fixture file                               | What it guards                                                                                                       |
 | --- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| 1   | `basic-direct-flashcards.json`             | Simple `generate_flashcards` → `finish` without plan                                                                 |
+| 1   | `basic-direct-flashcards.json`             | Simple `generate_flashcards` → `finish`                                                                              |
 | 2   | `finish-with-flashcards-consolidated.json` | Multi-batch → `finish(type='flashcards')` produces `readOnly=false`, correct deckName                                |
 | 3   | `intermediate-batch-readonly.json`         | `generate_flashcards` before `finish` has `readOnly=true`                                                            |
 | 4   | `markdown-streaming-stability.json`        | Only last assistant message's last text part is `status:'streaming'`; previously complete messages stay `'complete'` |
-| 5   | `plan-step-tracking.json`                  | Tool calls map to plan steps correctly, `finish` marks all complete, `completedSteps: [0,1,2]`                       |
-| 6   | `finish-type-chat.json`                    | `finish(type='chat')` produces text assistant message, no flashcard result                                           |
-| 7   | `plan-with-webfetch.json`                  | Plan created, `webfetch` → `extract_concepts` → `generate_flashcards` → `finish`                                     |
-| 8   | `interrupted-generation.json`              | User message between two batches → agent handles correctly, chain is not broken                                      |
-| 9   | `empty-stream.json`                        | Pure text response, no tool calls at all                                                                             |
-| 10  | `streaming-vs-complete-edge.json`          | Messages with mixed complete/streaming parts — only last part of last assistant message is streaming                 |
+| 5   | `finish-type-chat.json`                    | `finish(type='chat')` produces text assistant message, no flashcard result                                           |
+| 6   | `webfetch-flashcards.json`                 | `webfetch` → `extract_concepts` → `generate_flashcards` → `finish`                                                   |
+| 7   | `interrupted-generation.json`              | User message between two batches → agent handles correctly, chain is not broken                                      |
+| 8   | `empty-stream.json`                        | Pure text response, no tool calls at all                                                                             |
+| 9   | `streaming-vs-complete-edge.json`          | Messages with mixed complete/streaming parts — only last part of last assistant message is streaming                 |
 
 ### Dependencies to add
 
@@ -158,12 +151,11 @@ Or use `@vitest-environment jsdom` docblock per file (simpler).
 
 `__tests__/unit/components/`:
 
-| File                       | What it tests                                                                                                                 |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `flashcard-block.test.tsx` | Skeleton when `loading`, preview when `readOnly=true`, save button when `readOnly=false`, grid layout, deck name display      |
-| `plan-block.test.tsx`      | Correct step status rendering (pending gray, in-progress spinner, completed sparkle), "2/5 completed" vs "All steps complete" |
-| `chat-message.test.tsx`    | Markdown renderer vs plain text based on `status`, correct component switching for result types                               |
-| `chat-history.test.tsx`    | React.memo prevents re-render on unrelated message changes, correct React.memo shallow comparison                             |
+| File                       | What it tests                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `flashcard-block.test.tsx` | Skeleton when `loading`, preview when `readOnly=true`, save button when `readOnly=false`, grid layout, deck name display |
+| `chat-message.test.tsx`    | Markdown renderer vs plain text based on `status`, correct component switching for result types                          |
+| `chat-history.test.tsx`    | React.memo prevents re-render on unrelated message changes, correct React.memo shallow comparison                        |
 
 ### Testing approach
 
@@ -304,14 +296,14 @@ Add `bun test:hooks` to package.json scripts.
 
 ### B. Multi-Batch / Large Requests (8)
 
-11. "Make 500 flashcards about US history" → plan → batch1 → ask_user → batch2 → ask_user → ... → finish(consolidated)
-12. "1000 English vocabulary flashcards" → plan → 5 batches of 200 → finish(consolidated)
-13. "300 flashcards about chemistry elements" → plan → 3 batches → finish
-14. "Create 2000 flashcards for medical terminology" → plan → ~10 batches → finish
+11. "Make 500 flashcards about US history" → batch1 → ask_user → batch2 → ask_user → ... → finish(consolidated)
+12. "1000 English vocabulary flashcards" → 5 batches of 200 → finish(consolidated)
+13. "300 flashcards about chemistry elements" → 3 batches → finish
+14. "Create 2000 flashcards for medical terminology" → ~10 batches → finish
 15. "Make 50 flashcards about Shakespeare plays" → (single batch, within limit) → finish
-16. "250 flashcards about programming languages" → plan → 2 batches → finish
-17. "Fiszki z biologii, 150 sztuk" → plan → batch → ask_user → continue → finish
-18. "800 flashcards about world geography" → plan → 4 batches of 200 → finish
+16. "250 flashcards about programming languages" → 2 batches → finish
+17. "Fiszki z biologii, 150 sztuk" → batch → ask_user → continue → finish
+18. "800 flashcards about world geography" → 4 batches of 200 → finish
 
 ### C. Language Switching (8)
 
@@ -346,14 +338,14 @@ Add `bun test:hooks` to package.json scripts.
 41. URL returns rate-limited → retry behavior
 42. User provides multiple URLs → agent should handle sequentially
 
-### F. Plan-Based Complex Flows (6)
+### F. Complex Multi-Tool Flows (6)
 
-43. "Research and create flashcards about quantum computing" → plan → webfetch → extract → generate → finish
-44. "Make a comprehensive study set for the Civil War" → plan → fetch_material → extract → generate → finish
-45. "Create flashcards for my biology exam, covering cells, genetics, and evolution" → plan → multi-topic
-46. "I need to learn about the French Revolution, make flashcards" → plan → webfetch → extract → generate → ask_user → continue → finish
-47. "Create flashcards from these notes and this URL" → plan → combine multiple sources
-48. Complex plan with 6+ steps → `create_plan` called (4+ tools trigger it)
+43. "Research and create flashcards about quantum computing" → webfetch → extract → generate → finish
+44. "Make a comprehensive study set for the Civil War" → fetch_material → extract → generate → finish
+45. "Create flashcards for my biology exam, covering cells, genetics, and evolution" → multi-topic
+46. "I need to learn about the French Revolution, make flashcards" → webfetch → extract → generate → ask_user → continue → finish
+47. "Create flashcards from these notes and this URL" → combine multiple sources
+48. Complex request spanning 4+ tools → the model calls each tool in order
 
 ### G. User Interruptions / Redirects (8)
 
@@ -374,7 +366,7 @@ Add `bun test:hooks` to package.json scripts.
 60. Tool execution error → error message shown to user
 61. Token limit exceeded → agent should split into batches
 62. Rate limit hit → exponential backoff behavior
-63. Tool call fails mid-plan → agent should recover/retry
+63. Tool call fails mid-run → agent should recover/retry
 64. Empty response from tool → agent should re-attempt
 
 ### I. Content Edge Cases (10)
@@ -393,13 +385,13 @@ Add `bun test:hooks` to package.json scripts.
 ### J. Tool-Specific Scenarios (8)
 
 75. Agent calls `ask_user` for clarification → user responds → agent continues
-76. Agent calls `create_plan` → executes steps → plan tracking updates in UI
+76. Agent calls `webfetch` → its content feeds `extract_concepts` → cards
 77. Agent calls `evaluate_quality` → returns passed/failed (currently no-op)
 78. Agent calls `fetch_material` → generates study content → extracts flashcards
 79. Agent calls `webfetch` → extracts concepts → generates flashcards
 80. Agent calls `finish(type='flashcards')` → consolidated view renders
 81. Agent calls `finish(type='chat')` → text response renders
-82. Agent calls multiple tools without plan (3 or fewer) → no plan triggered
+82. Agent calls multiple tools in one turn → each call renders in order
 
 ### K. Edge Cases & Regressions (10)
 
@@ -411,7 +403,7 @@ Add `bun test:hooks` to package.json scripts.
 88. Rapid-fire requests (user sends messages before agent finishes)
 89. Browser refresh mid-stream → reconnection behavior (or lack thereof)
 90. Switching tabs / app going to background → stream continues?
-91. Agent uses `create_plan` with 10+ steps → UI rendering overflow
+91. A tool result is long → the row wraps instead of overflowing
 92. Agent generates 200 flashcards with very long text → card grid overflow
 
 ### L. Regression Test Suites (8)
@@ -675,11 +667,10 @@ coverage: {
 
 These are past bugs we MUST catch with the above tests:
 
-| Bug                                       | Fixture                               | Assertion                                                                                                                    |
-| ----------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Markdown re-rendering                     | `markdown-streaming-stability`        | completed assistant messages have `status: 'complete'`, only active streaming has `'streaming'`                              |
-| Flashcard skeleton dead code              | `intermediate-batch-readonly`         | assistant message with `generate_flashcards` result has `result` field present with valid `readOnly`                         |
-| `finish` with flashcards silently dropped | `finish-with-flashcards-consolidated` | final assistant message has `result.type === 'flashcards'` with `readOnly: false` and `deckName`                             |
-| Plan instantly completed                  | `plan-step-tracking`                  | `completedSteps` array grows incrementally, not all at once before finish; `planCompleted` is false until `finish` tool call |
-| Globally-applied `isStreaming` flag       | `markdown-streaming-stability`        | Previous assistant message's parts all `'complete'`, only new active stream parts `'streaming'`                              |
-| Skill router DeepSeek json_object error   | N/A (not a frontend issue)            | N/A                                                                                                                          |
+| Bug                                       | Fixture                               | Assertion                                                                                            |
+| ----------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Markdown re-rendering                     | `markdown-streaming-stability`        | completed assistant messages have `status: 'complete'`, only active streaming has `'streaming'`      |
+| Flashcard skeleton dead code              | `intermediate-batch-readonly`         | assistant message with `generate_flashcards` result has `result` field present with valid `readOnly` |
+| `finish` with flashcards silently dropped | `finish-with-flashcards-consolidated` | final assistant message has `result.type === 'flashcards'` with `readOnly: false` and `deckName`     |
+| Globally-applied `isStreaming` flag       | `markdown-streaming-stability`        | Previous assistant message's parts all `'complete'`, only new active stream parts `'streaming'`      |
+| Skill router DeepSeek json_object error   | N/A (not a frontend issue)            | N/A                                                                                                  |

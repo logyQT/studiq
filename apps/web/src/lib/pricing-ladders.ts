@@ -6,7 +6,7 @@ import { getVisibleLimitKeys } from '@/lib/pricing-limits';
  * other row stays quiet, so a ladder has one destination rather than four
  * (DESIGN §Dosage: one primary action per screen).
  */
-const RECOMMENDED_PLAN_KEYS: readonly string[] = ['ace', 'creator', 'hub'];
+const RECOMMENDED_PLAN_KEYS: readonly string[] = ['spark', 'hub'];
 
 export function isRecommendedPlan(key: string): boolean {
   return RECOMMENDED_PLAN_KEYS.includes(key);
@@ -33,17 +33,14 @@ export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): str
 }
 
 export type PlanLadders = {
-  individual: {
-    student: PlanInfo[];
-    educator: PlanInfo[];
-  };
+  individual: PlanInfo[];
   organization: PlanInfo[];
 };
 
-/** Active personal plans of one audience, in the catalogue's own order. */
-function personalLadder(plans: readonly PlanInfo[], audience: string): PlanInfo[] {
+/** Active personal plans, in the catalogue's own order. */
+function personalLadder(plans: readonly PlanInfo[]): PlanInfo[] {
   return plans
-    .filter((plan) => plan.isActive && plan.scope === 'personal' && plan.audience === audience)
+    .filter((plan) => plan.isActive && plan.scope === 'personal')
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
@@ -56,41 +53,13 @@ function organizationLadder(plans: readonly PlanInfo[]): PlanInfo[] {
 
 /**
  * The catalogue is one flat list because `sort_order` is global across the
- * ladders, so the page splits it here instead of asking the API three times.
- * `solo` is a manager-personal plan and appears in no pricing ladder.
+ * ladders, so the page splits it here instead of asking the API twice.
  */
 export function getPlanLadders(plans: readonly PlanInfo[]): PlanLadders {
   return {
-    individual: {
-      student: personalLadder(plans, 'student'),
-      educator: personalLadder(plans, 'educator'),
-    },
+    individual: personalLadder(plans),
     organization: organizationLadder(plans),
   };
-}
-
-/** The audiences a personal plan can name. */
-const ACCOUNT_FAMILIES: readonly string[] = ['student', 'educator', 'manager'];
-
-/**
- * Whether a signed-in reader may buy this plan. The server enforces the same
- * rule (`checkout-rules.ts` → `FORBIDDEN` for another audience's personal
- * plan; organization plans have no audience check), so the page must not print
- * a checkout that can only fail: one URL carries both scopes, and a reader
- * sees the other ladders as someone else's (#1274).
- *
- * `accountType` comes from the untyped `app_metadata` map, so a missing or
- * unrecognised value fails closed — no purchase action rather than a refused one.
- */
-export function canBuyPlan(
-  plan: Pick<PlanInfo, 'scope' | 'audience'>,
-  accountType: string | null | undefined,
-): boolean {
-  if (!accountType || !ACCOUNT_FAMILIES.includes(accountType)) return false;
-  // Organization plans have no audience check; a personal plan must name the
-  // reader's own audience.
-  if (plan.scope === 'organization') return true;
-  return plan.audience === accountType;
 }
 
 /** `StudiQ Ace` → `Ace`: the page says StudiQ already, the tier is the column. */
@@ -158,16 +127,15 @@ function capacityToken(value: number | undefined): string {
 
 /**
  * Limits to tabulate: the keys the ladder can show at all, minus the ones that
- * are identical on every plan. Seats and groups are dropped from a student
+ * are identical on every plan. Seats and groups are dropped from a personal
  * ladder by `getVisibleLimitKeys`, and the comparison is made on the printed
  * value, so two plans whose caps both read `—` do not make a row either.
  */
 export function splitLimitRows(plans: readonly PlanInfo[]): string[] {
-  // One audience per ladder, so the first plan names it; the organization
-  // ladder has no audience and shows the seat/group limits.
-  const first = plans[0];
-  const accountType = first?.audience ?? (first?.scope === 'organization' ? 'manager' : '');
-  return getVisibleLimitKeys(plans, accountType).filter((key) => {
+  // The organization ladder shows the seat/group limits; a personal ladder
+  // never does, because no personal plan carries them.
+  const scope = plans[0]?.scope === 'organization' ? 'organization' : 'personal';
+  return getVisibleLimitKeys(plans, scope).filter((key) => {
     const tokens = new Set(plans.map((plan) => capacityToken(plan.limits[key])));
     return tokens.size > 1;
   });

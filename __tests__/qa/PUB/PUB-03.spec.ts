@@ -11,8 +11,10 @@ import { createTranslator } from 'next-intl';
  * (`/pricing/student`, `/pricing/edu`, `/pricing/org`). Those routes are gone and
  * the page is one URL, so the case's subject — “which catalogue do I get, and how
  * do I get to the other one?” — is now the two-option audience switch:
- * „Dla siebie” (the student and educator ladders) and „Dla organizacji” (the
- * manager ladder). The case ID and its acceptance intent are unchanged.
+ * „Dla siebie” (the one individual ladder) and „Dla organizacji” (the
+ * organization ladder). The case ID and its acceptance intent are unchanged.
+ * #1193 removed the student/educator split: „Dla siebie” is one ladder,
+ * Free / Plus / Pro / Max, for every persona.
  *
  * Prerequisite is "Brak sesji": the pricing page is public, so the spec runs in an
  * empty storage state and never signs in. PUB-03's isolated tenant
@@ -22,10 +24,11 @@ import { createTranslator } from 'next-intl';
  *
  * The plan catalogue is global product config. The spec reads it through the
  * public `GET /api/v1/subscription-plans` endpoint (no scope/audience filter: one
- * flat list, which is what the page itself requests) and compares the rendered ladders with
- * it; no plan, setting or other singleton row is written. Page copy comes from the
- * `PricingPage` message catalogue the page renders from, so a rewording does not
- * turn the spec red — which plans and which ladder each audience shows does.
+ * flat list, which is what the page itself requests) and compares the rendered
+ * ladders with it; no plan, setting or other singleton row is written. Page copy
+ * comes from the `PricingPage` message catalogue the page renders from, so a
+ * rewording does not turn the spec red — which plans and which ladder each
+ * audience shows does.
  */
 
 const copy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
@@ -39,11 +42,10 @@ interface PlanInfo {
   audience: string | null;
 }
 
-/** The ladders the pricing page documents, per scope/audience (D34). */
+/** The two ladders the pricing page documents, per scope. */
 const LADDERS = [
-  { scope: 'personal', audience: 'student', plans: ['base', 'spark', 'ace', 'pro'] },
-  { scope: 'personal', audience: 'educator', plans: ['lite', 'guide', 'creator', 'master'] },
-  { scope: 'organization', audience: null, plans: ['launch', 'team', 'hub', 'campus'] },
+  { scope: 'personal', plans: ['base', 'spark', 'ace', 'pro'] },
+  { scope: 'organization', plans: ['launch', 'team', 'hub', 'campus'] },
 ] as const;
 
 /** Collect browser-side failures so "no errors" is asserted, not assumed. */
@@ -69,17 +71,15 @@ function watchForErrors(page: Page) {
   };
 }
 
-/** `StudiQ Ace` → `Ace`: the page names the tier in its own column. */
+/** `StudiQ Plus` → `Plus`: the page names the tier in its own column. */
 function shortPlanName(name: string): string {
   return name.replace(/^StudiQ\s+/i, '').trim();
 }
 
-/** The catalogue's own order for one scope/audience ladder. */
-function ladder(plans: PlanInfo[], filter: { scope: string; audience: string | null }): PlanInfo[] {
+/** The catalogue's own order for one scope ladder. */
+function ladder(plans: PlanInfo[], scope: string): PlanInfo[] {
   return plans
-    .filter(
-      (plan) => plan.isActive && plan.scope === filter.scope && plan.audience === filter.audience,
-    )
+    .filter((plan) => plan.isActive && plan.scope === scope)
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
 }
 
@@ -134,7 +134,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await context.addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: hostname, path: '/' }]);
   });
 
-  test('one page shows both individual ladders and swaps to the organization one in place', async ({
+  test('one page shows the individual ladder and swaps to the organization one in place', async ({
     page,
   }) => {
     const errors = watchForErrors(page);
@@ -158,18 +158,11 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(page.getByText(copy('subtitle'), { exact: true })).toBeVisible();
 
     const catalogue = await fetchCatalogue(page);
-    for (const filter of LADDERS) {
-      const label = filter.audience ?? filter.scope;
+    for (const entry of LADDERS) {
       expect(
-        ladder(catalogue, filter).map((plan) => plan.key),
-        `the ${label} ladder in the catalogue`,
-      ).toEqual([...filter.plans]);
-    }
-    // `solo` is in the catalogue (the free manager personal plan) but in no
-    // pricing ladder (D2/D34).
-    expect(catalogue.map((plan) => plan.key)).toContain('solo');
-    for (const filter of LADDERS) {
-      expect(ladder(catalogue, filter).map((plan) => plan.key)).not.toContain('solo');
+        ladder(catalogue, entry.scope).map((plan) => plan.key),
+        `the ${entry.scope} ladder in the catalogue`,
+      ).toEqual([...entry.plans]);
     }
 
     // The two-option switch: a named radio group, not a card grid.
@@ -187,12 +180,10 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(individualRadio, 'the default audience').toBeChecked();
     await expect(organizationRadio).not.toBeChecked();
 
-    // Both individual ladders, exactly the catalogue's plans, in its order.
-    const studentPlans = ladder(catalogue, { scope: 'personal', audience: 'student' });
-    const educatorPlans = ladder(catalogue, { scope: 'personal', audience: 'educator' });
-    const organizationPlans = ladder(catalogue, { scope: 'organization', audience: null });
-    await expectLadder(page, copy('ladder_student_title'), studentPlans);
-    await expectLadder(page, copy('ladder_educator_title'), educatorPlans);
+    // The one individual ladder, exactly the catalogue's plans, in its order.
+    const individualPlans = ladder(catalogue, 'personal');
+    const organizationPlans = ladder(catalogue, 'organization');
+    await expectLadder(page, copy('ladder_individual_title'), individualPlans);
 
     // The organization ladder is not on the page in this view.
     await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
@@ -231,9 +222,9 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
       `scroll position ${scrollBefore} → ${scrollAfter}`,
     ).toBeLessThanOrEqual(2);
 
-    // The individual ladders are gone, and the switch follows the address.
+    // The individual ladder is gone, and the switch follows the address.
     await expect(page.locator('#pricing-plans h3#base')).toHaveCount(0);
-    await expect(ladderSection(page, copy('ladder_student_title'))).toHaveCount(0);
+    await expect(ladderSection(page, copy('ladder_individual_title'))).toHaveCount(0);
     await expect(organizationRadio).toBeChecked();
 
     // --- Back undoes the switch ---------------------------------------------
@@ -241,7 +232,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     // away, the same way the reader arrived.
     await page.goBack();
     await expect(page).toHaveURL(/\/pricing$/);
-    await expectLadder(page, copy('ladder_student_title'), studentPlans);
+    await expectLadder(page, copy('ladder_individual_title'), individualPlans);
     await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
     await expect(individualRadio).toBeChecked();
 
@@ -255,7 +246,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
       .filter({ hasText: copy('audience_individual') })
       .click();
     await expect(page).toHaveURL(/\/pricing$/);
-    await expectLadder(page, copy('ladder_student_title'), studentPlans);
+    await expectLadder(page, copy('ladder_individual_title'), individualPlans);
     await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
 
     // --- Back/Forward follow the address, not a remembered choice -----------
@@ -280,8 +271,8 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
       organizationHtml,
       'a cold ?audience=organization response contains the organization ladder',
     ).toContain(`>${copy('ladder_org_title')}</h2>`);
-    expect(organizationHtml, 'and not the student ladder').not.toContain(
-      `>${copy('ladder_student_title')}</h2>`,
+    expect(organizationHtml, 'and not the individual ladder').not.toContain(
+      `>${copy('ladder_individual_title')}</h2>`,
     );
     /*
      * The rows and their prices are the page's promise to a crawler: the heading
@@ -300,15 +291,19 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     expect(organizationRadioTag, 'and is the chosen one').toContain('checked');
 
     const individualHtml = await (await page.request.get('/pricing')).text();
-    expect(individualHtml, 'the default response contains both individual ladders').toContain(
-      `>${copy('ladder_student_title')}</h2>`,
+    expect(individualHtml, 'the default response contains the individual ladder').toContain(
+      `>${copy('ladder_individual_title')}</h2>`,
     );
-    expect(individualHtml).toContain(`>${copy('ladder_educator_title')}</h2>`);
     expect(individualHtml, 'and not the organization ladder').not.toContain(
       `>${copy('ladder_org_title')}</h2>`,
     );
-    for (const key of ['base', 'spark', 'ace', 'pro', 'lite', 'guide', 'creator', 'master']) {
+    for (const key of ['base', 'spark', 'ace', 'pro']) {
       expect(individualHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
+    }
+    for (const retired of ['lite', 'guide', 'creator', 'master', 'solo']) {
+      expect(individualHtml, `the retired ${retired} row is absent`).not.toContain(
+        `id="${retired}"`,
+      );
     }
     expect(individualHtml, 'with prices').toContain(copy('period_month'));
     expect(individualHtml, 'and no organization row').not.toContain('id="launch"');
