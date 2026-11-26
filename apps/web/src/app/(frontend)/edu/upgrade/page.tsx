@@ -15,5 +15,5 @@ export default function EduUpgradePage() {
     enabled: !!user,
   });
 
-  return <UpgradePlans audience="educator" currentPlanKey={currentPlan?.key} />;
+  return <UpgradePlans scope="personal" currentPlanKey={currentPlan?.key} />;
 }

@@ -264,7 +264,7 @@ describe('group routes authorize on group permissions', () => {
     if (limit !== -1 && (count ?? 0) >= limit) {
       const { error: raiseError } = await service
         .from('organizations')
-        .update({ plan: 'creator' })
+        .update({ plan: 'hub' })
         .eq('id', orgId);
       if (raiseError) throw new Error(`[setup] plan: ${raiseError.message}`);
     }

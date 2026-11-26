@@ -199,6 +199,14 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
 
+> **2026-11-26 (B1, #1193).** D33's seat persona check is retired. `audience`
+> is no longer a plan dimension: a personal plan carries `audience = NULL`, so
+> `assignSeat` can no longer compare the target's `profiles.account_type` to it
+> and no longer refuses on that basis. A seat pool is offered to any member of
+> the organization. `addPool` still requires an active `scope='personal'` plan
+> whose keys are all `seatEligible` in `entitlement_catalog`. The original D33
+> text stays as the decision history for phase 4a.
+
 ## 5. Phase log
 
 ### Phase 0 — docs

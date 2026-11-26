@@ -218,19 +218,19 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result)[1]?.seatEligible).toBe(false);
     });
 
-    it('filters by scope and audience', async () => {
+    it('filters by scope', async () => {
       const plansQb = qb([]);
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.listActive({ scope: 'personal', audience: 'student' });
+      const result = await service.listActive({ scope: 'personal' });
 
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
       expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
-      expect(plansQb.eq).toHaveBeenCalledWith('audience', 'student');
+      expect(plansQb.eq).not.toHaveBeenCalledWith('audience', expect.anything());
     });
 
     it('returns error on plans query failure', async () => {
@@ -789,11 +789,11 @@ describe('SubscriptionPlanService', () => {
       );
     });
 
-    it('writes scope/audience from the input', async () => {
+    it('writes scope and the null audience from the input', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
-      await service.create({ key: 'hub', name: 'Hub', scope: 'organization', audience: null });
+      await service.create({ key: 'hub', name: 'Hub', scope: 'organization' });
 
       expect(b.insert).toHaveBeenCalledWith(
         expect.objectContaining({ scope: 'organization', audience: null }),
@@ -802,10 +802,10 @@ describe('SubscriptionPlanService', () => {
       const b2 = qb({ id: 'p-2' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.create({ key: 'solo', name: 'Solo', scope: 'personal', audience: 'manager' });
+      await service.create({ key: 'pro', name: 'Pro', scope: 'personal', audience: null });
 
       expect(b2.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'personal', audience: 'manager' }),
+        expect.objectContaining({ scope: 'personal', audience: null }),
       );
     });
   });

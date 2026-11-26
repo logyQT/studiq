@@ -32,13 +32,12 @@ not come back until they are measured.
 
 ## Who buys it
 
-Three ladders, each self-serve through Stripe from `/pricing`:
+Two ladders, each self-serve through Stripe from `/pricing`:
 
-| Ladder      | Account type | Free tier | Paid tiers                                       |
-| ----------- | ------------ | --------- | ------------------------------------------------ |
-| Student     | `STUDENT`    | `base`    | `spark` 9.99 · `ace` 19.99 · `pro` 39.99         |
-| Educator    | `EDUCATOR`   | `lite`    | `guide` 19.99 · `creator` 39.99 · `master` 79.99 |
-| Institution | `MANAGER`    | `launch`  | `team` 99 · `hub` 299 · `campus` 699             |
+| Ladder      | Account type                     | Free tier | Paid tiers                                |
+| ----------- | -------------------------------- | --------- | ----------------------------------------- |
+| Individual  | `STUDENT`, `EDUCATOR`, `MANAGER` | `base`    | `spark` 19.99 · `ace` 39.99 · `pro` 79.99 |
+| Institution | `MANAGER`                        | `launch`  | `team` 99 · `hub` 299 · `campus` 699      |
 
 All prices in PLN per month, from `subscription_plans`. Never hardcode them: the landing
 reads `/api/v1/subscription-plans` and formats through `formatPlanPrice`.

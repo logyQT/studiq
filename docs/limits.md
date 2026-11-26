@@ -24,16 +24,16 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                                          |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                    |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                     |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                     |
-| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; managers default to the free `solo` tier — D2). An organization purchase never writes it (#228).        |
-| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                  |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                               |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                        |
+| Table / column                                                          | Meaning                                                                                                                                             |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                       |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                        |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                        |
+| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; every persona, a manager included, starts there — #1193). An organization purchase never writes it (#228). |
+| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                     |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence.    |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                  |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                           |
 
 The `base` / `launch` defaults come from the plan-catalogue migration
 (`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` →
@@ -173,13 +173,15 @@ inside an org — it is the legacy org-buyer mirror (#228, D34). A missing
 seat plan: a spoofed org id has no row and falls back to the personal plan
 (user keys) or `0` (org keys), ignoring any stale seat row.
 
-**Managers (#228, D2):** a manager has no paid personal plan — their
-`profiles.personal_plan_key` is the free `solo` tier. In a verified org an
-organization-scope personal plan is excluded, so limits come from
-`max(org, seat, personal)` with the personal layer inert when its plan is
-organization-scope (#228, D34); the free personal tier applies fully when there
-is no active org. A legacy org-scope plan left in `personal_plan_key` cannot
-widen any org's limits — the 2026-11-22 backfill moves managers onto `solo`.
+**Managers (#1193):** a manager uses the same one individual ladder as every
+other signed-in reader and may buy Plus, Pro or Max as a personal plan. A new
+manager starts on the free `base` plan, the one `handle_new_user()` mints for
+every persona. In a verified org an organization-scope personal plan is
+excluded, so limits come from `max(org, seat, personal)` with the personal
+layer inert when its plan is organization-scope (#228, D34); the free personal
+plan applies fully when there is no active org. A legacy org-scope plan left in
+`personal_plan_key` cannot widen any org's limits — the 2026-11-22 backfill
+moves managers off those plans.
 
 `checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`

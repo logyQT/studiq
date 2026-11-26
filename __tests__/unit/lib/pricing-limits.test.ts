@@ -14,21 +14,19 @@ describe('SORTED_LIMIT_KEYS', () => {
 });
 
 describe('getVisibleLimitKeys', () => {
-  it('hides educator/org-only limits for the student comparison', () => {
-    expect(getVisibleLimitKeys(plans, 'student')).toEqual(['max_flashcards']);
+  it('hides organization-only limits for a personal comparison', () => {
+    expect(getVisibleLimitKeys(plans, 'personal')).toEqual(['max_flashcards']);
   });
 
-  it('keeps seat and group limits for educator and manager views', () => {
-    for (const type of ['educator', 'manager']) {
-      expect(getVisibleLimitKeys(plans, type)).toEqual([
-        'max_flashcards',
-        'max_students',
-        'max_groups',
-      ]);
-    }
+  it('keeps seat and group limits on the organization ladder', () => {
+    expect(getVisibleLimitKeys(plans, 'organization')).toEqual([
+      'max_flashcards',
+      'max_students',
+      'max_groups',
+    ]);
   });
 
   it('returns nothing without plans', () => {
-    expect(getVisibleLimitKeys(undefined, 'student')).toEqual([]);
+    expect(getVisibleLimitKeys(undefined, 'personal')).toEqual([]);
   });
 });

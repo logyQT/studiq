@@ -95,7 +95,6 @@
     "col_key": "Klucz",
     "col_name": "Nazwa",
     "col_scope": "Zakres",
-    "col_audience": "Odbiorcy",
     "col_monthly": "Miesięcznie",
     "col_yearly": "Rocznie",
     "col_active": "Aktywny",
@@ -114,10 +113,6 @@
     "limit_value": "Wartość",
     "scope_personal": "Osobisty",
     "scope_organization": "Organizacja",
-    "audience_none": "—",
-    "audience_student": "Uczeń",
-    "audience_educator": "Edukator",
-    "audience_manager": "Menedżer",
     "price_unit_hint": "W groszach (100 = 1,00 zł)"
   },
   "Users": {

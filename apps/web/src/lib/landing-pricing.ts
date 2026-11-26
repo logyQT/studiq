@@ -1,12 +1,12 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 
-/** The student plan the landing page presents as "Premium" (the popular one on /pricing). */
-const LANDING_PREMIUM_KEY = 'ace';
+/** The personal plan the landing page presents as "Plus" (the page's recommended tier). */
+const LANDING_PREMIUM_KEY = 'spark';
 
 export type LandingPricing = {
-  /** Free student plan (price 0). */
+  /** Free personal plan (price 0). */
   free: PlanInfo | null;
-  /** The headline paid student plan. */
+  /** The headline paid personal plan. */
   premium: PlanInfo | null;
   /** Cheapest paid organization plan, shown as "od ...". */
   organizationFrom: PlanInfo | null;
@@ -21,12 +21,13 @@ function cheapestPaid(plans: PlanInfo[]): PlanInfo | null {
 /**
  * Picks the three plans the landing teaser advertises from the real, DB-driven plans, so the
  * public page cannot disagree with /pricing (the teaser used hardcoded USD copy, #283).
+ * There is one personal ladder since #1193, so `personal` is that list.
  */
-export function pickLandingPlans(student: PlanInfo[], manager: PlanInfo[]): LandingPricing {
-  const free = student.find((p) => p.priceMonthly === 0) ?? null;
-  const premium = student.find((p) => p.key === LANDING_PREMIUM_KEY) ?? cheapestPaid(student);
+export function pickLandingPlans(personal: PlanInfo[], organization: PlanInfo[]): LandingPricing {
+  const free = personal.find((p) => p.priceMonthly === 0) ?? null;
+  const premium = personal.find((p) => p.key === LANDING_PREMIUM_KEY) ?? cheapestPaid(personal);
 
-  return { free, premium, organizationFrom: cheapestPaid(manager) };
+  return { free, premium, organizationFrom: cheapestPaid(organization) };
 }
 
 /** `19,99 zł` / `$19.99` in the visitor locale, always in the currency of the plan itself. */

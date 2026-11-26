@@ -3,7 +3,7 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
- * BIL-05 — checkout refuses a plan that does not match the account type.
+ * BIL-05 — checkout refuses a plan the caller has no authority to buy.
  *
  * The case was written against the legacy manual seed (`student1@dev.local`,
  * password `pass`); the suite version uses this case's own tenant and never the
@@ -16,20 +16,19 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *   bun scripts/qa-tenant.ts BIL-05 --fresh
  *
  * The verdict of the walk (shared app, pl): the concern in the case text — „student
- * może przypisać sobie plan organizacyjny/edukatora” — does not reproduce. The
- * server refuses the purchase (`resolveApplicablePlan` in
- * `lib/payment/checkout-rules.ts` checks the plan's `scope`/`audience`: a personal
- * plan whose `audience` is not the caller's `ctx.accountType`, or an
- * organization plan with no org to bill, is refused):
+ * może przypisać sobie plan organizacyjny” — does not reproduce. Since #1193 a
+ * personal plan has no audience, so persona no longer refuses one; the refusal that
+ * remains is the organization plan with no org the caller may bill
+ * (`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`):
  *
  * - `/checkout?plan_id=campus` (the case's step) renders the Campus summary but no
  *   payment form: a student has no organization, so the page shows the blocking
  *   alert and only „Wróć do planów”;
- * - posting the completed checkout for `campus` (organization plan) or `lite`
- *   (educator plan) answers `403 FORBIDDEN`; neither the personal plan nor the
- *   payment history changes;
- * - the same student's own plan (`spark`) still goes through, so the guard keys on
- *   the plan's audience rather than blocking every purchase.
+ * - posting the completed checkout for `campus` or `hub` (organization plans)
+ *   answers `403 FORBIDDEN`; neither the personal plan nor the payment history
+ *   changes;
+ * - the same student's own personal plan (`spark`) still goes through, so the guard
+ *   keys on the plan scope rather than blocking every purchase.
  *
  * That is the intended behavior the case asks for („odrzucenie zakupu planu
  * niezgodnego z typem konta”), so the spec asserts the rejection and the positive
@@ -45,23 +44,10 @@ const UI = {
   summary: 'Podsumowanie zamówienia',
   total: 'Razem',
   campus: 'StudiQ Campus',
-  lite: 'StudiQ Lite',
+  hub: 'StudiQ Hub',
   plansBack: 'Wróć do planów',
   cardNumber: 'Numer karty',
-  expiry: 'MM/RR',
-  cvc: 'CVC',
-  cardName: 'Imię i nazwisko na karcie',
   pay: /Zapłać/,
-  paymentFailed: 'Przetwarzanie płatności nie powiodło się. Spróbuj ponownie.',
-  paymentSucceeded: /Płatność udana! Przekierowywanie/,
-} as const;
-
-/** The simulated card the case uses (a Stripe test number, never charged). */
-const CARD = {
-  number: '4242424242424242',
-  expiry: '1230',
-  cvc: '123',
-  name: 'Test Student',
 } as const;
 
 interface PersonalPlan {
@@ -176,7 +162,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
     );
   });
 
-  test('the refusal keys on the account type, not on every purchase', async ({ page }) => {
+  test('the refusal keys on the plan scope, not on every purchase', async ({ page }) => {
     test.setTimeout(120_000);
 
     const tenant = loadTenant(CASE);
@@ -188,55 +174,46 @@ test.describe('BIL-05 — plan must match the account type', () => {
     const planBefore = await personalPlan(page);
     const paymentsBefore = await paymentHistory(page);
 
-    // --- An educator plan is refused too (the case's second plan family) --
-    const educatorWebhook = await page.request.post('/api/v1/stripe/webhook', {
+    // --- A second organization plan is refused too ----------------------
+    const orgWebhook = await page.request.post('/api/v1/stripe/webhook', {
       data: {
         type: 'checkout.session.completed',
-        session_id: `${CASE}-lite-${crypto.randomUUID()}`,
-        plan_id: 'lite',
+        session_id: `${CASE}-hub-${crypto.randomUUID()}`,
+        plan_id: 'hub',
         user_id: student.id,
       },
     });
-    expect(educatorWebhook.status(), 'POST /api/v1/stripe/webhook (lite)').toBe(403);
-    expect(educatorWebhook.headers()['x-error-code'], 'the app error code').toBe('FORBIDDEN');
+    expect(orgWebhook.status(), 'POST /api/v1/stripe/webhook (hub)').toBe(403);
+    expect(orgWebhook.headers()['x-error-code'], 'the app error code').toBe('FORBIDDEN');
 
-    // The deep link is reachable, but „dokończ płatność” must fail: the checkout
-    // posts the same webhook and surfaces the failure instead of a confirmation.
-    await page.goto('/checkout?plan_id=lite');
-    await expect(page).toHaveURL(/\/checkout\?plan_id=lite$/);
+    // The deep link is reachable, but the page refuses it before the card form:
+    // a bare student has no organization, so there is nobody to bill.
+    await page.goto('/checkout?plan_id=hub');
+    await expect(page).toHaveURL(/\/checkout\?plan_id=hub$/);
     await expect(
-      page.getByText(UI.lite, { exact: true }),
-      'the summary names the educator plan',
-    ).toBeVisible();
-
-    const cardInput = page.getByLabel(UI.cardNumber, { exact: true });
-    const pay = page.getByRole('button', { name: UI.pay });
-    await cardInput.fill(CARD.number);
-    await page.getByLabel(UI.expiry, { exact: true }).fill(CARD.expiry);
-    await page.getByLabel(UI.cvc, { exact: true }).fill(CARD.cvc);
-    await page.getByLabel(UI.cardName, { exact: true }).fill(CARD.name);
-    await expect(pay, 'the simulated card unlocks „Zapłać”').toBeEnabled();
-
-    const webhookResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/v1/stripe/webhook',
-    );
-    await pay.click();
-    const rejected = await webhookResponse;
-    expect(rejected.status(), 'the checkout payment is refused').toBe(403);
-
-    await expect(
-      page.getByText(UI.paymentFailed, { exact: true }),
-      'the checkout reports the failed payment',
+      page.getByText(UI.summary, { exact: true }),
+      'the checkout renders the order summary',
     ).toBeVisible();
     await expect(
-      page.getByText(UI.paymentSucceeded),
-      'no success confirmation for a refused plan',
+      page.getByText(UI.hub, { exact: true }),
+      'the summary names the organization plan',
+    ).toBeVisible();
+    await expect(
+      page.getByLabel(UI.cardNumber, { exact: true }),
+      'no card form for a plan the account cannot buy',
     ).toHaveCount(0);
-    await expect(page, 'the checkout stays on the unpaid order').toHaveURL(
-      /\/checkout\?plan_id=lite$/,
-    );
+    await expect(
+      page.getByRole('button', { name: UI.pay }),
+      'no „Zapłać” button for a plan the account cannot buy',
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-slot="alert"]'),
+      'the checkout explains why it is blocked',
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: UI.plansBack, exact: true }),
+      'the only way out is back to the plans',
+    ).toBeVisible();
 
     const planAfterRejection = await personalPlan(page);
     expect(planAfterRejection.key, 'the rejected purchase leaves the personal plan untouched').toBe(
@@ -259,14 +236,14 @@ test.describe('BIL-05 — plan must match the account type', () => {
 
     const planAfterPurchase = await personalPlan(page);
     expect(planAfterPurchase.key, 'the student plan is granted').toBe('spark');
-    expect(planAfterPurchase.name, 'the granted plan is the student plan').toBe('StudiQ Spark');
+    expect(planAfterPurchase.name, 'the granted plan is the personal plan').toBe('StudiQ Plus');
 
     const paymentsAfter = await paymentHistory(page);
     expect(paymentsAfter, 'the accepted purchase appends exactly one payment row').toHaveLength(
       paymentsBefore.length + 1,
     );
     expect(
-      paymentsAfter.filter((payment) => payment.planKey === 'campus' || payment.planKey === 'lite'),
+      paymentsAfter.filter((payment) => payment.planKey === 'campus' || payment.planKey === 'hub'),
       'no refused plan was ever recorded',
     ).toHaveLength(0);
     const sparkPayments = paymentsAfter.filter((payment) => payment.planKey === 'spark');
@@ -276,6 +253,6 @@ test.describe('BIL-05 — plan must match the account type', () => {
     expect(
       sparkPayments[0],
       'the recorded payment carries the catalogue name and price',
-    ).toMatchObject({ planName: 'StudiQ Spark', amount: 999, currency: 'PLN' });
+    ).toMatchObject({ planName: 'StudiQ Plus', amount: 1999, currency: 'PLN' });
   });
 });

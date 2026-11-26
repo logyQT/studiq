@@ -16,15 +16,15 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * `bare`/`student` is the case's TS account: one student, no organization, no
  * group and the free `base` personal plan from `handle_new_user`. Outside an org
- * the personal plan governs the deck limit (#233), so the Spark purchase
+ * the personal plan governs the deck limit (#233), so the Plus purchase
  * visibly raises it.
  *
  * Walked on the shared app (pl) before writing this test:
  * - at the Base cap a further deck answers 429 `USAGE_LIMIT_EXCEEDED`, the
  *   create dialog stays open with an error toast (never a blank screen);
- * - buying Spark from the student ladder of `/pricing` ends on `/billing/success` and then
- *   `/app`; `/api/v1/me/personal-plan` reports Spark with `max_decks: 50`,
- *   `/app/billing` shows „Maks. talie 50”, and the deck that was just refused is
+ * - buying Plus from the individual ladder of `/pricing` ends on `/billing/success` and then
+ *   `/app`; `/api/v1/me/personal-plan` reports Plus with `max_decks: 100`,
+ *   `/app/billing` shows „Maks. talie 100”, and the deck that was just refused is
  *   created without an error.
  *
  * Re-runnability: a purchase cannot be undone through the product, and CI
@@ -45,8 +45,8 @@ const UI = {
   billingTitle: 'Rozliczenia',
   currentPlan: 'Aktualny plan',
   pricingTitle: 'Wybierz swój plan',
-  sparkName: 'StudiQ Spark',
-  sparkCta: 'Wybierz Spark',
+  sparkName: 'StudiQ Plus',
+  sparkCta: 'Wybierz Plus',
   summary: 'Podsumowanie zamówienia',
   total: 'Razem',
   cardNumber: 'Numer karty',
@@ -139,8 +139,8 @@ async function submitDeckDialog(page: Page, name: string): Promise<void> {
   await dialog.getByRole('button', { name: UI.createDeck, exact: true }).click();
 }
 
-test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
-  test('a deck refused on Base is created after buying Spark and billing shows the new limits', async ({
+test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
+  test('a deck refused on Free is created after buying Plus and billing shows the new limits', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -222,17 +222,17 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       'the refused deck is not in the list',
     ).toBe(false);
 
-    // --- Step 1 (BIL-03): buy Spark from the /pricing student ladder -------
+    // --- Step 1 (BIL-03): buy Plus from the /pricing individual ladder ------
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
     const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
-    await expect(sparkRow, 'one Spark plan row').toHaveCount(1);
+    await expect(sparkRow, 'one Plus plan row').toHaveCount(1);
     await sparkRow.getByRole('button', { name: UI.sparkCta, exact: true }).click();
 
     await expect(page).toHaveURL(/\/checkout\?.*plan_id=spark/, { timeout: 20_000 });
     const summary = page.locator('[data-slot="card"]').filter({ hasText: UI.summary });
     await expect(summary, 'the checkout renders the order summary').toBeVisible();
-    await expect(summary, 'the summary names Spark').toContainText(UI.sparkName);
+    await expect(summary, 'the summary names Plus').toContainText(UI.sparkName);
     await expect(summary.getByText(UI.total, { exact: true })).toBeVisible();
 
     await page.getByLabel(UI.cardNumber, { exact: true }).fill(CARD.number);
@@ -263,14 +263,14 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       timeout: 20_000,
     });
 
-    // Expected result: the personal plan is now Spark, with the higher limits.
+    // Expected result: the personal plan is now Plus, with the higher limits.
     const planAfter = await personalPlan(page);
-    expect(planAfter.key, 'the student is on Spark').toBe('spark');
-    expect(planAfter.name, 'Spark is the plan the checkout showed').toBe(UI.sparkName);
-    expect(planAfter.limits, 'the documented Spark limits').toMatchObject({
-      max_decks: 50,
-      max_flashcards: 500,
-      max_questions: 200,
+    expect(planAfter.key, 'the student is on Plus').toBe('spark');
+    expect(planAfter.name, 'Plus is the plan the checkout showed').toBe(UI.sparkName);
+    expect(planAfter.limits, 'the documented Plus limits').toMatchObject({
+      max_decks: 100,
+      max_flashcards: 1000,
+      max_questions: 500,
     });
 
     // --- Step 2: the deck refused on Base is created now -------------------
@@ -278,7 +278,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     await submitDeckDialog(page, blockedName);
     await expect(
       page.getByText(UI.deckCreated, { exact: true }),
-      'the deck that was refused on Base is created on Spark',
+      'the deck that was refused on Free is created on Plus',
     ).toBeVisible();
     await expect(page.getByRole('dialog'), 'the dialog closes on success').toBeHidden();
     await expect(
@@ -313,9 +313,9 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     ).toContainText('Aktywny');
 
     const sparkLimits: Record<string, number> = {
-      max_flashcards: 500,
-      max_decks: 50,
-      max_questions: 200,
+      max_flashcards: 1000,
+      max_decks: 100,
+      max_questions: 500,
     };
     const limitLabels: Record<string, string> = {
       max_flashcards: 'Maks. fiszki',
@@ -323,7 +323,7 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
       max_questions: 'Maks. pytania',
     };
     for (const [key, value] of Object.entries(sparkLimits)) {
-      expect(planAfter.limits[key], `Spark limit ${key}`).toBe(value);
+      expect(planAfter.limits[key], `Plus limit ${key}`).toBe(value);
       const label = limitLabels[key];
       if (!label) throw new Error(`${CASE} has no copy for ${key}`);
       const row = limitRow(planCard, label);
@@ -337,6 +337,6 @@ test.describe('LIM-03 — the Spark purchase raises the deck limit', () => {
     await createDeck(page, `QA LIM-03 deck ${baseCap + 2}`);
     await createDeck(page, `QA LIM-03 deck ${baseCap + 3}`);
     const beyond = await decks(page);
-    expect(beyond.total, 'decks keep being created under the Spark cap').toBe(baseCap + 3);
+    expect(beyond.total, 'decks keep being created under the Plus cap').toBe(baseCap + 3);
   });
 });

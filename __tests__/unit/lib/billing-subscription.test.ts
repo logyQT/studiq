@@ -51,7 +51,7 @@ function plan(key: string, overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 0,
     isActive: true,
     scope: 'personal',
-    audience: 'student',
+    audience: null,
     seatEligible: false,
     ...overrides,
   };
@@ -66,14 +66,13 @@ describe('billingPlanFamily', () => {
 });
 
 describe('alternativePlans', () => {
-  it('keeps paid plans of the same family, excluding the current plan', () => {
+  it('keeps every paid personal plan, excluding the current plan', () => {
     const options = alternativePlans(
       [
         plan('base', { priceMonthly: 0 }),
-        plan('ace', { priceMonthly: 2999 }),
-        plan('pro', { priceMonthly: 4999 }),
-        plan('lite', { priceMonthly: 1999, audience: 'educator' }),
-        plan('spark', { priceMonthly: 999 }),
+        plan('ace', { priceMonthly: 3999 }),
+        plan('pro', { priceMonthly: 7999 }),
+        plan('spark', { priceMonthly: 1999 }),
       ],
       subscription(),
       AccountType.STUDENT,
@@ -84,8 +83,8 @@ describe('alternativePlans', () => {
 
   it('excludes the billed plan even when the effective plan is a seat plan', () => {
     const options = alternativePlans(
-      [plan('spark', { priceMonthly: 999 }), plan('pro', { priceMonthly: 4999 })],
-      subscription({ planKey: 'ace', planName: 'StudiQ Ace', billedPlanKey: 'spark' }),
+      [plan('spark', { priceMonthly: 1999 }), plan('pro', { priceMonthly: 7999 })],
+      subscription({ planKey: 'ace', planName: 'StudiQ Pro', billedPlanKey: 'spark' }),
       AccountType.STUDENT,
     );
 
@@ -102,7 +101,7 @@ describe('alternativePlans', () => {
         plan('launch', { priceMonthly: 0, scope: 'organization', audience: null }),
         plan('team', { priceMonthly: 9900, scope: 'organization', audience: null }),
         plan('hub', { priceMonthly: 29900, scope: 'organization', audience: null }),
-        plan('spark', { priceMonthly: 999 }),
+        plan('spark', { priceMonthly: 1999 }),
       ],
       subscription({ planKey: 'launch', billedPlanKey: 'launch' }),
       AccountType.MANAGER,

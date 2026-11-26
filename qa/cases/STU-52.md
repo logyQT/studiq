@@ -53,11 +53,11 @@ Konto TS.
   `GET /api/v1/me/payments` zwraca `{"success":true,"data":[]}`.
 - „Zarządzaj rozliczeniami” prowadzi do `/app/billing`. Powrót na `/app/account/payments`
   nadal pokazuje „Brak płatności” — pusty stan nie jest cache'owany po zakupie.
-- Po zakupie Spark (9,99 zł/mies., karta testowa `4242…`) strona pokazuje tabelę
-  „Plan / Kwota / Data” z jednym wierszem: „StudiQ Spark”, „9,99 zł”, „29 paź 2026”
+- Po zakupie Plus (19,99 zł/mies., karta testowa `4242…`) strona pokazuje tabelę
+  „Plan / Kwota / Data” z jednym wierszem: „StudiQ Plus”, „19,99 zł”, „29 paź 2026”
   (data `paid_at` sformatowana `Intl.DateTimeFormat('pl', { dateStyle: 'medium' })`).
   Komunikat „Brak płatności” znika. `GET /api/v1/me/payments` zwraca ten sam wiersz
-  (`planKey: "spark"`, `planName: "StudiQ Spark"`, `amount: 999`, `currency: "PLN"`).
+  (`planKey: "spark"`, `planName: "StudiQ Plus"`, `amount: 1999`, `currency: "PLN"`).
 - Wpis pojawia się po zakupie, więc punkt „zanotuj, czy pojawia się wpis” jest spełniony
   (poprawka #392); to zachowanie jest asertowane w specu, a nie tylko odnotowane.
 - Wejście anonimowe na `/app/account/payments` przekierowuje do

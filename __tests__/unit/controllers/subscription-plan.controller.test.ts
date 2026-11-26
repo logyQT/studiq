@@ -41,11 +41,6 @@ describe('SubscriptionPlanController', () => {
       const response = await controller.listPublic();
       expect(response.success).toBe(true);
     });
-    it('returns plans filtered by account type', async () => {
-      mockService.listActive.mockResolvedValueOnce({ success: true, data: [] });
-      await controller.listPublic('student');
-      expect(mockService.listActive).toHaveBeenCalledWith('student');
-    });
     it('returns error on failure', async () => {
       mockService.listActive.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
       const response = await controller.listPublic();

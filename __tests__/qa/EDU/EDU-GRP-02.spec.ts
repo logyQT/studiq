@@ -15,7 +15,7 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * The legacy seed names its people M1/S1/T1 and group `O1G1`. Automation uses
  * the case's own tenant instead: the `org-limit` profile is the seeded shape that
  * holds an educator with the real org `teacher` role — the entitlement that
- * carries `group.manage` (EDU-GRP-01's „T1, plan Lite”) — plus `users.student`,
+ * carries `group.manage` (EDU-GRP-01's „T1”) — plus `users.student`,
  * a second teacher, and two `invitee` accounts that exist but are **not** org
  * members. Those invitees are the control for „Dostępni są wyłącznie członkowie
  * tej organizacji”: the roster picker must never offer them.

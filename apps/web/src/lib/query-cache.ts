@@ -34,8 +34,11 @@ export function invalidateAuthority(
     refetchType: partitionedRefetch,
   });
   // Single-entry, org-independent keys: the same entry is overwritten with the
-  // new org's answer, so a refetch is always correct (and required).
+  // new org's answer, so a refetch is always correct (and required). Both plan
+  // reads are dropped: `/me/plan` badges an organization ladder, and
+  // `/me/personal-plan` badges the individual one and a checkout.
   void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+  void queryClient.invalidateQueries({ queryKey: ['me', 'personal-plan'] });
   void queryClient.invalidateQueries({ queryKey: aiKeys.all });
   void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
 }

@@ -8,8 +8,8 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 
 interface UpgradePlansProps {
-  /** Dashboard audience the catalogue is filtered by (`scope`/`audience` params). */
-  audience: 'student' | 'educator' | 'manager';
+  /** Which catalogue the page lists: the one personal ladder or the organization ladder. */
+  scope: 'personal' | 'organization';
   /** Key of the plan the account is already on, if the caller resolved one. */
   currentPlanKey?: string;
   /** Active organization; organization plans are bought for it. */
@@ -17,21 +17,16 @@ interface UpgradePlansProps {
 }
 
 /** Plan grid behind every dashboard's "upgrade" route. */
-export function UpgradePlans({ audience, currentPlanKey, orgId }: UpgradePlansProps) {
+export function UpgradePlans({ scope, currentPlanKey, orgId }: UpgradePlansProps) {
   const ut = useTranslations('UpgradePage');
   const pt = useTranslations('PricingPage');
   const { user } = useAuth();
 
-  // The manager dashboard asks for the organization catalogue; the personal
-  // dashboards for their own audience's personal plans (D34).
-  const catalogueUrl =
-    audience === 'manager'
-      ? '/api/v1/subscription-plans?scope=organization'
-      : `/api/v1/subscription-plans?scope=personal&audience=${audience}`;
-
+  // Both personal dashboards ask for the one individual ladder (#1193); the
+  // manager dashboard asks for the organization catalogue.
   const { data: plans, isLoading } = useApiQuery<PlanInfo[]>({
-    queryKey: ['subscription-plans', 'active', audience],
-    url: catalogueUrl,
+    queryKey: ['subscription-plans', 'active', scope],
+    url: `/api/v1/subscription-plans?scope=${scope}`,
   });
 
   return (

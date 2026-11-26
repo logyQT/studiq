@@ -1,4 +1,4 @@
-# BIL-05 — Checkout – plan niezgodny z typem konta
+# BIL-05 — Checkout – plan organizacji bez uprawnień
 
 - id: BIL-05
 - priority: P1 krytyczny
@@ -28,7 +28,8 @@ plan that the `handle_new_user` trigger writes. Every id derives from
 plan. The student signs in through the real login form with the seeded `Seed4Test!`
 password.
 
-The case's step targets the organization plan `campus`. The plan catalogue
+The case's step targets the organization plan `campus`; `hub` is the second
+organization control. The plan catalogue
 (`subscription_plans`, `plan_limits`) is shared and read-only — the spec reads it
 through the public API and never changes it. A rejected purchase writes nothing; the
 positive control (the student's own `spark` plan) writes only this tenant's
@@ -40,18 +41,16 @@ platform row or foreign tenant is read or written.
 Opening `/checkout?plan_id=campus` as this tenant's student shows the
 „Podsumowanie zamówienia” with „StudiQ Campus” and the price, but instead of the card
 form a blocking alert („Nie wiemy, dla której organizacji kupujesz plan”) with only
-„Wróć do planów”. Posting the completed checkout for `campus` (organization plan) or
-`lite` (educator-audience personal plan) answers `403 FORBIDDEN` and leaves both the
-personal plan and the payment history untouched; the same student's own `spark`
-purchase still goes through. The concern from the case text does not reproduce — the
-intended rejection is in place. The two refusals have different reasons since phase
-4a (D34): `campus` is refused because an **organization** plan needs an organization
-the caller may bill — `resolveCheckoutOwner` answers FORBIDDEN when there is no
-`orgId` or when the caller holds no `org.billing.manage` in that target org
-(since phase 5b the check is the `has_permission` RPC on the target org, never a
-role name or the account type), not
-because of a persona family; `lite` is refused by the **audience** rule — a personal
-plan whose `audience` (`educator`) is not the caller's account type.
+„Wróć do planów”. Posting the completed checkout for `campus` or `hub` (organization
+plans) answers `403 FORBIDDEN` and leaves both the personal plan and the payment
+history untouched; the same student's own `spark` purchase still goes through. The
+concern from the case text does not reproduce — the intended rejection is in place.
+The refusal is the **organization** rule: `resolveCheckoutOwner` answers FORBIDDEN
+when there is no `orgId` or when the caller holds no `org.billing.manage` in that
+target org (the check is the `has_permission` RPC on the target org, never a role
+name or the account type). Since #1193 a personal plan carries no audience, so the
+persona family no longer refuses one: the individual ladder is open to every
+signed-in reader.
 
 ## Steps
 
@@ -59,4 +58,4 @@ plan whose `audience` (`educator`) is not the caller's account type.
 
 ## Expected result
 
-- ZANOTUJ I ZGŁOŚ jeśli się powiedzie: z kodu wynika brak weryfikacji, czy plan pasuje do typu konta – student może przypisać sobie plan organizacyjny/edukatora (potencjalnie nadając uprawnienia). Oczekiwane: odrzucenie zakupu planu niezgodnego z typem konta.
+- ZANOTUJ I ZGŁOŚ jeśli się powiedzie: student przypisuje sobie plan organizacji bez organizacji, w której może rozliczać plan. Oczekiwane: odrzucenie zakupu planu organizacji (`campus`, `hub`) jako `FORBIDDEN`; plany indywidualne są dostępne dla każdego zalogowanego czytelnika od #1193.

@@ -19,14 +19,15 @@ Fix open defects before new features. The order below follows that rule.
 
 ## Done
 
-| Step | Issue     | PR    | Result                                                                                                 |
-| ---- | --------- | ----- | ------------------------------------------------------------------------------------------------------ |
-| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                       |
-| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                        |
-| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                                  |
-| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it.    |
-| A5   | **#1478** | #1474 | The queue waits for settled checks and merges on `mergeStateStatus == CLEAN`, so a docs-only PR lands. |
-| A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                     |
+| Step | Issue     | PR    | Result                                                                                                                                                                                                                                                |
+| ---- | --------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                                                                                                                                                                      |
+| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                                                                                                                                                                       |
+| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                                                                                                                                                                                 |
+| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it.                                                                                                                                                   |
+| A5   | **#1478** | #1474 | The queue waits for settled checks and merges on `mergeStateStatus == CLEAN`, so a docs-only PR lands.                                                                                                                                                |
+| A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                                                                                                                                                                    |
+| B1   | **#1193** | #1513 | One individual ladder: Free / Plus / Pro / Max on `base` / `spark` / `ace` / `pro`. `audience` retires; no personal `-1`; the organization ladder stays for B2. The operator settled four tiers on 2026-11-26, not the three this row first proposed. |
 
 A4 moved the two stats triggers behind definer functions, so no user client writes the
 table. A fresh local review and served QA ran before the PR opened.
@@ -35,7 +36,6 @@ table. A fresh local review and served QA ran before the PR opened.
 
 | Step | Issue     | What it does                                                         | Exit criterion                                                                                                             | Depends on                                       |
 | ---- | --------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| B1   | **#1193** | Collapse the individual ladders into one ladder: Free / Plus / Pro.  | Three buyable individual tiers. No tier is a subset of another. The pricing page shows one individual ladder.              | A1, A3, and the AI-price decision below          |
 | B2   | **#1493** | Fold the organization ladder from four tiers to three.               | Three buyable org tiers. Each tier has one clear reason to exist. Seat licences stay valid (`seatEligible`, D15).          | A1, A3, and the org-tier decision below          |
 | B3   | **#1495** | Unlisted plans, pinned to one organization, for sales-led contracts. | A plan can be `unlisted`, assigned to one org, and refused for every other org. Checkout refuses it. Public reads hide it. | B2 (the enterprise tier), A3 (the public filter) |
 
@@ -64,10 +64,10 @@ C1 gives most of the code reduction with no route change. Do D1 only after C1.
 
 ## Decisions the operator must make
 
-1. **B1: the AI price.** One individual ladder gives educators AI at 19.99. Today it costs 39.99.
-   Choose: raise the entry price, move AI down for all, or keep an educator entry tier.
-2. **B2: the org tier to fold.** `team` into `hub` raises the entry price. `hub` into `campus`
-   removes the mid tier.
+1. **B1: the AI price — settled 2026-11-26.** AI moves down to Plus at 19.99; Pro and Max add
+   insights and higher limits. The entry price does not rise and educators keep one entry tier.
+2. **B2: the org tier to fold — settled 2026-11-26.** `team` folds into `hub`; the seat sale
+   entry is hidden while the data path stays read-only.
 3. **D1: one `/app` or three areas.** This reopens R47, a do-not-reopen item. It needs an explicit
    decision.
 4. **D37 (proposed, not scheduled):** a default entitlement outside any plan. It needs an ADR-0015

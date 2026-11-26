@@ -35,7 +35,6 @@ import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 const PLAN_SCOPES = ['personal', 'organization'] as const;
-const PLAN_AUDIENCES = ['student', 'educator', 'manager'] as const;
 
 type SubscriptionPlan = {
   id: string;
@@ -46,7 +45,6 @@ type SubscriptionPlan = {
   isActive: boolean;
   sortOrder: number;
   scope: string;
-  audience: string | null;
 };
 
 type FormData = {
@@ -57,7 +55,6 @@ type FormData = {
   isActive: boolean;
   sortOrder: string;
   scope: string;
-  audience: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -68,7 +65,6 @@ const EMPTY_FORM: FormData = {
   isActive: true,
   sortOrder: '0',
   scope: 'personal',
-  audience: '',
 };
 
 function formatPrice(cents: number | null) {
@@ -85,8 +81,9 @@ function buildPayload(data: FormData) {
     priceYearly: data.priceYearly === '' ? undefined : Number(data.priceYearly),
     sortOrder: data.sortOrder === '' ? undefined : Number(data.sortOrder),
     scope: data.scope,
-    // An organization plan carries no audience (the pair CHECK, D32).
-    audience: data.scope === 'organization' ? null : data.audience === '' ? null : data.audience,
+    // No plan carries an audience since #1193: the individual ladder has one
+    // entry path for every persona and organization plans never had one.
+    audience: null,
   };
 }
 
@@ -170,7 +167,6 @@ export default function SubscriptionPlansPage() {
       isActive: plan.isActive,
       sortOrder: plan.sortOrder.toString(),
       scope: plan.scope,
-      audience: plan.audience ?? '',
     });
     setFormError(null);
     setDeleteError(null);
@@ -218,7 +214,6 @@ export default function SubscriptionPlansPage() {
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
                   <TableHead>{t('col_scope')}</TableHead>
-                  <TableHead>{t('col_audience')}</TableHead>
                   <TableHead>{t('col_monthly')}</TableHead>
                   <TableHead>{t('col_yearly')}</TableHead>
                   <TableHead>{t('col_active')}</TableHead>
@@ -248,9 +243,6 @@ export default function SubscriptionPlansPage() {
                       <TableCell className="text-muted-foreground">
                         {t(`scope_${plan.scope}`)}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {plan.audience ? t(`audience_${plan.audience}`) : t('audience_none')}
-                      </TableCell>
                       <TableCell>{formatPrice(plan.priceMonthly)}</TableCell>
                       <TableCell>{formatPrice(plan.priceYearly)}</TableCell>
                       <TableCell>
@@ -273,7 +265,7 @@ export default function SubscriptionPlansPage() {
                     </TableRow>
                     {expandedKey === plan.key && (
                       <TableRow key={`${plan.id}-detail`}>
-                        <TableCell colSpan={9} className="bg-muted/30 px-12 py-3">
+                        <TableCell colSpan={8} className="bg-muted/30 px-12 py-3">
                           <PlanDetails planKey={plan.key} />
                         </TableCell>
                       </TableRow>
@@ -282,7 +274,7 @@ export default function SubscriptionPlansPage() {
                 ))}
                 {plans.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>
@@ -323,17 +315,7 @@ export default function SubscriptionPlansPage() {
             </div>
             <div className="space-y-2">
               <Label>{t('col_scope')}</Label>
-              <Select
-                value={form.scope}
-                onValueChange={(v) =>
-                  setForm({
-                    ...form,
-                    scope: v,
-                    // An organization plan carries no audience (the pair CHECK).
-                    audience: v === 'organization' ? '' : form.audience,
-                  })
-                }
-              >
+              <Select value={form.scope} onValueChange={(v) => setForm({ ...form, scope: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -341,26 +323,6 @@ export default function SubscriptionPlansPage() {
                   {PLAN_SCOPES.map((scope) => (
                     <SelectItem key={scope} value={scope}>
                       {t(`scope_${scope}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{t('col_audience')}</Label>
-              <Select
-                value={form.audience || 'none'}
-                onValueChange={(v) => setForm({ ...form, audience: v === 'none' ? '' : v })}
-                disabled={form.scope === 'organization'}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t('audience_none')}</SelectItem>
-                  {PLAN_AUDIENCES.map((audience) => (
-                    <SelectItem key={audience} value={audience}>
-                      {t(`audience_${audience}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>

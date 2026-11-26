@@ -56,7 +56,7 @@ const ATTACK_PLAN = 'pro';
 const COPY = {
   summary: 'Podsumowanie zamówienia',
   title: 'Dokończ płatność',
-  plan: 'StudiQ Spark',
+  plan: 'StudiQ Plus',
 } as const;
 
 interface ApiEnvelope<T> {

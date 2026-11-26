@@ -6,16 +6,15 @@ import {
   createServiceClient,
 } from '#test/integration/helpers';
 
-// Regression tests for the plan-limit config fixes in
-// 20261125170000_plan_catalog_owned_by_migrations.sql (the catalogue's single
-// home since #1494; it was `supabase/seeds/00_plans.sql` before that).
+// Regression tests for the plan-limit config fixes in the plan-catalogue
+// migration (the catalogue's single home since #1494; it was
+// `supabase/seeds/00_plans.sql` before that).
 //
 // O1/D2: new orgs got max_groups = 1 (launch plan default) → org owners could not
 //        create a second group (429 USAGE_LIMIT_EXCEEDED). Raised to 3.
-// D1 hardening: 'base' (default student plan) still carries
-//        max_students/max_groups = -1, but since #233 org-scope keys are never
-//        read from a personal plan, those rows no longer widen anything. The
-//        rows are kept (and asserted) only as historical seed data.
+// D1 hardening: a personal plan never carries max_students/max_groups. Since
+//        #1193 the one individual ladder has no org-scope rows at all, so the
+//        'base' plan cannot widen anything even before #233's read rule.
 //        (Primary D1 fix is checkOrgLimit + invite-accept.test.ts.)
 describe(`Plan limit fixes`, () => {
   let fixture!: BeforeResult;
@@ -46,7 +45,7 @@ describe(`Plan limit fixes`, () => {
     expect(fixture.defaultGroupId).toBe(fixture.groups[0]);
   });
 
-  it('D1 hardening — base plan still carries the legacy org-management rows (#233: never read)', async () => {
+  it('D1 hardening — the Free plan carries no org-management rows', async () => {
     const supabase = createServiceClient();
     for (const key of ['max_students', 'max_groups']) {
       const { data: limit } = await supabase
@@ -55,7 +54,7 @@ describe(`Plan limit fixes`, () => {
         .eq('plan_key', 'base')
         .eq('limit_key', key)
         .maybeSingle();
-      expect(limit?.limit_value).toBe(-1);
+      expect(limit, `base must not carry ${key}`).toBeNull();
     }
   });
 });

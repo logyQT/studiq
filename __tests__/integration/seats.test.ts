@@ -79,14 +79,15 @@ describe(`Seats Integration`, () => {
     orgId = fixture.orgId!;
 
     // Create a pool via the API (no default pools after S1).
-    // Use 'guide' plan (educator tier) for educator-role test users.
+    // Use 'base' (Free) — a personal, seat-eligible plan — for the pool the
+    // assignment tests share; the POST tests below buy `ace` fresh.
     mockUser(fixture.user);
     const createReq = createNextRequest(
       'http://localhost/api/v1/organization/seats/pools',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: 'guide', quantity: 10 }),
+        body: JSON.stringify({ planKey: 'base', quantity: 10 }),
       },
       orgCookies(),
     );
@@ -131,7 +132,7 @@ describe(`Seats Integration`, () => {
       expect(body.data).toBeInstanceOf(Array);
       expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-      const pool = body.data.find((p) => p.planKey === 'guide');
+      const pool = body.data.find((p) => p.planKey === 'base');
       expect(pool).toBeDefined();
       expect(pool!.total).toBe(10);
       expect(pool!.assigned).toBe(0);
@@ -264,7 +265,7 @@ describe(`Seats Integration`, () => {
           sort_order: 990,
           is_active: true,
           scope: 'personal',
-          audience: 'student',
+          audience: null,
         });
         expect(planError).toBeNull();
         const { error: entError } = await supabase
@@ -621,9 +622,10 @@ describe(`Seats Integration`, () => {
       expect(body.success).toBe(false);
     });
 
-    it('returns 400 and writes nothing when the target persona does not match the pool plan audience (#1068, D33)', async () => {
-      // `guide` is educator-audience: a student account must be refused even
-      // though the pool has room.
+    it('accepts a student account on a pool whose plan used to name another audience (#1193)', async () => {
+      // `ace` used to be student-audience and the pool once required a matching
+      // persona. A personal plan carries no audience now, so the student is
+      // accepted when the pool has room.
       const supabase = createSeedDb();
       const memberRole = await supabase
         .from('org_roles')
@@ -651,23 +653,23 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createAssignment(req);
-      const body = await json<SeatsErrorBody>(response);
+      const body = await json<AssignmentBody>(response);
 
-      expect(response.status).toBe(400);
-      expect(body.error).toBe('BAD_REQUEST');
+      expect(response.status).toBe(201);
+      expect(body.data.userId).toBe(studentMember.id);
       const written = await supabase
         .from('org_seat_assignments')
         .select('id')
         .eq('organization_id', orgId)
         .eq('user_id', studentMember.id);
-      expect(written.data).toEqual([]);
+      expect(written.data).toHaveLength(1);
     });
 
-    it('refuses a student-audience pool (pro) for an educator account (D33)', async () => {
+    it('accepts an educator account on any personal-plan pool', async () => {
       const supabase = createSeedDb();
       mockUser(fixture.user);
 
-      // A `pro` pool (student audience) — a valid licence, wrong persona.
+      // A `pro` pool (Max) — a valid licence for any member.
       const poolReq = createNextRequest(
         'http://localhost/api/v1/organization/seats/pools',
         {
@@ -693,19 +695,19 @@ describe(`Seats Integration`, () => {
       );
 
       const response = await createAssignment(req);
-      const body = await json<SeatsErrorBody>(response);
+      const body = await json<AssignmentBody>(response);
 
-      expect(response.status).toBe(400);
-      expect(body.error).toBe('BAD_REQUEST');
+      expect(response.status).toBe(201);
+      expect(body.data.userId).toBe(educator.id);
       const written = await supabase
         .from('org_seat_assignments')
         .select('id')
         .eq('organization_id', orgId)
         .eq('user_id', educator.id);
-      expect(written.data).toEqual([]);
+      expect(written.data).toHaveLength(1);
     });
 
-    it('accepts a manager account on a manager-audience pool (solo)', async () => {
+    it('accepts a manager account on a personal-plan pool', async () => {
       mockUser(fixture.user);
 
       const poolReq = createNextRequest(
@@ -713,14 +715,14 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'solo', quantity: 1 }),
+          body: JSON.stringify({ planKey: 'pro', quantity: 1 }),
         },
         orgCookies(),
       );
       const poolRes = await createPool(poolReq);
       const poolBody = await json<PoolBody>(poolRes);
       expect(poolRes.status).toBe(201);
-      expect(poolBody.data.planKey).toBe('solo');
+      expect(poolBody.data.planKey).toBe('pro');
 
       const manager = await createTestUser({ role: 'manager' });
       const req = createNextRequest(
@@ -737,7 +739,7 @@ describe(`Seats Integration`, () => {
       const body = await json<AssignmentBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.planKey).toBe('solo');
+      expect(body.data.planKey).toBe('pro');
       expect(body.data.userId).toBe(manager.id);
     });
   });

@@ -103,3 +103,23 @@ preserves the purchase context if a reset is ever wanted.
 - `packages/server/src/services/subscription-plan.service.ts`
 - `apps/web/src/app/(frontend)/pricing/_components/pricing-content.tsx`
 - `docs/limits.md`, `docs/plans/archive/seat-based-licensing.md`
+
+## 2026-11-26 — superseded in part by #1193 (B1)
+
+The "no paid personal plan" rule above applies to the **organization** ladder,
+not to the individual one. #1193 collapses the personal ladders into one Free /
+Plus / Pro / Max ladder (`base` / `spark` / `ace` / `pro`) and removes the plan
+`audience` dimension. Consequences for this decision:
+
+- A manager may buy any active personal plan from that ladder, exactly like
+  every other signed-in reader. The server does not refuse a personal purchase
+  by persona.
+- A manager's free personal plan is `base`, the one `handle_new_user()` mints
+  for every persona. `solo` retires.
+- The organization ladder and `launch` are unchanged: an organization purchase
+  still writes only `organizations.plan`, and `/me/plan` in an active
+  organization still shows the organization's plan for its billing contact.
+- On `/pricing`, the individual view always reads `/api/v1/me/personal-plan`
+  for the current-plan badge, a manager included; the organization view reads
+  `/api/v1/me/plan` for a manager. The badge follows the ladder the reader
+  sees, so it never shows the organization plan on the individual ladder.

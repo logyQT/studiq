@@ -161,7 +161,7 @@ test.describe('MGR-ACC-01 — manager user menu', () => {
 
     // The badge names every layer of `/me/plan`'s union, not one plan name: the
     // org plan is the first source and a manager also carries the free personal
-    // `solo` layer, so the org layer is asserted as a substring.
+    // `base` layer, so the org layer is asserted as a substring.
     const activePlan = await getData<PlanInfo>(page, '/api/v1/me/plan');
     const catalogue = await getData<PlanInfo[]>(page, '/api/v1/subscription-plans');
     const expectedPlanName =

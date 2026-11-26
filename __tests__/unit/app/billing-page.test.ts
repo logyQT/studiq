@@ -47,7 +47,7 @@ const pt = createTranslator({ locale, messages: pl, namespace: 'PricingPage' });
 function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key' | 'limits'>): PlanInfo {
   return {
     id: `id-${overrides.key}`,
-    name: 'Lite',
+    name: 'Pro',
     description: null,
     priceMonthly: 1900,
     priceYearly: 19000,
@@ -81,16 +81,17 @@ describe('BillingPage current-plan card', () => {
     // Names differ so the header's source is observable: the card names the
     // `/me/plan` row, while the lists must come from the catalogue row.
     data.plan = plan({
-      key: 'lite',
-      name: 'Lite effective',
+      key: 'ace',
+      name: 'Pro effective',
       features: ['flashcards', 'branding'],
-      limits: { max_flashcards: 100, max_students: 0, max_groups: 0 },
+      limits: { max_flashcards: 100, max_decks: 0, max_questions: 0 },
     });
     data.plans = [
       plan({
-        key: 'lite',
+        key: 'ace',
+        name: 'Pro',
         priceMonthly: 2900,
-        limits: { max_flashcards: 100, max_students: 5, max_groups: 50 },
+        limits: { max_flashcards: 100, max_decks: 5, max_questions: 50 },
       }),
     ];
   });
@@ -99,21 +100,21 @@ describe('BillingPage current-plan card', () => {
     const markup = render();
 
     // The badge names the catalogue row; the effective row's name is not shown.
-    expect(markup).toContain('Lite');
+    expect(markup).toContain('Pro');
     // The catalogue row prices at 29,00, so this reads the header's source.
     expect(markup).toContain('19,00');
-    expect(markup).not.toContain('Lite effective');
+    expect(markup).not.toContain('Pro effective');
   });
 
   it('renders the feature and limit lists from the catalogue row, not the effective union', () => {
     const markup = render();
 
-    // Org-scope limits are 0 in the effective row outside a verified org; the
+    // The effective row carries 0 for these limits outside a verified org; the
     // catalogue advertises 5/50 and must win.
     expect(markup).toContain('>5</span>');
     expect(markup).toContain('>50</span>');
     expect(markup).not.toContain('tabular-nums">0<');
-    // `branding` is in the effective union (the org layer) but not on `lite`.
+    // `branding` is in the effective union (the org layer) but not on `ace`.
     expect(markup).not.toContain(pt('feature_branding'));
   });
 
@@ -121,7 +122,7 @@ describe('BillingPage current-plan card', () => {
     data.plans = undefined;
     const markup = render();
 
-    expect(markup).toContain('Lite effective');
+    expect(markup).toContain('Pro effective');
     expect(markup).not.toContain('tabular-nums');
     expect(markup).not.toContain(pt('feature_branding'));
   });

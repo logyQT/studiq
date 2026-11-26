@@ -239,7 +239,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('a student personal plan raises (never lowers) a user-scope limit inside the org', async () => {
     // Org on launch (max_flashcards 100, max_ai_tokens_per_day 0); the student
-    // member's personal plan is `pro` (-1 everywhere).
+    // member's personal plan is `pro` (Max: 25000 cards, 500000 tokens).
     await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', student.id);
     const studentCtx: RequestContext = {
       traceId: `limits-student-${suiteId}`,
@@ -253,8 +253,8 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       permissionScopes: {},
     };
 
-    await expect(effectiveLimit(studentCtx, 'max_flashcards')).resolves.toBe(-1);
-    await expect(effectiveLimit(studentCtx, 'max_ai_tokens_per_day')).resolves.toBe(-1);
+    await expect(effectiveLimit(studentCtx, 'max_flashcards')).resolves.toBe(25000);
+    await expect(effectiveLimit(studentCtx, 'max_ai_tokens_per_day')).resolves.toBe(500000);
     // Org-scope capacity is untouched by the personal plan: launch max_students = 5.
     await expect(effectiveLimit(studentCtx, 'max_students')).resolves.toBe(5);
   });
@@ -374,12 +374,12 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     expect(plan.primary).toBe('hub');
     expect(sources.org).toEqual({ planKey: 'hub', origin: 'org' });
     expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
-    // The manager's personal plan is `solo` (personal scope), which applies
+    // The manager's personal plan is `base` (personal scope), which applies
     // inside the org for limits/portable keys (D34).
     expect(plan.sources).toEqual([
       { planKey: 'hub', origin: 'org' },
       { planKey: 'base', origin: 'seat' },
-      { planKey: 'solo', origin: 'personal' },
+      { planKey: 'base', origin: 'personal' },
     ]);
   });
 });

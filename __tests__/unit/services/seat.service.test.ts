@@ -524,19 +524,13 @@ describe('SeatService', () => {
       poolId: 'pool-1',
     };
 
-    /** A student-audience pool (personal plan embed rides the pool's FK). */
-    const studentPool = {
+    /** A personal-plan pool; the plan has no audience since #1193. */
+    const personalPool = {
       id: 'pool-1',
       plan_key: 'ace',
-      subscription_plans: { scope: 'personal', audience: 'student' },
-    };
-    const educatorPool = {
-      id: 'pool-1',
-      plan_key: 'creator',
-      subscription_plans: { scope: 'personal', audience: 'educator' },
     };
 
-    it('assigns a seat when the target persona matches the pool plan audience (D33)', async () => {
+    it('assigns a seat on a personal-plan pool', async () => {
       const insertedRow = {
         id: 'assign-new',
         user_id: input.userId,
@@ -546,8 +540,8 @@ describe('SeatService', () => {
 
       mock.from.mockReturnValue(chain(null));
       mock.from
-        .mockReturnValueOnce(chain(studentPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(personalPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain(insertedRow));
 
@@ -576,79 +570,9 @@ describe('SeatService', () => {
       expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('refuses a pool whose plan has no audience (unresolvable persona) with BAD_REQUEST', async () => {
-      const noAudiencePool = {
-        id: 'pool-1',
-        plan_key: 'launch',
-        subscription_plans: { scope: 'organization', audience: null },
-      };
-      mock.from.mockReturnValueOnce(chain(noAudiencePool));
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.error).toBe('BAD_REQUEST');
-      expect(mock.from).toHaveBeenCalledTimes(1);
-    });
-
-    it('refuses a persona mismatch: an educator-audience pool for a student account (#1068, D33)', async () => {
-      mock.from.mockReturnValue(chain(null));
-      mock.from
-        .mockReturnValueOnce(chain(educatorPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }));
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.error).toBe('BAD_REQUEST');
-      expect(mock.from).toHaveBeenCalledTimes(2);
-    });
-
-    it('refuses a persona mismatch: a student-audience pool for a manager account', async () => {
-      mock.from.mockReturnValue(chain(null));
-      mock.from
-        .mockReturnValueOnce(chain(studentPool))
-        .mockReturnValueOnce(chain({ email: 'boss@test.com', account_type: 'manager' }));
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.error).toBe('BAD_REQUEST');
-      expect(mock.from).toHaveBeenCalledTimes(2);
-    });
-
-    it('accepts a manager account on a manager-audience pool (solo)', async () => {
-      const soloPool = {
-        id: 'pool-1',
-        plan_key: 'solo',
-        subscription_plans: { scope: 'personal', audience: 'manager' },
-      };
-      const insertedRow = {
-        id: 'assign-new',
-        user_id: input.userId,
-        pool_id: input.poolId,
-        assigned_at: '2024-01-01T00:00:00Z',
-      };
-      mock.from.mockReturnValue(chain(null));
-      mock.from
-        .mockReturnValueOnce(chain(soloPool))
-        .mockReturnValueOnce(chain({ email: 'boss@test.com', account_type: 'manager' }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain(insertedRow));
-
-      const result = await service.assignSeat(ctx, input);
-
-      expect(result.success).toBe(true);
-      if (!result.success) return;
-      expect(result.data.planKey).toBe('solo');
-    });
-
     it('returns NOT_FOUND when user does not exist', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain(studentPool)).mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(personalPool)).mockReturnValueOnce(chain(null));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -660,8 +584,8 @@ describe('SeatService', () => {
     it('returns USAGE_LIMIT_EXCEEDED when user already has a seat', async () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
-        .mockReturnValueOnce(chain(studentPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(personalPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
         .mockReturnValueOnce(chain({ id: 'existing-assign' }));
 
       const result = await service.assignSeat(ctx, input);
@@ -674,8 +598,8 @@ describe('SeatService', () => {
     it('returns USAGE_LIMIT_EXCEEDED when pool is full (SEAT_POOL_FULL)', async () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
-        .mockReturnValueOnce(chain(studentPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(personalPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce({
           insert: vi.fn().mockReturnValue({
@@ -698,8 +622,8 @@ describe('SeatService', () => {
     it('returns USAGE_LIMIT_EXCEEDED when pool full (code 23514 with an unrelated message)', async () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
-        .mockReturnValueOnce(chain(studentPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com', account_type: 'student' }))
+        .mockReturnValueOnce(chain(personalPool))
+        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce({
           insert: vi.fn().mockReturnValue({
