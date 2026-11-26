@@ -47,20 +47,7 @@ const UI = {
   hub: 'StudiQ Hub',
   plansBack: 'Wróć do planów',
   cardNumber: 'Numer karty',
-  expiry: 'MM/RR',
-  cvc: 'CVC',
-  cardName: 'Imię i nazwisko na karcie',
   pay: /Zapłać/,
-  paymentFailed: 'Przetwarzanie płatności nie powiodło się. Spróbuj ponownie.',
-  paymentSucceeded: /Płatność udana! Przekierowywanie/,
-} as const;
-
-/** The simulated card the case uses (a Stripe test number, never charged). */
-const CARD = {
-  number: '4242424242424242',
-  expiry: '1230',
-  cvc: '123',
-  name: 'Test Student',
 } as const;
 
 interface PersonalPlan {
@@ -199,43 +186,34 @@ test.describe('BIL-05 — plan must match the account type', () => {
     expect(orgWebhook.status(), 'POST /api/v1/stripe/webhook (hub)').toBe(403);
     expect(orgWebhook.headers()['x-error-code'], 'the app error code').toBe('FORBIDDEN');
 
-    // The deep link is reachable, but „dokończ płatność” must fail: the checkout
-    // posts the same webhook and surfaces the failure instead of a confirmation.
+    // The deep link is reachable, but the page refuses it before the card form:
+    // a bare student has no organization, so there is nobody to bill.
     await page.goto('/checkout?plan_id=hub');
     await expect(page).toHaveURL(/\/checkout\?plan_id=hub$/);
+    await expect(
+      page.getByText(UI.summary, { exact: true }),
+      'the checkout renders the order summary',
+    ).toBeVisible();
     await expect(
       page.getByText(UI.hub, { exact: true }),
       'the summary names the organization plan',
     ).toBeVisible();
-
-    const cardInput = page.getByLabel(UI.cardNumber, { exact: true });
-    const pay = page.getByRole('button', { name: UI.pay });
-    await cardInput.fill(CARD.number);
-    await page.getByLabel(UI.expiry, { exact: true }).fill(CARD.expiry);
-    await page.getByLabel(UI.cvc, { exact: true }).fill(CARD.cvc);
-    await page.getByLabel(UI.cardName, { exact: true }).fill(CARD.name);
-    await expect(pay, 'the simulated card unlocks „Zapłać”').toBeEnabled();
-
-    const webhookResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/v1/stripe/webhook',
-    );
-    await pay.click();
-    const rejected = await webhookResponse;
-    expect(rejected.status(), 'the checkout payment is refused').toBe(403);
-
     await expect(
-      page.getByText(UI.paymentFailed, { exact: true }),
-      'the checkout reports the failed payment',
+      page.getByLabel(UI.cardNumber, { exact: true }),
+      'no card form for a plan the account cannot buy',
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: UI.pay }),
+      'no „Zapłać” button for a plan the account cannot buy',
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-slot="alert"]'),
+      'the checkout explains why it is blocked',
     ).toBeVisible();
     await expect(
-      page.getByText(UI.paymentSucceeded),
-      'no success confirmation for a refused plan',
-    ).toHaveCount(0);
-    await expect(page, 'the checkout stays on the unpaid order').toHaveURL(
-      /\/checkout\?plan_id=hub$/,
-    );
+      page.getByRole('button', { name: UI.plansBack, exact: true }),
+      'the only way out is back to the plans',
+    ).toBeVisible();
 
     const planAfterRejection = await personalPlan(page);
     expect(planAfterRejection.key, 'the rejected purchase leaves the personal plan untouched').toBe(
