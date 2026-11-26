@@ -426,7 +426,7 @@ set the variable and restart/redeploy to apply it.
 **Rate limits.** Checkout creation, change-plan, cancel and
 release-scheduled-plan each have their own per-process, per-user bucket
 (10/min each); the change-plan preview and reconcile have 20/min each, so the
-billing surface allows 60/min combined. A scaled-out deployment still needs a
+billing surface allows 80/min combined. A scaled-out deployment still needs a
 shared counter for a hard quota.
 
 **Alert on** (Loki/Grafana; records carry `trace_id` when OTel is enabled):
