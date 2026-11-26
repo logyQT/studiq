@@ -83,10 +83,11 @@ describe('SubscriptionPlanAdminController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
-    it('returns 422 on a personal plan without an audience (D32)', async () => {
-      const response = await controller.create({ key: 'p', name: 'P', scope: 'personal' });
-      expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(422);
+    it('creates a personal plan without an audience (#1193)', async () => {
+      mockService.create.mockResolvedValueOnce({ success: true, data: { id: 'p-1' } });
+      const response = await controller.create({ key: 'p', name: 'Pp', scope: 'personal' });
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(201);
     });
   });
 

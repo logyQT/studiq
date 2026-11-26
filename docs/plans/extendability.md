@@ -55,9 +55,9 @@ The migration applied to the live database with no restart; `/me/entitlements`
 gained the key after the app rebuild only, because the DB row alone is inert
 until the TS catalog knows the key (step 12 is not optional).
 
-The plan catalogue is migration-owned code (#1494): the thirteen plans, their
+The plan catalogue is migration-owned code (#1494): the eight plans, their
 entitlement sets, their limits and the flag rows live only in
-`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql`, and
+`supabase/migrations/20261126130000_individual_plan_ladder.sql`, and
 `supabase/seeds/00_plans.sql` writes no plan data. A new key's plan rows go into
 that migration's declarative matrix; `__tests__/integration/plan-catalog.test.ts`
 mirrors the matrix literally, so it fails until the test is updated in the same
@@ -197,7 +197,7 @@ ADR-0015 amendment (a numbered decision), not a rule smuggled into §3.
   when TypeScript and the database disagree. Proven 2026-11-25 by a bogus TS key
   (`voice.bogus`, 2 assertions red) and a bogus DB row (1 assertion red), each
   reverted immediately.
-- `__tests__/integration/plan-catalog.test.ts` pins the thirteen-plan matrix
+- `__tests__/integration/plan-catalog.test.ts` pins the eight-plan matrix
   (scope/audience, each plan's entitlement set and limits) and re-applies the
   owning migration twice to prove it is declarative and idempotent.
   `__tests__/unit/guards/seed-purity.test.ts` fails if any file under

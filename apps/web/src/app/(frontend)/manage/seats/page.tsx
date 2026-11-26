@@ -39,7 +39,7 @@ import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { invalidateAuthority } from '@/lib/query-cache';
-import { poolsForPersona, purchasableSeatPlans } from '@/lib/seats';
+import { purchasableSeatPlans } from '@/lib/seats';
 
 interface Pool {
   id: string;
@@ -350,23 +350,14 @@ export default function ManageSeatsPage() {
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {(() => {
-                        const selectedMember = members.find((m) => m.id === selectedUserId);
-                        // Persona-based pool filter (D14/D33): only the pools whose
-                        // plan `audience` equals the member's `accountType` are
-                        // offered; a pool missing from the catalogue fails closed.
-                        const compatible = selectedMember
-                          ? poolsForPersona(pools, plans ?? [], selectedMember.accountType)
-                          : pools;
-                        return compatible.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {planName(p.planKey)}
-                            <span className="text-muted-foreground ml-2">
-                              ({p.assigned}/{p.total})
-                            </span>
-                          </SelectItem>
-                        ));
-                      })()}
+                      {pools.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {planName(p.planKey)}
+                          <span className="text-muted-foreground ml-2">
+                            ({p.assigned}/{p.total})
+                          </span>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

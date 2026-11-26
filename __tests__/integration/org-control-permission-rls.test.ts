@@ -698,7 +698,7 @@ describe('org-control permission RLS', () => {
 
     it('lets the holder UPDATE an assignment and refuses everyone else without touching it', async () => {
       const poolId = await ensurePool(orgId, 'spark', 2);
-      const otherPoolId = await ensurePool(orgId, 'guide', 2);
+      const otherPoolId = await ensurePool(orgId, 'ace', 2);
       const assignmentId = await insertAssignment(orgId, poolId, legacyId);
 
       const holderUpdate = await holder
@@ -736,7 +736,7 @@ describe('org-control permission RLS', () => {
 
   describe('org_seat_assignments read — the manager branch moved with the list route', () => {
     it('lets the holder read an assignment it does not own', async () => {
-      const poolId = await ensurePool(orgId, 'lite', 2);
+      const poolId = await ensurePool(orgId, 'pro', 2);
       const assignmentId = await insertAssignment(orgId, poolId, teacherId);
 
       const { data, error } = await holder
@@ -750,7 +750,7 @@ describe('org-control permission RLS', () => {
     });
 
     it('refuses the legacy manager marker and a plain member (only their own row)', async () => {
-      const poolId = await ensurePool(orgId, 'master', 2);
+      const poolId = await ensurePool(orgId, 'base', 2);
       const assignmentId = await insertAssignment(orgId, poolId, invitationManagerId);
 
       const legacyRead = await legacy

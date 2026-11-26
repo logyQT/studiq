@@ -218,19 +218,19 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result)[1]?.seatEligible).toBe(false);
     });
 
-    it('filters by scope and audience', async () => {
+    it('filters by scope', async () => {
       const plansQb = qb([]);
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.listActive({ scope: 'personal', audience: 'student' });
+      const result = await service.listActive({ scope: 'personal' });
 
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
       expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
-      expect(plansQb.eq).toHaveBeenCalledWith('audience', 'student');
+      expect(plansQb.eq).not.toHaveBeenCalledWith('audience', expect.anything());
     });
 
     it('returns error on plans query failure', async () => {

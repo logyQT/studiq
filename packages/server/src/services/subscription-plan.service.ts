@@ -32,7 +32,7 @@ export interface PlanInfo {
   sources: PlanSource[];
   sortOrder: number;
   isActive: boolean;
-  /** Plan family (D32): organization plans carry no `audience`. */
+  /** No plan carries an audience since #1193; the field remains for the column. */
   scope: string;
   audience: string | null;
   /**
@@ -60,7 +60,6 @@ type PlanEntitlementRead = {
 /** Raw query-param values; an unknown value simply matches no plan. */
 export interface PlanCatalogFilters {
   scope?: string;
-  audience?: string;
 }
 
 export class SubscriptionPlanService {
@@ -245,9 +244,6 @@ export class SubscriptionPlanService {
     if (filters.scope) {
       query = query.eq('scope', filters.scope);
     }
-    if (filters.audience) {
-      query = query.eq('audience', filters.audience);
-    }
 
     const { data: plans, error } = await query.order('sort_order', { ascending: true });
 
@@ -317,7 +313,8 @@ export class SubscriptionPlanService {
    * The caller's personal plan (`profiles.personal_plan_key`), returned as
    * stored. The legacy "paid org plan demoted to the free manager plan"
    * fallback is deleted in phase 4a: the migration backfills every manager
-   * off organization-scope plans onto `solo`, so the stored plan is the answer.
+   * off organization-scope plans onto the free personal plan, so the stored plan is
+   * the answer.
    */
   async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();

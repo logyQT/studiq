@@ -307,7 +307,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     ).toBeVisible();
     await expect(
       page.locator('[data-plan-union]'),
-      'the subscription names Hub first (the personal solo layer follows)',
+      'the subscription names Hub first (the personal layer follows)',
     ).toContainText(UI.hubName);
 
     // --- Step 2 (cont.): /manage/roles shows the role builder -------------

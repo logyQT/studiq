@@ -96,7 +96,7 @@ describe('org checkout resolves the target organization (#225)', () => {
 
     // Same account type as the buyer (manager) but a non-admin org role: this is
     // the only way to prove the org-admin gate, because organization plans carry
-    // no audience and the personal plans are audience-checked (D34).
+    // no audience and a personal plan is not audience-checked since #1193.
     const teacherUser = await createTestUser({ role: 'manager', password: PASSWORD });
     await seedOrgMembership({
       organizationId: orgId,

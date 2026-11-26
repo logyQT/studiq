@@ -23,7 +23,7 @@ import { createServiceClient } from '#test/integration/helpers';
 
 const MIGRATION_FILE = path.join(
   process.cwd(),
-  'supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql',
+  'supabase/migrations/20261126130000_individual_plan_ladder.sql',
 );
 
 interface PlanMatrixEntry {
@@ -38,7 +38,7 @@ interface PlanMatrixEntry {
 const MATRIX: Record<string, PlanMatrixEntry> = {
   base: {
     scope: 'personal',
-    audience: 'student',
+    audience: null,
     price: 0,
     entitlements: ['flashcards', 'quiz'],
     limits: {
@@ -48,24 +48,48 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_question_banks: 5,
       max_quiz_attempts_per_day: 10,
       max_ai_tokens_per_day: 0,
-      max_students: -1,
-      max_groups: -1,
     },
   },
-  lite: {
+  spark: {
     scope: 'personal',
-    audience: 'educator',
-    price: 0,
-    entitlements: ['flashcards', 'quiz'],
+    audience: null,
+    price: 1999,
+    entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'],
     limits: {
-      max_flashcards: 100,
-      max_questions: 50,
-      max_decks: 10,
-      max_question_banks: 5,
-      max_groups: 1,
-      max_students: 5,
-      max_quiz_attempts_per_day: 10,
-      max_ai_tokens_per_day: 0,
+      max_flashcards: 1000,
+      max_questions: 500,
+      max_decks: 100,
+      max_question_banks: 50,
+      max_quiz_attempts_per_day: 50,
+      max_ai_tokens_per_day: 100000,
+    },
+  },
+  ace: {
+    scope: 'personal',
+    audience: null,
+    price: 3999,
+    entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: {
+      max_flashcards: 5000,
+      max_questions: 2000,
+      max_decks: 500,
+      max_question_banks: 200,
+      max_quiz_attempts_per_day: 100,
+      max_ai_tokens_per_day: 250000,
+    },
+  },
+  pro: {
+    scope: 'personal',
+    audience: null,
+    price: 7999,
+    entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: {
+      max_flashcards: 25000,
+      max_questions: 10000,
+      max_decks: 2000,
+      max_question_banks: 1000,
+      max_quiz_attempts_per_day: 200,
+      max_ai_tokens_per_day: 500000,
     },
   },
   launch: {
@@ -81,36 +105,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_groups: 3,
       max_students: 5,
       max_quiz_attempts_per_day: 10,
-      max_ai_tokens_per_day: 0,
-    },
-  },
-  spark: {
-    scope: 'personal',
-    audience: 'student',
-    price: 999,
-    entitlements: ['flashcards', 'quiz'],
-    limits: {
-      max_flashcards: 500,
-      max_questions: 200,
-      max_decks: 50,
-      max_question_banks: 20,
-      max_quiz_attempts_per_day: 50,
-      max_ai_tokens_per_day: 0,
-    },
-  },
-  guide: {
-    scope: 'personal',
-    audience: 'educator',
-    price: 1999,
-    entitlements: ['flashcards', 'quiz', 'quiz.templates'],
-    limits: {
-      max_flashcards: 500,
-      max_questions: 200,
-      max_decks: 50,
-      max_question_banks: 20,
-      max_groups: 5,
-      max_students: 5,
-      max_quiz_attempts_per_day: 50,
       max_ai_tokens_per_day: 0,
     },
   },
@@ -130,36 +124,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_ai_tokens_per_day: 0,
     },
   },
-  ace: {
-    scope: 'personal',
-    audience: 'student',
-    price: 1999,
-    entitlements: ['ai.chat', 'flashcards', 'quiz', 'stats.insights'],
-    limits: {
-      max_flashcards: 2000,
-      max_questions: 1000,
-      max_decks: 200,
-      max_question_banks: 100,
-      max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: 200000,
-    },
-  },
-  creator: {
-    scope: 'personal',
-    audience: 'educator',
-    price: 3999,
-    entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
-    limits: {
-      max_flashcards: 2000,
-      max_questions: 1000,
-      max_decks: 200,
-      max_question_banks: 100,
-      max_groups: 20,
-      max_students: 50,
-      max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: 200000,
-    },
-  },
   hub: {
     scope: 'organization',
     audience: null,
@@ -176,36 +140,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_ai_tokens_per_day: 200000,
     },
   },
-  pro: {
-    scope: 'personal',
-    audience: 'student',
-    price: 3999,
-    entitlements: ['ai.chat', 'flashcards', 'quiz', 'stats.insights'],
-    limits: {
-      max_flashcards: -1,
-      max_questions: -1,
-      max_decks: -1,
-      max_question_banks: -1,
-      max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: -1,
-    },
-  },
-  master: {
-    scope: 'personal',
-    audience: 'educator',
-    price: 7999,
-    entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
-    limits: {
-      max_flashcards: -1,
-      max_questions: -1,
-      max_decks: -1,
-      max_question_banks: -1,
-      max_groups: -1,
-      max_students: -1,
-      max_quiz_attempts_per_day: -1,
-      max_ai_tokens_per_day: -1,
-    },
-  },
   campus: {
     scope: 'organization',
     audience: null,
@@ -220,22 +154,6 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_students: -1,
       max_quiz_attempts_per_day: -1,
       max_ai_tokens_per_day: -1,
-    },
-  },
-  solo: {
-    scope: 'personal',
-    audience: 'manager',
-    price: 0,
-    entitlements: ['flashcards', 'quiz'],
-    limits: {
-      max_flashcards: 100,
-      max_questions: 50,
-      max_decks: 10,
-      max_question_banks: 5,
-      max_quiz_attempts_per_day: 10,
-      max_ai_tokens_per_day: 0,
-      max_students: -1,
-      max_groups: -1,
     },
   },
 };
@@ -275,7 +193,12 @@ async function withDirect<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> 
 }
 
 interface CatalogSnapshot {
-  plans: Array<{ key: string; scope: string; audience: string | null }>;
+  plans: Array<{
+    key: string;
+    scope: string;
+    audience: string | null;
+    price_monthly: number | null;
+  }>;
   entitlements: Array<{ plan_key: string; entitlement_key: string }>;
   limits: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
 }
@@ -286,7 +209,7 @@ async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   return {
     plans: await sql<
       CatalogSnapshot['plans']
-    >`select key, scope, audience from public.subscription_plans order by key`,
+    >`select key, scope, audience, price_monthly from public.subscription_plans order by key`,
     entitlements: await sql<
       CatalogSnapshot['entitlements']
     >`select plan_key, entitlement_key from public.plan_entitlements order by plan_key, entitlement_key`,
@@ -362,7 +285,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     );
   }
 
-  it('is exactly the thirteen matrix plans, with the expected scope/audience/price', () => {
+  it('is exactly the eight matrix plans, with the expected scope/audience/price', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
@@ -417,7 +340,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
       await sql.begin(async (tx) => {
         await tx`insert into public.subscription_plans
             (key, name, price_monthly, currency, sort_order, scope, audience)
-          values ('zz_rogue_plan', 'Rogue replay plan', 0, 'PLN', 99, 'personal', 'student')`;
+          values ('zz_rogue_plan', 'Rogue replay plan', 0, 'PLN', 99, 'personal', null)`;
         await tx`insert into public.plan_entitlements (plan_key, entitlement_key)
           values ('zz_rogue_plan', 'quiz')`;
         await tx`insert into public.plan_limits (plan_key, limit_key, limit_value)
@@ -450,11 +373,40 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // database unchanged, so it passed while proving nothing.
     expect(survivors).toEqual({ plans: 0, entitlements: 0, limits: 0 });
 
-    // The thirteen-row matrix, 46 entitlement rows and 98 limit rows survive
-    // both applications.
-    expect(duringRun.plans).toHaveLength(13);
-    expect(duringRun.entitlements).toHaveLength(46);
-    expect(duringRun.limits).toHaveLength(98);
+    // The replayed catalogue is the matrix itself, row for row, after both
+    // applications — not only the same row count.
+    expect(duringRun.plans).toEqual(
+      Object.entries(MATRIX)
+        .map(([key, plan]) => ({
+          key,
+          scope: plan.scope,
+          audience: plan.audience,
+          price_monthly: plan.price,
+        }))
+        .toSorted((a, b) => a.key.localeCompare(b.key)),
+    );
+    expect(duringRun.entitlements).toEqual(
+      Object.entries(MATRIX)
+        .flatMap(([planKey, plan]) =>
+          plan.entitlements.map((entitlement_key) => ({ plan_key: planKey, entitlement_key })),
+        )
+        .toSorted((a, b) =>
+          `${a.plan_key}.${a.entitlement_key}`.localeCompare(`${b.plan_key}.${b.entitlement_key}`),
+        ),
+    );
+    expect(duringRun.limits).toEqual(
+      Object.entries(MATRIX)
+        .flatMap(([planKey, plan]) =>
+          Object.entries(plan.limits).map(([limit_key, limit_value]) => ({
+            plan_key: planKey,
+            limit_key,
+            limit_value,
+          })),
+        )
+        .toSorted((a, b) =>
+          `${a.plan_key}.${a.limit_key}`.localeCompare(`${b.plan_key}.${b.limit_key}`),
+        ),
+    );
 
     // The rollback is clean: the live database never saw any of it.
     expect(await withDirect(readSnapshot)).toEqual(before);

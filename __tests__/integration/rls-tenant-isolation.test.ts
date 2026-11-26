@@ -1196,7 +1196,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'master', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1221,7 +1221,7 @@ describe('RLS tenant isolation (#191)', () => {
       expect(unseatedEntitlements).toEqual([]);
 
       // A seat adds seat-eligible surface keys only, through
-      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `master`.
+      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `pro`.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,

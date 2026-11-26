@@ -6,7 +6,7 @@ import { createServiceClient } from '#test/integration/helpers';
 
 // Issue #233 (Q2): a missing `plan_limits` row is `0` (blocked) in every path,
 // so a gap in the seed would silently disable a plan. These tests make the gap
-// loud: every active plan must define every catalog key its audience uses, and
+// loud: every active plan must define every catalog key its scope uses, and
 // the DB may not contain keys the resolver ignores.
 interface PlanRow {
   key: string;

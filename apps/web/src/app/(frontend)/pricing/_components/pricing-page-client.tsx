@@ -99,16 +99,10 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
       ]
     : [
         {
-          kind: 'student',
-          title: t('ladder_student_title'),
-          lede: t('ladder_student_lede'),
-          plans: ladders.individual.student,
-        },
-        {
-          kind: 'educator',
-          title: t('ladder_educator_title'),
-          lede: t('ladder_educator_lede'),
-          plans: ladders.individual.educator,
+          kind: 'individual',
+          title: t('ladder_individual_title'),
+          lede: t('ladder_individual_lede'),
+          plans: ladders.individual,
         },
       ];
 
@@ -181,7 +175,6 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
                           plan={plan}
                           isCurrent={currentPlan?.key === plan.key}
                           signedIn={!!user}
-                          accountType={accountType}
                           orgId={activeOrg?.id}
                         />
                       ))}

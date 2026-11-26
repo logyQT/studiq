@@ -6,7 +6,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * BIL-01 — the student's billing page `/app/billing`.
  *
  * Prerequisite (reconciled with the tenant seeder): a signed-in **student** whose
- * personal plan is the free **Base** tier. The case was written against the legacy
+ * personal plan is the free **Free** tier. The case was written against the legacy
  * manual seed (`student1@dev.local`, password `pass`); the suite version uses the
  * case's own tenant and never the legacy accounts.
  *
@@ -25,7 +25,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * lists „Wybierz plan / Konto / Płatności / Polski / English / Motyw / Wyloguj się”.
  * „Płatności” opens `/app/billing`, which renders heading „Rozliczenia”, subtitle
  * „Zarządzaj subskrypcją i danymi rozliczeniowymi” and one card „Aktualny plan” with
- * „StudiQ Base”, the „Darmowy” badge, the Base features (Fiszki, Testy), every Base
+ * „StudiQ Free”, the „Darmowy” badge, the Free features (Fiszki, Testy), every Free
  * limit (Maks. fiszki 100, Maks. talie 10, Maks. pytania 50, Maks. banki pytań 5,
  * Próby dziennie 10, Tokeny AI / dzień 0 — no `NaN`) and the „Wybierz plan” button,
  * which navigates to `/app/upgrade`. The behavior matches the case exactly.
@@ -38,9 +38,9 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   API's value — including the zero-token limit — and no row reads `NaN`;
  * - „Wybierz plan” leads to `/app/upgrade`.
  *
- * Adjacent regression that matters for this surface: a student plan must not render
- * the organization-only limit rows (seats/groups, stored as `-1` for Base and
- * therefore indistinguishable from „Bez ograniczeń”).
+ * Adjacent regression that matters for this surface: a personal plan must not render
+ * the organization-only limit rows (seats/groups), which no personal plan carries
+ * since #1193.
  */
 
 const CASE = 'BIL-01';
@@ -62,7 +62,7 @@ const UPGRADE_COPY = {
   subtitle: 'Wybierz plan odpowiedni dla Twoich potrzeb',
 } as const;
 
-/** Base feature keys → the Polish labels `/app/billing` renders. */
+/** Free feature keys → the Polish labels `/app/billing` renders. */
 const FEATURE_LABELS: Record<string, string> = {
   flashcards: 'Fiszki',
   quiz: 'Testy',
@@ -81,7 +81,7 @@ const LIMIT_LABELS: Record<string, string> = {
 /** Organization-only limits: never shown on a student's own plan. */
 const ORG_ONLY_LIMIT_LABELS = ['Maks. studentów', 'Maks. grup'] as const;
 
-/** The Base limits the case's expected result names. */
+/** The Free limits the case's expected result names. */
 const BASE_LIMITS: Record<string, number> = {
   max_flashcards: 100,
   max_decks: 10,
@@ -128,7 +128,7 @@ function limitRow(card: Locator, label: string): Locator {
 }
 
 test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
-  test('„Płatności” shows the student Base plan and „Wybierz plan” opens /app/upgrade', async ({
+  test('„Płatności” shows the student Free plan and „Wybierz plan” opens /app/upgrade', async ({
     page,
   }) => {
     const tenant = loadTenant(CASE);
@@ -147,10 +147,10 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    // The case's entitlement: the student's own free Base plan.
+    // The case's entitlement: the student's own free Free plan.
     const plan = await getPlan(page);
     expect(plan.key, 'the seeded student resolves their personal plan').toBe('base');
-    expect(plan.priceMonthly, 'Base is the free tier').toBe(0);
+    expect(plan.priceMonthly, 'Free is the free tier').toBe(0);
 
     // --- Step 1: „Płatności” from the user menu -------------------------------
     const menuTrigger = userMenuTrigger(page);
@@ -173,7 +173,7 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     await expect(card.locator('[data-slot="card-title"]')).toHaveText(BILLING_COPY.currentPlan);
     // The page renders the plan the API resolved for this user, not a pinned name.
     // The description is the plan union: this student's org layer (`launch`) comes
-    // first and their personal Base layer second, so Base is asserted as a substring.
+    // first and their personal Free layer second, so Free is asserted as a substring.
     await expect(card.locator('[data-slot="card-description"]')).toContainText(plan.name);
     // The plan union is a badge of its own inside the card description, so the
     // status badge is the generic one without `data-plan-union`.
@@ -182,7 +182,7 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     );
 
     // --- Features: Fiszki, Testy ---------------------------------------------
-    expect(plan.features, 'the Base feature set').toEqual(
+    expect(plan.features, 'the Free feature set').toEqual(
       expect.arrayContaining(['flashcards', 'quiz']),
     );
     for (const feature of plan.features) {
@@ -192,7 +192,7 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
 
     // --- Limits: the case's numbers, rendered without `NaN` -------------------
     for (const [key, expected] of Object.entries(BASE_LIMITS)) {
-      expect(plan.limits[key], `Base limit ${key}`).toBe(expected);
+      expect(plan.limits[key], `Free limit ${key}`).toBe(expected);
     }
     for (const [key, label] of Object.entries(LIMIT_LABELS)) {
       const value = plan.limits[key];
@@ -209,8 +209,7 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
       'NaN',
     );
 
-    // Adjacent: seats/groups are organization limits; a student plan must hide them
-    // instead of rendering Base's `-1` as „Bez ograniczeń”.
+    // Adjacent: seats/groups are organization limits; a personal plan must hide them.
     for (const label of ORG_ONLY_LIMIT_LABELS) {
       await expect(card.getByText(label, { exact: true }), `${label} must stay hidden`).toHaveCount(
         0,

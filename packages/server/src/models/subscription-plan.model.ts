@@ -24,10 +24,11 @@ const PLAN_SCOPE_FIELD = z.enum(PLAN_SCOPES, { error: ValidationErrorCode.INVALI
 const PLAN_AUDIENCE_FIELD = z.enum(PLAN_AUDIENCES, { error: ValidationErrorCode.INVALID_INPUT });
 
 /**
- * The scope/audience pair rule (D32), enforced at the model so a bad pair is a
- * 422 instead of a database CHECK violation: organization plans carry no
- * audience, personal plans always do. On update an absent field means
- * "unchanged", so only an explicit `null` audience conflicts with `personal`.
+ * The scope/audience pair rule, enforced at the model so a bad pair is a 422
+ * instead of a database CHECK violation: organization plans carry no audience.
+ * A personal plan carries no audience either since #1193 — one individual
+ * ladder serves every persona — so only a non-null audience on an
+ * organization plan is invalid. On update an absent field means "unchanged".
  */
 function checkScopeAudience(
   data: { scope?: string; audience?: string | null },
@@ -39,9 +40,6 @@ function checkScopeAudience(
       path: ['audience'],
       message: ValidationErrorCode.INVALID_INPUT,
     });
-  }
-  if (data.scope === 'personal' && data.audience === null) {
-    ctx.addIssue({ code: 'custom', path: ['audience'], message: ValidationErrorCode.REQUIRED });
   }
 }
 

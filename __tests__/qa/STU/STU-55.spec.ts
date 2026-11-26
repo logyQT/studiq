@@ -5,7 +5,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-55 — positive control for the `stats.insights` gate (ADR-0015 §7, phase
- * 5d, R39): a student whose **personal** plan is the paid `ace` resolves
+ * 5d, R39): a student whose **personal** plan is the paid `ace` (Pro) resolves
  * `stats.insights` inside a free `launch` org (the key is `personalPortable`,
  * D3), so the diagnostic reads answer 200 and the cards render — no plan card.
  *
@@ -67,7 +67,7 @@ async function getData<T>(page: Page, url: string): Promise<T> {
 }
 
 test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the student insights', () => {
-  test('the ace personal plan resolves stats.insights inside the launch org and the cards render', async ({
+  test('the Pro personal plan resolves stats.insights inside the launch org and the cards render', async ({
     page,
   }) => {
     test.setTimeout(120_000);
@@ -99,7 +99,7 @@ test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the st
         .from('profiles')
         .update({ personal_plan_key: 'ace' })
         .eq('id', student.id);
-      expect(setup.error, 'move the tenant student to the paid Ace plan').toBeNull();
+      expect(setup.error, 'move the tenant student to the paid Pro plan').toBeNull();
 
       await loginAs(page, tenant, 'student', { locale: 'pl', waitFor: /\/app(\/|$)/ });
 
@@ -110,14 +110,14 @@ test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the st
       );
       expect(
         entitlements.entitlements,
-        'the Ace personal plan resolves stats.insights inside the launch org (D3)',
+        'the Pro personal plan resolves stats.insights inside the launch org (D3)',
       ).toContain('stats.insights');
 
       // --- Step 2: the gated reads answer 200, not 403 ------------------------
       const weakPoints = await page.request.get(WEAK_POINTS);
-      expect(weakPoints.status(), `GET ${WEAK_POINTS} as the student on Ace`).toBe(200);
+      expect(weakPoints.status(), `GET ${WEAK_POINTS} as the student on Pro`).toBe(200);
       const insights = await page.request.get(INSIGHTS);
-      expect(insights.status(), `GET ${INSIGHTS} as the student on Ace`).toBe(200);
+      expect(insights.status(), `GET ${INSIGHTS} as the student on Pro`).toBe(200);
 
       // --- Step 3: the diagnostic cards render without the plan card ----------
       await page.goto('/app/stats/activity');

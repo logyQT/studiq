@@ -5,12 +5,12 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 /**
  * BIL-03 — Zakup planu studenta, ścieżka poprawna.
  *
- * A standalone student on the free `base` plan buys Spark (9,99 zł/mies.) from the
- * student ladder of `/pricing`: the checkout summary shows the plan, its price and
+ * A standalone student on the free `base` plan buys Plus (19,99 zł/mies.) from the
+ * individual ladder of `/pricing`: the checkout summary shows the plan, its price and
  * „Razem”, the card fields format themselves, the „Zapłać” button unlocks only
  * when every field is valid, the simulated payment shows
  * „Płatność udana! Przekierowywanie...”, then „Zakup udany!” and finally the
- * student panel, and the personal plan becomes Spark with its 500/200/50 limits.
+ * student panel, and the personal plan becomes Plus with its 1000/500/100 limits.
  *
  * The legacy manual account (`test-student@dev.local`, password `pass`) is
  * replaced by this case's own tenant, seeded with a fresh run suffix before
@@ -41,9 +41,9 @@ const HOST = new URL(process.env.QA_APP_URL ?? 'http://localhost:3010').hostname
 const UI = {
   loginTitle: 'Witaj ponownie',
   pricingTitle: 'Wybierz swój plan',
-  sparkName: 'StudiQ Spark',
-  sparkRowName: 'Spark',
-  sparkCta: 'Wybierz Spark',
+  sparkName: 'StudiQ Plus',
+  sparkRowName: 'Plus',
+  sparkCta: 'Wybierz Plus',
   summary: 'Podsumowanie zamówienia',
   total: 'Razem',
   cardNumber: 'Numer karty',
@@ -73,7 +73,7 @@ interface PlanResponse {
 }
 
 test.describe('BIL-03 — student plan purchase', () => {
-  test('buys Spark from the /pricing student ladder and lands on the upgraded panel', async ({
+  test('buys Plus from the /pricing individual ladder and lands on the upgraded panel', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -96,20 +96,20 @@ test.describe('BIL-03 — student plan purchase', () => {
     const planBefore = await page.request.get('/api/v1/me/personal-plan');
     expect(planBefore.status(), 'GET /api/v1/me/personal-plan before the purchase').toBe(200);
     const basePlan = (await json<{ data: PlanResponse }>(planBefore)).data;
-    expect(basePlan.key, 'the case starts on the free Base plan').toBe('base');
+    expect(basePlan.key, 'the case starts on the free Free plan').toBe('base');
 
-    // --- Step 1: pick Spark on the /pricing student ladder ----------------
+    // --- Step 1: pick Plus on the /pricing individual ladder ----------------
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
 
     const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
-    await expect(sparkRow, 'one Spark plan row').toHaveCount(1);
-    await expect(sparkRow.locator('h3#spark'), 'the Spark row names the plan').toHaveText(
+    await expect(sparkRow, 'one Plus plan row').toHaveCount(1);
+    await expect(sparkRow.locator('h3#spark'), 'the Plus row names the plan').toHaveText(
       UI.sparkRowName,
     );
-    await expect(sparkRow, 'the Spark row shows the monthly price').toContainText(/9,99/);
+    await expect(sparkRow, 'the Plus row shows the monthly price').toContainText(/19,99/);
     const sparkCta = sparkRow.getByRole('button', { name: UI.sparkCta, exact: true });
-    await expect(sparkCta, 'the Spark row offers its purchase button').toBeVisible();
+    await expect(sparkCta, 'the Plus row offers its purchase button').toBeVisible();
     await sparkCta.click();
 
     // --- Step 2: order summary on /checkout ------------------------------
@@ -118,7 +118,7 @@ test.describe('BIL-03 — student plan purchase', () => {
     const summary = page.locator('[data-slot="card"]').filter({ hasText: UI.summary });
     await expect(summary, 'the checkout renders the order summary').toBeVisible();
     await expect(summary, 'the summary names the bought plan').toContainText(UI.sparkName);
-    await expect(summary, 'the summary shows the monthly price').toContainText(/9,99/);
+    await expect(summary, 'the summary shows the monthly price').toContainText(/19,99/);
     await expect(summary.getByText(UI.total, { exact: true }), 'the summary total').toBeVisible();
 
     // Expected result: the development-payment warning is on the page.
@@ -191,29 +191,29 @@ test.describe('BIL-03 — student plan purchase', () => {
       timeout: 15_000,
     });
 
-    // Expected result: the personal plan is now Spark, with its limits.
+    // Expected result: the personal plan is now Plus, with its limits.
     const planAfter = await page.request.get('/api/v1/me/personal-plan');
     expect(planAfter.status(), 'GET /api/v1/me/personal-plan after the purchase').toBe(200);
     const sparkPlan = (await json<{ data: PlanResponse }>(planAfter)).data;
-    expect(sparkPlan.key, 'the student is on Spark').toBe('spark');
-    expect(sparkPlan.name, 'Spark is the plan the summary showed').toBe(UI.sparkName);
-    expect(sparkPlan.limits, 'the Spark limits from BIL-01').toMatchObject({
-      max_flashcards: 500,
-      max_questions: 200,
-      max_decks: 50,
+    expect(sparkPlan.key, 'the student is on Plus').toBe('spark');
+    expect(sparkPlan.name, 'Plus is the plan the summary showed').toBe(UI.sparkName);
+    expect(sparkPlan.limits, 'the Plus limits from BIL-01').toMatchObject({
+      max_flashcards: 1000,
+      max_questions: 500,
+      max_decks: 100,
     });
 
-    // The upgrade page, where the case could also enter, marks Spark as current.
+    // The upgrade page, where the case could also enter, marks Plus as current.
     await page.goto('/app/upgrade');
     const upgradedCard = page.locator('[data-slot="card"]').filter({ hasText: UI.sparkName });
     await expect(
       upgradedCard.getByText(UI.currentPlan, { exact: true }),
-      'the Spark card is now the current plan',
+      'the Plus card is now the current plan',
     ).toBeVisible();
-    const baseCard = page.locator('[data-slot="card"]').filter({ hasText: 'StudiQ Base' });
+    const baseCard = page.locator('[data-slot="card"]').filter({ hasText: 'StudiQ Free' });
     await expect(
       baseCard.getByText(UI.currentPlan, { exact: true }),
-      'Base is no longer marked as current',
+      'Free is no longer marked as current',
     ).toHaveCount(0);
   });
 

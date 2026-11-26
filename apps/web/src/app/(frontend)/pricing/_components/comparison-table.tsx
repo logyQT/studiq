@@ -15,7 +15,7 @@ import { getLimitLabel } from '@/lib/pricing-limits';
 import { cn } from '@/lib/utils';
 
 /** One ladder per audience; the caption names which one the table compares. */
-export type PricingLadderKind = 'student' | 'educator' | 'organization';
+export type PricingLadderKind = 'individual' | 'organization';
 
 interface ComparisonTableProps {
   plans: PlanInfo[];

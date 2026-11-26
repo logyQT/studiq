@@ -23,37 +23,26 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * an org member without a seat assignment, so `/api/v1/me/personal-plan` resolves
  * their **personal** plan — `profiles.personal_plan_key`, default `base`. The
  * tenant's `teacher` is an educator account with no seat assignment either, so
- * `/api/v1/me/plan` falls back to the same personal plan — `lite`, the educator free
- * tier the `handle_new_user` trigger writes for `account_type = educator`. That is
- * the „plan Base” / „plan Lite” the case's two legs start from.
+ * `/api/v1/me/plan` falls back to the same personal plan — `base`, the one free
+ * tier `handle_new_user` writes for every persona since #1193. That is the
+ * „StudiQ Free” plan both legs start from.
  *
  * Walk observation (shared app, pl): both pages render the same shell — heading
  * „Rozwiń swój plan”, subtitle „Wybierz plan odpowiedni dla Twoich potrzeb”, then one
- * four-column grid of plan cards. `/app/upgrade` shows exactly the student catalogue
- * (StudiQ Base, Spark, Ace, Pro), `/edu/upgrade` exactly the educator catalogue
- * (StudiQ Lite, Guide, Creator, Master). In both, the current plan's card carries the
- * „Obecny Plan” badge and every other card a purchase/selection button
- * („Wybierz Spark”, „Wybierz Ace”, „Wybierz Pro” / „Wybierz Guide”,
- * „Wybierz Creator”, „Wybierz Master”). „Wybierz Spark” opens
- * `/checkout?session_id=…&plan_id=spark`. A student opening `/edu/upgrade` keeps
- * the URL and sees the educator catalogue, and an educator opening `/app/upgrade`
- * sees the student catalogue: `/app` and `/edu` are auth-only areas (ADR-0015
- * §7.1), so neither page redirects. The audience boundary is the checkout, which
- * refuses a personal plan whose `audience` is not the caller's account type
- * (`FORBIDDEN`, 403): the student cannot buy an educator plan, and the purchase
- * control reports the refusal without leaving the page.
+ * four-column grid of plan cards. `/app/upgrade` and `/edu/upgrade` both show the one
+ * individual catalogue (StudiQ Free, Plus, Pro, Max). In both, the current plan's
+ * card carries the „Obecny Plan” badge and every other card a purchase/selection
+ * button („Wybierz Plus”, „Wybierz Pro”, „Wybierz Maks”). „Wybierz Plus” opens
+ * `/checkout?session_id=…&plan_id=spark`. `/app` and `/edu` are auth-only areas
+ * (ADR-0015 §7.1), so a student opening `/edu/upgrade` keeps the URL and sees the
+ * same ladder; persona no longer filters a personal purchase.
  *
  * Asserted behaviour (the case's expected result):
- * - the student page lists the student plans, the educator page the educator plans,
- *   each in the catalogue's order and with the catalogue's names;
- * - the current plan (Base / Lite) is marked with exactly one „Obecny Plan” badge;
+ * - both pages list the one individual ladder in the catalogue's order, with the
+ *   catalogue's names;
+ * - the current plan (Free) is marked with exactly one „Obecny Plan” badge;
  * - every other plan exposes its purchase/selection button, enabled;
- * - each page shows only its own account type's plans;
  * - the purchase button really starts a checkout for that plan.
- *
- * Adjacent regression that matters for this surface: the route loads for either
- * account type, while the plan audience is enforced by the catalogue each page
- * renders and by the checkout that refuses the other audience's plan.
  *
  * Read-only shared data: the plan catalogue (`subscription_plans`, `plan_limits`) is
  * global; the spec reads it through the API and asserts the page renders it. Nothing
@@ -71,7 +60,6 @@ const CASE = 'BIL-02';
  */
 const upgradeCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'UpgradePage' });
 const pricingCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'PricingPage' });
-const checkoutCopy = createTranslator({ locale: 'pl', messages: pl, namespace: 'CheckoutPage' });
 
 const UPGRADE_COPY = {
   title: upgradeCopy('title'),
@@ -79,18 +67,9 @@ const UPGRADE_COPY = {
 } as const;
 
 const CURRENT_BADGE = pricingCopy('current_plan_badge');
-/** The toast `CheckoutButton` shows when the checkout refuses the purchase. */
-const PAYMENT_FAILED = checkoutCopy('payment_failed');
 
-/** The student plans the case names, in catalogue order. */
-const STUDENT_PLAN_NAMES = ['StudiQ Base', 'StudiQ Spark', 'StudiQ Ace', 'StudiQ Pro'] as const;
-/** The educator plans the case names, in catalogue order. */
-const EDUCATOR_PLAN_NAMES = [
-  'StudiQ Lite',
-  'StudiQ Guide',
-  'StudiQ Creator',
-  'StudiQ Master',
-] as const;
+/** The individual plans the case names, in catalogue order. */
+const PLAN_NAMES = ['StudiQ Free', 'StudiQ Plus', 'StudiQ Pro', 'StudiQ Max'] as const;
 
 /** Plan key → the purchase/selection label `PlanCard` renders for it. */
 const PLAN_CTA: Record<string, string> = {
@@ -98,10 +77,6 @@ const PLAN_CTA: Record<string, string> = {
   spark: pricingCopy('cta_spark'),
   ace: pricingCopy('cta_ace'),
   pro: pricingCopy('cta_pro'),
-  lite: pricingCopy('cta_free'),
-  guide: pricingCopy('cta_guide'),
-  creator: pricingCopy('cta_creator'),
-  master: pricingCopy('cta_master'),
 };
 
 interface PlanInfo {
@@ -128,17 +103,12 @@ function account(role: QaRole) {
   return { tenant, user };
 }
 
-/** The personal plan catalogue for one audience, as the page's own API returns it. */
-async function fetchPlans(page: Page, audience: 'student' | 'educator'): Promise<PlanInfo[]> {
-  const response = await page.request.get(
-    `/api/v1/subscription-plans?scope=personal&audience=${audience}`,
-  );
-  expect(
-    response.status(),
-    `GET /api/v1/subscription-plans?scope=personal&audience=${audience}`,
-  ).toBe(200);
+/** The individual plan catalogue, as the page's own API returns it. */
+async function fetchPlans(page: Page): Promise<PlanInfo[]> {
+  const response = await page.request.get('/api/v1/subscription-plans?scope=personal');
+  expect(response.status(), 'GET /api/v1/subscription-plans?scope=personal').toBe(200);
   const body = await json<ApiEnvelope<PlanInfo[]>>(response);
-  expect(body.success, `plans response for ${audience}`).toBe(true);
+  expect(body.success, 'the plans response').toBe(true);
   return body.data;
 }
 
@@ -179,23 +149,22 @@ async function expectUpgradeShell(page: Page): Promise<void> {
  * single „Obecny Plan” badge, and a working purchase/selection control on every other
  * plan.
  */
-async function expectPlanGrid(
-  page: Page,
-  plans: PlanInfo[],
-  expectedNames: readonly string[],
-  currentPlan: PlanInfo,
-): Promise<void> {
+async function expectPlanGrid(page: Page, plans: PlanInfo[], currentPlan: PlanInfo): Promise<void> {
   expect(
     plans.map((plan) => plan.name),
-    'the page renders the catalogue for this account type',
-  ).toEqual([...expectedNames]);
+    'the page renders the individual catalogue',
+  ).toEqual([...PLAN_NAMES]);
+  for (const plan of plans) {
+    expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
+    expect(plan.audience, `plan ${plan.key} has no audience`).toBeNull();
+  }
 
-  await expect(planCards(page)).toHaveCount(expectedNames.length);
+  await expect(planCards(page)).toHaveCount(PLAN_NAMES.length);
   await expect
     .poll(async () => planCards(page).locator('[data-slot="card-title"]').allInnerTexts(), {
       message: 'plan cards keep the catalogue order',
     })
-    .toEqual([...expectedNames]);
+    .toEqual([...PLAN_NAMES]);
 
   // Exactly one plan is marked current, and it is the one the plan API resolves.
   await expect(page.getByText(CURRENT_BADGE, { exact: true })).toHaveCount(1);
@@ -219,7 +188,7 @@ async function expectPlanGrid(
 }
 
 test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
-  test('a student sees the student plans and Base is marked as the current plan', async ({
+  test('a student sees the individual plans and Free is marked as the current plan', async ({
     page,
   }) => {
     const { tenant } = account('student');
@@ -233,41 +202,30 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    const plans = await fetchPlans(page, 'student');
-    for (const plan of plans) {
-      expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
-      expect(plan.audience, `plan ${plan.key} belongs to students`).toBe('student');
-    }
+    const plans = await fetchPlans(page);
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/personal-plan');
-    expect(currentPlan.key, 'the seeded student starts on the free Base plan').toBe('base');
+    expect(currentPlan.key, 'the seeded student starts on the free Free plan').toBe('base');
 
     // --- Step 1: /app/upgrade -------------------------------------------------
     await page.goto('/app/upgrade');
     await expectUpgradeShell(page);
-    await expectPlanGrid(page, plans, STUDENT_PLAN_NAMES, currentPlan);
-
-    // A student page must not leak the educator catalogue.
-    for (const name of EDUCATOR_PLAN_NAMES) {
-      await expect(page.getByText(name, { exact: true }), `${name} must stay hidden`).toHaveCount(
-        0,
-      );
-    }
+    await expectPlanGrid(page, plans, currentPlan);
 
     // The purchase button starts a checkout for that very plan.
-    await planCard(page, 'StudiQ Spark')
+    await planCard(page, 'StudiQ Plus')
       .getByRole('button', { name: PLAN_CTA.spark, exact: true })
       .click();
     await page.waitForURL(/\/checkout\?/, { timeout: 20_000 });
-    expect(new URL(page.url()).searchParams.get('plan_id'), 'the checkout targets Spark').toBe(
+    expect(new URL(page.url()).searchParams.get('plan_id'), 'the checkout targets Plus').toBe(
       'spark',
     );
     await expect(page.getByText('Podsumowanie zamówienia', { exact: true })).toBeVisible();
-    await expect(page.getByText('StudiQ Spark', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('StudiQ Plus', { exact: true }).first()).toBeVisible();
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
 
-  test('an educator sees the educator plans and Lite is marked as the current plan', async ({
+  test('an educator sees the same individual plans and Free is marked as the current plan', async ({
     page,
   }) => {
     const { tenant } = account('teacher');
@@ -281,94 +239,41 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
     await expect(page).toHaveURL(/\/edu$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    const plans = await fetchPlans(page, 'educator');
-    for (const plan of plans) {
-      expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
-      expect(plan.audience, `plan ${plan.key} belongs to educators`).toBe('educator');
-    }
+    const plans = await fetchPlans(page);
     // Unseated educator: `/me/plan` falls back to the personal plan the trigger wrote.
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/plan');
-    expect(currentPlan.key, 'the seeded educator starts on the free Lite plan').toBe('lite');
+    expect(currentPlan.key, 'the seeded educator starts on the free Free plan').toBe('base');
 
     // --- Step 2: /edu/upgrade ------------------------------------------------
     await page.goto('/edu/upgrade');
     await expectUpgradeShell(page);
-    await expectPlanGrid(page, plans, EDUCATOR_PLAN_NAMES, currentPlan);
-
-    // An educator page must not leak the student catalogue.
-    for (const name of STUDENT_PLAN_NAMES) {
-      await expect(page.getByText(name, { exact: true }), `${name} must stay hidden`).toHaveCount(
-        0,
-      );
-    }
+    await expectPlanGrid(page, plans, currentPlan);
 
     expect(pageErrors, 'uncaught page errors').toEqual([]);
   });
 
-  test('each plan page loads for either account type, but only its own audience can buy', async ({
+  test('each upgrade page loads for either account type and shows the same ladder', async ({
     page,
-    browser,
-    baseURL,
   }) => {
     const { tenant } = account('student');
 
     // Area routes are auth-only (ADR-0015 §7.1): a student may open the educator
-    // plan page and keeps the URL. What is gated is the audience, not the route.
+    // upgrade page and keeps the URL. Persona no longer filters the ladder (#1193).
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/);
     await page.goto('/edu/upgrade');
     await expect(page).toHaveURL(/\/edu\/upgrade$/);
     await expectUpgradeShell(page);
-    await expect(planCards(page), 'the educator catalogue renders for the route').toHaveCount(
-      EDUCATOR_PLAN_NAMES.length,
+    await expect(planCards(page), 'the individual catalogue renders for the route').toHaveCount(
+      PLAN_NAMES.length,
     );
 
-    // The checkout resolves the plan's audience against the caller, so the
-    // educator catalogue is not purchasable by a student.
-    const denied = await page.request.post('/api/v1/stripe/create-checkout-session', {
-      data: { planKey: 'guide', locale: 'pl' },
-    });
-    expect(denied.status(), 'a student checking out an educator plan').toBe(403);
-    expect(await denied.json(), 'the refusal envelope').toEqual({
-      success: false,
-      error: 'FORBIDDEN',
-    });
-
-    // The purchase control surfaces that refusal and never navigates to checkout.
-    await planCard(page, 'StudiQ Guide')
-      .getByRole('button', { name: PLAN_CTA.guide, exact: true })
+    // A personal plan is purchasable from either area: the checkout no longer
+    // refuses a plan by the caller's persona.
+    await planCard(page, 'StudiQ Plus')
+      .getByRole('button', { name: PLAN_CTA.spark, exact: true })
       .click();
-    await expect(
-      page.locator('[data-sonner-toast]').filter({ hasText: PAYMENT_FAILED }),
-      'the refused purchase is reported to the student',
-    ).toBeVisible();
-    await expect(page).toHaveURL(/\/edu\/upgrade$/);
-
-    // The mirror case: an educator may open the student page and cannot buy it.
-    const context = await browser.newContext({ baseURL: baseURL ?? 'http://localhost:3010' });
-    try {
-      const educatorPage = await context.newPage();
-      await loginAs(educatorPage, tenant, 'teacher', { locale: 'pl' });
-      await expect(educatorPage).toHaveURL(/\/edu$/);
-      await educatorPage.goto('/app/upgrade');
-      await expect(educatorPage).toHaveURL(/\/app\/upgrade$/);
-      await expectUpgradeShell(educatorPage);
-      await expect(
-        planCards(educatorPage),
-        'the student catalogue renders for the route',
-      ).toHaveCount(STUDENT_PLAN_NAMES.length);
-
-      const educatorDenied = await educatorPage.request.post(
-        '/api/v1/stripe/create-checkout-session',
-        { data: { planKey: 'spark', locale: 'pl' } },
-      );
-      expect(educatorDenied.status(), 'an educator checking out a student plan').toBe(403);
-      expect(await educatorDenied.json(), 'the refusal envelope').toEqual({
-        success: false,
-        error: 'FORBIDDEN',
-      });
-    } finally {
-      await context.close();
-    }
+    await page.waitForURL(/\/checkout\?/, { timeout: 20_000 });
+    expect(new URL(page.url()).searchParams.get('plan_id')).toBe('spark');
   });
 });

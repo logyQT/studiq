@@ -19,9 +19,9 @@ import { POST as webhookPost } from '@/app/(backend)/api/v1/stripe/webhook/route
 
 /**
  * #228 + ADR-0015 phase 4a (D2/D32/D34) — managers have no paid personal plan
- * and their free personal plan is `solo` (not the organization `launch`). An
+ * and their free personal plan is `base` (not the organization `launch`). An
  * organization purchase changes only the organization: the buyer's
- * `profiles.personal_plan_key` stays `solo`, `/me/plan` follows the active
+ * `profiles.personal_plan_key` stays `base`, `/me/plan` follows the active
  * organization for a member who may bill it (`org.billing.manage`), and an
  * organization-scope plan stored on a profile never widens another
  * organization's limits.
@@ -137,9 +137,9 @@ describe('manager plan model (#228)', () => {
       .select('personal_plan_key, account_type')
       .eq('id', manager.id)
       .single();
-    // A manager signup resolves `solo` (D2): the free personal manager plan,
-    // written by handle_new_user together with profiles.account_type.
-    expect(profile?.personal_plan_key).toBe('solo');
+    // A manager signup resolves `base` since #1193: handle_new_user mints the
+    // same free personal plan for every persona.
+    expect(profile?.personal_plan_key).toBe('base');
     expect(profile?.account_type).toBe('manager');
 
     const { data: payments } = await service
@@ -149,7 +149,7 @@ describe('manager plan model (#228)', () => {
     expect(payments).toContainEqual({ organization_id: boughtOrgId, plan_key: 'hub' });
   });
 
-  it('resolves /me/plan from the active organization (org.billing.manage holder) and /me/personal-plan from solo', async () => {
+  it('resolves /me/plan from the active organization (org.billing.manage holder) and /me/personal-plan from base', async () => {
     // The org creator holds the Admin role, which carries org.billing.manage.
     const bought = await planKey(myPlanGet, boughtOrgId);
     expect(bought.status).toBe(200);
@@ -159,11 +159,11 @@ describe('manager plan model (#228)', () => {
     expect(other.key).toBe('launch');
 
     // An organization purchase never becomes the buyer's personal plan: the
-    // stored plan is `solo`, returned verbatim (D34).
+    // stored plan is `base`, returned verbatim (D34).
     const personalBought = await planKey(personalPlanGet, boughtOrgId);
-    expect(personalBought.key).toBe('solo');
+    expect(personalBought.key).toBe('base');
     const personalOther = await planKey(personalPlanGet, otherOrgId);
-    expect(personalOther.key).toBe('solo');
+    expect(personalOther.key).toBe('base');
   });
 
   it('resolves /me/plan to the personal plan for an org member without org.billing.manage (D34)', async () => {
@@ -210,6 +210,6 @@ describe('manager plan model (#228)', () => {
     const personal = await planKey(personalPlanGet, otherOrgId);
     expect(personal.key).toBe('campus');
 
-    await service.from('profiles').update({ personal_plan_key: 'solo' }).eq('id', manager.id);
+    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', manager.id);
   });
 });
