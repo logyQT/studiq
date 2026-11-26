@@ -58,17 +58,18 @@ const catalogue = [
     features: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     priceMonthly: 7999,
   }),
-  plan('launch', 'organization', 5, { features: ['flashcards', 'quiz'] }),
-  plan('team', 'organization', 6, {
-    features: ['flashcards', 'quiz', 'quiz.templates'],
-    priceMonthly: 9900,
+  plan('launch', 'organization', 5, {
+    features: ['flashcards', 'quiz'],
+    limits: { max_students: 5, max_groups: 3 },
   }),
-  plan('hub', 'organization', 7, {
-    features: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+  plan('hub', 'organization', 6, {
+    features: ['flashcards', 'quiz'],
+    limits: { max_students: 50, max_groups: 20 },
     priceMonthly: 29900,
   }),
-  plan('campus', 'organization', 8, {
-    features: ['ai.chat', 'branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+  plan('campus', 'organization', 7, {
+    features: ['flashcards', 'quiz'],
+    limits: { max_students: 1000, max_groups: 100 },
     priceMonthly: 69900,
   }),
 ];
@@ -78,7 +79,7 @@ describe('getPlanLadders', () => {
     const ladders = getPlanLadders(catalogue);
 
     expect(ladders.individual.map((p) => p.key)).toEqual(['base', 'spark', 'ace', 'pro']);
-    expect(ladders.organization.map((p) => p.key)).toEqual(['launch', 'team', 'hub', 'campus']);
+    expect(ladders.organization.map((p) => p.key)).toEqual(['launch', 'hub', 'campus']);
   });
 
   it('sorts by the catalogue order rather than the order the API returned', () => {
@@ -125,7 +126,7 @@ describe('ctaMessageKey', () => {
   });
 
   it('gives a sales-led plan the conversation the page already offers', () => {
-    expect(ctaMessageKey(plan('campus', 'organization', 8, { priceMonthly: 69900 }))).toBe(
+    expect(ctaMessageKey(plan('campus', 'organization', 7, { priceMonthly: 69900 }))).toBe(
       'cta_contact',
     );
   });
@@ -160,7 +161,7 @@ describe('splitFeatureRows', () => {
     // lands in `differing` instead of being silently dropped.
     const ladder = [
       plan('launch', 'organization', 1, { features: ['flashcards'] }),
-      plan('team', 'organization', 2, { features: ['flashcards', 'branding'] }),
+      plan('hub', 'organization', 2, { features: ['flashcards', 'branding'] }),
     ];
 
     const rows = splitFeatureRows(ladder);

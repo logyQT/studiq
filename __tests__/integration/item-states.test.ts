@@ -183,9 +183,15 @@ describe('Item states and versioning (#1171)', () => {
     if (!assignmentId || !teacher.orgId) throw new Error('assignment fixture missing');
 
     // Phase 5d: the quiz writes (create/addQuestions/createAssignment/bulk)
-    // are gated on the `quiz.templates` entitlement, which the `launch`
-    // default plan does not carry — the authoring org sits on `hub`.
+    // are gated on the `quiz.templates` entitlement. The organization ladder is
+    // capacity only since #1493, so the author's personal Plus plan carries the
+    // key into the org (`personalPortable`); the org sits on `hub` for capacity.
     await setOrgPlan(teacher.orgId, 'hub');
+    const { error: personalError } = await service
+      .from('profiles')
+      .update({ personal_plan_key: 'spark' })
+      .eq('id', teacher.user.id);
+    expect(personalError, 'put the author on the personal Plus plan').toBeNull();
 
     const { data: memberRole } = await service
       .from('org_roles')
@@ -245,6 +251,7 @@ describe('Item states and versioning (#1171)', () => {
       .ilike('name', 'state-bank-%');
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     await cleanupQuestions(teacher.user.id, 'state-');
+    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', teacher.user.id);
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
   });
 

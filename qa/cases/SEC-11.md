@@ -7,6 +7,13 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+No organization plan carries `branding`, so the organization-logo upload point is refused with
+**403 FORBIDDEN** before the 5 MB/type checks. The media and assignment-image upload points still
+exercise type/size validation and inert rendering; the logo point now pins the entitlement gate
+and an unchanged `logo_url`.
+
 ## Prerequisite (verbatim)
 
 Punkty uploadu: logo (manager), media fiszek, zdjęcia kartkówki, CSV, PDF AI.

@@ -37,7 +37,7 @@ Two ladders, each self-serve through Stripe from `/pricing`:
 | Ladder      | Account type                     | Free tier | Paid tiers                                |
 | ----------- | -------------------------------- | --------- | ----------------------------------------- |
 | Individual  | `STUDENT`, `EDUCATOR`, `MANAGER` | `base`    | `spark` 19.99 · `ace` 39.99 · `pro` 79.99 |
-| Institution | `MANAGER`                        | `launch`  | `team` 99 · `hub` 299 · `campus` 699      |
+| Institution | `MANAGER`                        | `launch`  | `hub` 299 · `campus` 699                  |
 
 All prices in PLN per month, from `subscription_plans`. Never hardcode them: the landing
 reads `/api/v1/subscription-plans` and formats through `formatPlanPrice`.
@@ -111,25 +111,25 @@ That is why the phone menu is a full-page takeover with four oversized rows and 
 
 Roadmap-backed, so all of it is sellable. Status column is the roadmap's, not the code's.
 
-| Claim                                                                           | Roadmap         | Status                                         |
-| ------------------------------------------------------------------------------- | --------------- | ---------------------------------------------- |
-| Flashcards, decks, topics, cram mode, CSV import/export, media upload           | 0               | ✅                                             |
-| `SM-2` spaced repetition and study sessions                                     | 0, 5B           | ✅                                             |
-| Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A           | ✅                                             |
-| Groups, org hierarchy, roles, per-group visibility                              | 1, 2            | ✅                                             |
-| Own branding: organization logo and brand colour                                | 8A              | ✅                                             |
-| Seats, plans, features and limits, Stripe checkout                              | 6               | 🏗️ integration complete, go-live pending #1019 |
-| AI flashcard generation from text or PDF, with a daily token budget             | 4A              | ✅                                             |
-| AI question and quiz generation                                                 | 4B (#658)       | 📋 ships before launch                         |
-| Notes agent and tutor mode                                                      | 4B (#659)       | 📋 ships before launch                         |
-| `/summary`, `/quiz`, `/explain` commands                                        | 4B (#660)       | 📋 ships before launch                         |
-| YouTube, image and audio input                                                  | 4B (#661)       | 📋 ships before launch                         |
-| Document support                                                                | 3C (#653)       | 📋 ships before launch                         |
-| Question bank polish                                                            | 3B (#651, #652) | 📋 ships before launch                         |
-| Teacher dashboard                                                               | 3D (#654)       | 📋 ships before launch                         |
-| Advanced statistics: study time, mastery, retention                             | 5C (#657)       | 📋 ships before launch                         |
-| Global admin statistics                                                         | 7 (#663)        | 📋 ships before launch                         |
-| Polish and English                                                              | 0               | ✅                                             |
+| Claim                                                                           | Roadmap         | Status                                                       |
+| ------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------ |
+| Flashcards, decks, topics, cram mode, CSV import/export, media upload           | 0               | ✅                                                           |
+| `SM-2` spaced repetition and study sessions                                     | 0, 5B           | ✅                                                           |
+| Questions (multiple choice, true/false, open), banks, quizzes, attempts, review | 0, 3A           | ✅                                                           |
+| Groups, org hierarchy, roles, per-group visibility                              | 1, 2            | ✅                                                           |
+| Own branding: organization logo and brand colour                                | 8A              | ✅ code, ⏸️ no plan sells it (#1493)                         |
+| Seats, plans, features and limits, Stripe checkout                              | 6               | 🏗️ integration complete, seats frozen, go-live pending #1019 |
+| AI flashcard generation from text or PDF, with a daily token budget             | 4A              | ✅                                                           |
+| AI question and quiz generation                                                 | 4B (#658)       | 📋 ships before launch                                       |
+| Notes agent and tutor mode                                                      | 4B (#659)       | 📋 ships before launch                                       |
+| `/summary`, `/quiz`, `/explain` commands                                        | 4B (#660)       | 📋 ships before launch                                       |
+| YouTube, image and audio input                                                  | 4B (#661)       | 📋 ships before launch                                       |
+| Document support                                                                | 3C (#653)       | 📋 ships before launch                                       |
+| Question bank polish                                                            | 3B (#651, #652) | 📋 ships before launch                                       |
+| Teacher dashboard                                                               | 3D (#654)       | 📋 ships before launch                                       |
+| Advanced statistics: study time, mastery, retention                             | 5C (#657)       | 📋 ships before launch                                       |
+| Global admin statistics                                                         | 7 (#663)        | 📋 ships before launch                                       |
+| Polish and English                                                              | 0               | ✅                                                           |
 
 The page may sell the 📋 rows. It may not sell anything absent from this table.
 
@@ -163,11 +163,12 @@ marketing premium card and `/features`, and subphase 4C covers learning paths, r
 and adaptive difficulty — not exam simulation. It is gone from all three surfaces and its
 keys with it; it returns only when the roadmap has a row for it.
 
-Separately, one entitlement inconsistency that is not a roadmap question: the landing org
-card prices from `team` (99 zł) and lists "Everything in Premium", but `ace` (19.99 zł) is
-the plan carrying `ai.chat` and `stats.insights`, and `team` carries neither. At five times
-the price, the cheap institutional tier includes less than the individual one. Fix the
-seed or fix the bullet, but the current pair cannot both be true.
+**Closed by B2 (#1493).** The landing org card priced from `team` (99 zł) and listed
+"Everything in Premium", while the cheaper individual plans carried the features. The
+organization ladder is now capacity only — Launch / Hub / Campus, with no `ai.chat`,
+`quiz.templates`, `stats.insights` or `branding` on any org plan — so the card prices from
+`hub` (299 zł) and lists capacity, roles and groups. A member's own personal plan adds the
+paid surfaces inside the organization, and organization licences are #1511.
 
 ## Voice
 

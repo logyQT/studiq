@@ -7,6 +7,10 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the teacher's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"`), not the org plan.
+
 ## Prerequisite (verbatim)
 
 Quiz z pytaniami.
@@ -26,9 +30,10 @@ The case was written against the legacy manual seed (`teacher-classroom@dev.loca
 Odkrycia”). The suite version uses the case's own tenant and never the legacy accounts.
 
 - Profile: `content` on the **hub** plan (`__tests__/qa/profiles/EDU-QZ-05.json` declares
-  `{ "profile": "content", "plan": "hub" }` — the saved-quiz library is the `quiz.templates`
-  entitlement (phase 5d), which the tenant's own hub plan carries, so the teacher passes the
-  write gates) — one organization, one default group `G1`, and one account per account type:
+  `{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "teacher" }`).
+  Hub is capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
+  (phase 5d) comes from the teacher's personal Plus plan and the teacher passes the write
+  gates — one organization, one default group `G1`, and one account per account type:
   `manager` (org `admin`), `teacher` (account type `educator`, org `member` — the „TC”
   analogue that owns the quiz), `student`.
 - Seed: `bun scripts/qa-tenant.ts EDU-QZ-05 --fresh` — a fresh run suffix per independent

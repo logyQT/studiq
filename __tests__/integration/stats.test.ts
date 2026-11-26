@@ -91,6 +91,8 @@ describe(`Stats Integration`, () => {
   let member!: TestUserFixture;
   let outsider!: TestUserFixture;
   let noStats!: TestUserFixture;
+  /** `stats.read` holder with no `stats.insights`: the free-personal control. */
+  let unentitled!: TestUserFixture;
   let seedBankId!: string;
   let extraBankId!: string;
 
@@ -164,6 +166,13 @@ describe(`Stats Integration`, () => {
 
     member = await createTestUser({ role: 'student' });
     outsider = await createTestUser({ role: 'student' });
+    // The organization ladder is capacity only since #1493, so the paid
+    // `stats.insights` surface reaches this member through their personal plan.
+    const { error: memberPlanError } = await service
+      .from('profiles')
+      .update({ personal_plan_key: 'ace' })
+      .eq('id', member.id);
+    if (memberPlanError) throw new Error(`[setup] member plan: ${memberPlanError.message}`);
 
     const { data: memberRole } = await service
       .from('org_roles')
@@ -224,6 +233,18 @@ describe(`Stats Integration`, () => {
     });
     if (noStatsMembershipError) {
       throw new Error(`[setup] no-stats membership failed: ${noStatsMembershipError.message}`);
+    }
+
+    // Same `stats.read` permission as `member`, but on the free personal plan:
+    // the control for the `stats.insights` gate.
+    unentitled = await createTestUser({ role: 'student' });
+    const { error: unentitledMembershipError } = await service.from('org_members').insert({
+      organization_id: orgId,
+      user_id: unentitled.id,
+      org_role_id: memberRole.id,
+    });
+    if (unentitledMembershipError) {
+      throw new Error(`[setup] unentitled membership failed: ${unentitledMembershipError.message}`);
     }
 
     const now = Date.now();
@@ -478,15 +499,15 @@ describe(`Stats Integration`, () => {
     });
 
     // Phase 5d: the activity read moved behind the paid `stats.insights`
-    // entitlement while the descriptive teacher stats stayed free. A `launch`
-    // org holds `stats.read` but not the entitlement, so one session splits
-    // 403 on the diagnostic read and 200 on the descriptive one.
+    // entitlement while the descriptive teacher stats stayed free. A member
+    // with `stats.read` but only the free personal plan splits 403 on the
+    // diagnostic read and 200 on the descriptive one.
     it('403s the activity read on a launch-plan org while /stats/teacher stays 200 (5d)', async () => {
       const orgCookie = { active_org_id: scopedTeacher.orgId! };
       try {
         await setOrgPlan(scopedTeacher.orgId!, 'launch');
 
-        mockUser(member);
+        mockUser(unentitled);
         const activity = await activityGet(
           createNextRequest(
             'http://localhost/api/v1/stats/teacher/activity?range=30d',

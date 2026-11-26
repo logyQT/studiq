@@ -1154,9 +1154,9 @@ describe('RLS tenant isolation (#191)', () => {
 
   it('a seated custom role resolves the seat plan, not management authority (RLS mirrors FeatureResolver)', async () => {
     // A custom role is on the `none` profile, so the org-plan fallback used to
-    // grant every plan capability. The seat adds seat-eligible surface keys
-    // only (review-1-r2 B1, retargeted from `group.manage` to
-    // `stats.insights`).
+    // grant every plan capability. The seat adds the seat plan's keys
+    // intersected with the org ceiling; since #1493 the organization ceiling is
+    // the two baseline keys, so the seat adds those (review-1-r2 B1).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
 
@@ -1178,8 +1178,8 @@ describe('RLS tenant isolation (#191)', () => {
 
     try {
       // The seat arm intersects the org ceiling (a seat can add a key the org
-      // plan carries, never one it does not), so the fixture must carry the
-      // probed key: `stats.insights` is in `hub`, not in `launch`.
+      // plan carries, never one it does not); the hub ceiling is the baseline
+      // pair, so the seat's baseline keys survive the intersection.
       const { error: planError } = await service
         .from('organizations')
         .update({ plan: 'hub' })
@@ -1220,14 +1220,14 @@ describe('RLS tenant isolation (#191)', () => {
       });
       expect(unseatedEntitlements).toEqual([]);
 
-      // A seat adds seat-eligible surface keys only, through
-      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `pro`.
+      // A seat adds seat-eligible keys through `seat plan ∩ ceiling`; the
+      // baseline pair is in both `hub` and `pro`, and `none` grants nothing.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
-      expect(seatedEntitlements).toContain('stats.insights');
+      expect(seatedEntitlements.toSorted()).toEqual(['flashcards', 'quiz']);
       expect(seatedEntitlements).not.toContain('branding');
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
@@ -1278,12 +1278,12 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
-    // A `none`-profile custom role in a `hub` org (branding in the org plan)
-    // with a `pro` seat (stats.insights, NO branding). The resolver must use
-    // the seat plan for the seated actor; before the r4 fix the org-plan
-    // fallback still granted the org plan through PostgREST. (Retargeted in
-    // 2b-7: `group.manage` left the catalog, so the org-plan key probed here is
-    // the org-scoped `branding`.)
+    // A `none`-profile custom role in a `hub` org with a `pro` seat. The
+    // resolver must use the seat plan for the seated actor; before the r4 fix
+    // the org-plan fallback still granted the org plan through PostgREST. Since
+    // #1493 the hub ceiling is the baseline pair, so the seat's baseline keys
+    // are the only ones the intersection can add — and `none` alone grants
+    // nothing, so they can only arrive through the seat.
     const seatedEmail = `rls191-seat-plan-${tag}@dev.local`;
     const controlEmail = `rls191-seat-plan-control-${tag}@dev.local`;
 
@@ -1349,19 +1349,16 @@ describe('RLS tenant isolation (#191)', () => {
       const seatedSession = await signIn(seatedEmail);
       const controlSession = await signIn(controlEmail);
 
-      // `hub` has branding, `pro` does not: resolution must follow the seat
-      // plan, so the org-plan key stays denied for the seated custom role.
+      // Resolution must follow the seat plan: the `none` profile grants
+      // nothing, so the baseline pair can only arrive through the seat branch,
+      // and the org-scoped `branding` stays denied.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
+      expect(seatedEntitlements.toSorted()).toEqual(['flashcards', 'quiz']);
       expect(seatedEntitlements).not.toContain('branding');
-
-      // ...and it must be reading the seat plan, not just denying everything:
-      // the `none` profile grants nothing, so `stats.insights` can only arrive
-      // through the seat branch.
-      expect(seatedEntitlements).toContain('stats.insights');
 
       // The app denies group creation for this user; PostgREST must too.
       const { error: groupInsertError } = await seatedSession

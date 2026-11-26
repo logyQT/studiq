@@ -1,4 +1,5 @@
 {
   "profile": "content",
-  "plan": "hub"
+  "plan": "hub",
+  "personalPlan": "spark"
 }

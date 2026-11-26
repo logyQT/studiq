@@ -25,11 +25,10 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * moves
  * `organizations.plan` only (the org layer is derived live); the buyer's personal
  * plan is deliberately left on the free `launch` tier (#228). After buying Hub
- * the organization reads `hub`, `/manage/settings` shows „Wgraj logo” and
- * „Kolor marki” instead of the „Własny branding” lock card, and `/manage/roles`
- * shows „Nowa rola” instead of the „Kreator ról nie jest dostępny w Twoim planie”
- * lock card. That is the behavior the case calls expected, so the spec asserts
- * it.
+ * the organization reads `hub` and its capacity rises (50 members, 20 groups);
+ * since #1493 the organization plan carries no paid feature, so
+ * `/manage/settings` keeps the „Własny branding” lock card and no plan unlocks
+ * `quiz.templates`. That is the behavior the case now asserts.
  *
  * The purchase is a one-way entitlement write on the tenant's own organization,
  * so the assertions capture the state before the checkout and assert the state
@@ -62,7 +61,7 @@ const UI = {
   success: /Płatność udana! Przekierowywanie/,
   successPageTitle: 'Zakup udany!',
   brandingLockedTitle: 'Własny branding',
-  brandingLockedDesc: 'Ulepsz plan, aby uzyskać dostęp do własnego brandingu',
+  brandingLockedDesc: 'Własny branding nie jest częścią obecnych planów.',
   uploadLogo: 'Wgraj logo',
   brandColor: 'Kolor marki',
   roleLockedTitle: 'Kreator ról nie jest dostępny w Twoim planie',
@@ -85,6 +84,7 @@ interface PlanInfo {
   key: string;
   name: string;
   features: string[];
+  limits: Record<string, number>;
 }
 
 interface PaymentItem {
@@ -254,9 +254,15 @@ test.describe('BIL-04 — organization plan purchase', () => {
     expect(planAfter.key, 'the active organization plan is Hub').toBe('hub');
     expect(planAfter.name, 'Hub is the plan the summary showed').toBe(UI.hubName);
 
+    // The tier change buys capacity, not features: the org ceiling is baseline
+    // only, so the resolved set is unchanged by the purchase.
     const featuresAfter = await readFeatures(page);
-    expect(featuresAfter, 'Hub unlocks branding').toContain('branding');
-    expect(featuresAfter, 'Hub unlocks the quiz builder').toContain('quiz.templates');
+    expect(featuresAfter.toSorted(), 'Hub adds no paid feature to the org ceiling').toEqual([
+      'flashcards',
+      'quiz',
+    ]);
+    expect(planAfter.limits.max_students, 'Hub raises the member capacity').toBe(50);
+    expect(planAfter.limits.max_groups, 'Hub raises the group capacity').toBe(20);
 
     // The organization purchase must not touch the buyer's personal plan: a
     // manager's personal plan is the free tier and applies only outside an org.
@@ -287,24 +293,24 @@ test.describe('BIL-04 — organization plan purchase', () => {
       currency: 'PLN',
     });
 
-    // --- Step 2: /manage/settings shows the branding controls -------------
+    // --- Step 2: /manage/settings keeps branding locked -------------------
     await page.goto('/manage/settings');
     await expect(
       page.getByText(UI.brandingLockedTitle, { exact: true }),
-      'the branding lock card is gone',
-    ).toHaveCount(0);
+      'the branding lock card stays: no organization plan carries the feature',
+    ).toBeVisible();
     await expect(
       page.getByText(UI.brandingLockedDesc, { exact: true }),
-      'no upgrade prompt for branding',
-    ).toHaveCount(0);
+      'the lock says branding is not part of the current plans',
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: UI.uploadLogo, exact: true }),
-      'the logo upload is available',
-    ).toBeVisible();
+      'the logo upload stays unavailable',
+    ).toHaveCount(0);
     await expect(
       page.getByText(UI.brandColor, { exact: true }),
-      'the brand colour picker is available',
-    ).toBeVisible();
+      'the brand colour picker stays unavailable',
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-plan-union]'),
       'the subscription names Hub first (the personal layer follows)',

@@ -32,22 +32,21 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 
 - `__tests__/qa/profiles/LIM-05.json` deklaruje `{ "profile": "content", "plan": "hub" }`. Profil
   `content` tworzy organizację `qa-lim-05-<suffix>` z managerem (`admin`), nauczycielem i
-  studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `change_org_plan`
-  — ten sam RPC, który wywołuje webhook płatności — dzięki czemu rola `admin` ma funkcję
-  `branding`. To odpowiednik warunku „organizacja z brandingiem”, od którego zaczynają się
-  MGR-SET-02 i MGR-SET-05 (MGR-SET-01 to stan Launch, osiągany w kroku 1 poniżej).
+  studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `change_org_plan`.
+  Od #1493 **żaden plan organizacji nie zawiera `branding`** — organizacja na Hubie jest
+  celowo warunkiem „nawet najwyższy self-serve tier nie ma brandingu”. Wartości logo i koloru,
+  które zostawiłby plan z brandingiem, spec zapisuje bezpośrednio w wierszu **swojej**
+  organizacji (fixture), żeby dowieść, że ukrywa je bramka, a nie brak danych.
 - Klucz tenanta: `LIM-05.md::LIM-05#<run>::qa-shared` —
   `tenantKey('qa/cases/LIM-05.md', 'LIM-05#<run>', 'qa-shared')` + `tenantId` dla org, grup i
   użytkowników, ten sam schemat co fixture'y e2e. `--fresh` nadaje nowy sufiks przebiegu, więc
   każde niezależne uruchomienie dostaje świeżą organizację; identyfikatory są deterministyczne
   w obrębie przebiegu (bez losowanych UUID). Spec czyta tenant przez `loadTenant('LIM-05')`.
 - Krok 1 przypadku („Wykonaj MGR-SET-01, MGR-SET-02, MGR-SET-05”) jest odtworzony w jednym
-  tenancie: Hub → wgranie logo i ustawienie koloru marki (MGR-SET-02) → obniżenie planu do
-  `launch` webhookiem symulowanej płatności (`POST /api/v1/stripe/webhook` →
-  `MockStripeService.handleWebhook` → `change_org_plan`), czyli dokładnie ścieżką zmiany planu,
-  której używa MGR-SET-05 — bez zmiany globalnego katalogu planów czy wierszy innego tenanta.
-  Po asercjach spec wraca do `hub` w obrębie tego samego tenanta, żeby kolejny
-  przebieg (retry CI na tym samym tenancie) zaczynał od warunku wstępnego.
+  tenancie: organizacja na Hubie ze zapisanymi wartościami logo/koloru pokazuje kartę
+  blokady, brak pól wgrywania i koloru oraz nie maluje zapisanych wartości — bo żaden plan nie
+  przyznaje `branding`. Spec nie zmienia już planu, żeby „odebrać” funkcję: nie ma planu,
+  który mógłby ją przyznać.
 - Izolacja: test czyta i zapisuje wyłącznie logo, kolor marki i plan **swojej** organizacji;
   nie dotyka flag funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy
   singletonowych, ani innego tenanta.

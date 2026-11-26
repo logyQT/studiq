@@ -7,6 +7,13 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
+## Amendment (2026-11-26, B2 #1493)
+
+No organization plan carries `branding` since #1493, so „Kolor marki” is not rendered. The case
+checks the disabled state: the lock card replaces the colour field, a `PUT` with `brandColor`
+returns **403 FORBIDDEN**, and a colour seeded on the row (the state a branding plan would have
+left) is not painted into `--brand-accent`.
+
 ## Prerequisite (verbatim)
 
 Plan z brandingiem.

@@ -94,7 +94,8 @@ export class SubscriptionPlanService {
    * This filters `features` only. `seatEligible` keeps reading the unfiltered
    * rows because it mirrors `addPool` (`seat.service.ts`), which reads the full
    * plan-row set; deriving it from filtered rows would flip a plan with a mixed
-   * key set (hub carries `branding`) to `true` and let `addPool` accept it.
+   * key set (a non-seat-eligible key beside eligible ones) to `true` and let
+   * `addPool` accept it.
    */
   private static advertisedFeatures(
     entitlementRows: readonly PlanEntitlementRead[],
