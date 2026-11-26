@@ -578,6 +578,7 @@ export class BillingService {
         targetPriceId: listed.data!.stripePriceId,
         direction,
         resume: active.cancelAtPeriodEnd,
+        pendingPlanKey: active.pendingPlanKey,
       },
       subscription: active,
     });

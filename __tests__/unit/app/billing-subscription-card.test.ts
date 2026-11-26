@@ -27,7 +27,11 @@ function plan(key: string, name: string, priceMonthly: number): PlanInfo {
   };
 }
 
-const plans = [plan('ace', 'StudiQ Ace', 2999), plan('pro', 'StudiQ Max', 7999)];
+const plans = [
+  plan('ace', 'StudiQ Ace', 2999),
+  plan('pro', 'StudiQ Max', 7999),
+  plan('seat', 'StudiQ Seat', 1999),
+];
 
 function subscription(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscriptionView {
   return {
@@ -75,7 +79,14 @@ describe('BillingSubscriptionCard plan state', () => {
   });
 
   it('names the catalogue plan even when the mirror has no display name', () => {
-    const markup = render(subscription({ billedPlanName: null }));
+    const markup = render(
+      subscription({
+        planKey: 'seat',
+        planName: 'StudiQ Seat',
+        billedPlanKey: 'pro',
+        billedPlanName: null,
+      }),
+    );
 
     expect(markup).toContain('StudiQ Max');
   });

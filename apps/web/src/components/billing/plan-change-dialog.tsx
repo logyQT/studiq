@@ -22,10 +22,13 @@ interface PlanChangeDialogProps {
   state: PlanChangePreviewState | null;
   currentPlanName: string;
   targetPlanName: string;
+  /** The plan of a pending scheduled change this dialog may replace. */
+  replacedPlanName: string;
   applying: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   onRetry: () => void;
+  onKeepCurrentPlan: () => void;
 }
 
 function formatMoney(amount: number, currency: string, locale: string): string {
@@ -42,13 +45,16 @@ export function PlanChangeDialog({
   state,
   currentPlanName,
   targetPlanName,
+  replacedPlanName,
   applying,
   onOpenChange,
   onConfirm,
   onRetry,
+  onKeepCurrentPlan,
 }: PlanChangeDialogProps) {
   const t = useTranslations('BillingPage');
   const locale = useLocale();
+  const blocked = state?.status === 'ready' && state.preview.blockedBySchedule;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,7 +75,13 @@ export function PlanChangeDialog({
           <p className="py-2 text-sm text-destructive">{t('plan_change_preview_failed')}</p>
         )}
 
-        {state?.status === 'ready' && (
+        {blocked && (
+          <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            {t('plan_change_blocked_by_schedule', { plan: replacedPlanName })}
+          </p>
+        )}
+
+        {state?.status === 'ready' && !blocked && (
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t('plan_change_current')}</span>
@@ -91,6 +103,11 @@ export function PlanChangeDialog({
               <span className="text-muted-foreground">{t('plan_change_effective')}</span>
               <span className="font-medium">{formatDate(state.preview.effectiveAt, locale)}</span>
             </div>
+            {state.preview.replacesPendingPlanKey && (
+              <p className="rounded-md bg-muted px-3 py-2 text-muted-foreground">
+                {t('plan_change_replaces_schedule', { plan: replacedPlanName })}
+              </p>
+            )}
             {state.preview.resumesAtPeriodEnd && (
               <p className="rounded-md bg-muted px-3 py-2 text-muted-foreground">
                 {t('plan_change_resume_notice')}
@@ -103,7 +120,11 @@ export function PlanChangeDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={applying}>
             {t('plan_change_cancel')}
           </Button>
-          {state?.status === 'error' ? (
+          {blocked ? (
+            <Button variant="secondary" onClick={onKeepCurrentPlan} disabled={applying}>
+              {t('keep_current_plan')}
+            </Button>
+          ) : state?.status === 'error' ? (
             <Button variant="secondary" onClick={onRetry}>
               {t('retry')}
             </Button>

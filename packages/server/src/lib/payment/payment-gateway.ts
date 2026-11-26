@@ -93,6 +93,8 @@ export interface ChangePlanSelection {
   direction: 'upgrade' | 'downgrade';
   /** The subscription has a scheduled cancellation; a confirmed change resumes it. */
   resume: boolean;
+  /** The mirror's display marker for a pending scheduled change, if any. */
+  pendingPlanKey: string | null;
 }
 
 export interface ChangePlanInput extends ChangePlanSelection {
@@ -117,6 +119,13 @@ export interface ChangePlanPreview {
   effectiveAt: string;
   /** The change clears a scheduled cancellation. */
   resumesAtPeriodEnd: boolean;
+  /** A pending scheduled change this one replaces, when the subscription has one. */
+  replacesPendingPlanKey: string | null;
+  /**
+   * True when a subscription schedule owns the subscription and Stripe refuses
+   * the preview. The dialog must offer "Keep current plan", not Confirm.
+   */
+  blockedBySchedule: boolean;
 }
 
 export interface ChangePlanResult {

@@ -141,6 +141,7 @@ describe('MockPaymentGateway', () => {
         targetPriceId: 'price_ace',
         direction: 'upgrade',
         resume: false,
+        pendingPlanKey: null,
         idempotencyKey: 'change-key',
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
@@ -155,6 +156,7 @@ describe('MockPaymentGateway', () => {
         targetPriceId: 'price_ace',
         direction: 'upgrade',
         resume: false,
+        pendingPlanKey: null,
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
 

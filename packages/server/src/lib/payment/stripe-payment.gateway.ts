@@ -83,6 +83,24 @@ function ownerMetadata(owner: PaymentOwner): Record<string, string> {
   };
 }
 
+function scheduleIdOf(subscription: Stripe.Subscription): string | null {
+  const schedule = subscription.schedule;
+  if (!schedule) return null;
+  return typeof schedule === 'string' ? schedule : schedule.id;
+}
+
+/**
+ * Stripe forbids `cancel_at_period_end` on a subscription a schedule manages.
+ * The preview omits the flag when a schedule exists; this recognises the
+ * refusal if Stripe still rejects the call, so the dialog can offer the release
+ * action instead of a generic retry.
+ */
+function isScheduleCancellationRefusal(error: unknown): boolean {
+  if (!isRecord(error) || readString(error, 'type') !== 'StripeInvalidRequestError') return false;
+  const message = (readString(error, 'message') ?? '').toLowerCase();
+  return message.includes('subscription schedule') && message.includes('cancel');
+}
+
 /**
  * Map provider failures onto the domain's error vocabulary. Never log request
  * parameters: they contain the customer email/name.
@@ -470,6 +488,8 @@ export class StripePaymentGateway implements PaymentGateway {
       const { subscription, item, alreadyTarget } = live.data;
 
       const currency = subscription.currency.toUpperCase();
+      const scheduleId = scheduleIdOf(subscription);
+      const replacesPendingPlanKey = scheduleId ? input.pendingPlanKey : null;
 
       // A stale mirror may still name the plan Stripe already bills; that
       // change is already effective and costs nothing.
@@ -482,6 +502,8 @@ export class StripePaymentGateway implements PaymentGateway {
           currency,
           effectiveAt: this.now().toISOString(),
           resumesAtPeriodEnd: input.resume,
+          replacesPendingPlanKey: null,
+          blockedBySchedule: false,
         });
       }
 
@@ -502,19 +524,48 @@ export class StripePaymentGateway implements PaymentGateway {
           currency,
           effectiveAt: new Date(end * 1000).toISOString(),
           resumesAtPeriodEnd: input.resume,
+          replacesPendingPlanKey,
+          blockedBySchedule: false,
         });
       }
 
-      const invoice = await this.client.invoices.createPreview({
-        customer: input.customerId,
-        subscription: input.subscriptionId,
-        subscription_details: {
-          items: [{ id: item.id, price: input.targetPriceId }],
-          proration_behavior: 'always_invoice',
-          billing_cycle_anchor: { type: 'now' },
-          cancel_at_period_end: false,
-        },
-      });
+      let invoice: Stripe.Invoice;
+      try {
+        invoice = await this.client.invoices.createPreview({
+          customer: input.customerId,
+          subscription: input.subscriptionId,
+          subscription_details: {
+            items: [{ id: item.id, price: input.targetPriceId }],
+            proration_behavior: 'always_invoice',
+            billing_cycle_anchor: { type: 'now' },
+            // A schedule owns the cancellation behaviour; sending the flag
+            // makes Stripe reject the whole preview. The confirmed change
+            // releases the schedule first, so the amount is unchanged.
+            ...(scheduleId ? {} : { cancel_at_period_end: false }),
+          },
+        });
+      } catch (error) {
+        if (scheduleId && isScheduleCancellationRefusal(error)) {
+          const end = typeof item.current_period_end === 'number' ? item.current_period_end : null;
+          logWarn('billing.preview_blocked_by_schedule', {
+            subscriptionId: input.subscriptionId,
+            scheduleId,
+          });
+          return success({
+            direction: 'upgrade',
+            currentPlanKey: input.currentPlanKey,
+            targetPlanKey: input.targetPlanKey,
+            amountDue: 0,
+            currency,
+            effectiveAt:
+              end === null ? this.now().toISOString() : new Date(end * 1000).toISOString(),
+            resumesAtPeriodEnd: input.resume,
+            replacesPendingPlanKey,
+            blockedBySchedule: true,
+          });
+        }
+        return stripeFailure(error);
+      }
 
       const effectiveAt = targetLineStart(invoice, input.targetPriceId);
       if (!effectiveAt) {
@@ -532,6 +583,8 @@ export class StripePaymentGateway implements PaymentGateway {
         currency: invoice.currency.toUpperCase(),
         effectiveAt,
         resumesAtPeriodEnd: input.resume,
+        replacesPendingPlanKey,
+        blockedBySchedule: false,
       });
     } catch (error) {
       return stripeFailure(error);

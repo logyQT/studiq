@@ -736,6 +736,8 @@
     "plan_change_no_charge": "Brak opłaty dziś",
     "plan_change_effective": "Obowiązuje od",
     "plan_change_resume_notice": "Twoja subskrypcja ma zaplanowane anulowanie. Ta zmiana ją wznawia i usuwa anulowanie.",
+    "plan_change_replaces_schedule": "Ta zmiana zastępuje zaplanowaną zmianę na {plan}.",
+    "plan_change_blocked_by_schedule": "Masz już zaplanowaną zmianę na {plan}. Zachowaj obecny plan, zanim wybierzesz inny.",
     "plan_change_cancel": "Anuluj",
     "plan_change_confirm": "Potwierdź zmianę"
   },

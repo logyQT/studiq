@@ -1,5 +1,4 @@
 import { billingController } from '@studiq/server/controllers/billing.controller';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { authedRoute } from '@studiq/server/lib/route-handler';
 
@@ -17,11 +16,6 @@ const rateLimiter = createRateLimiter(60_000, 20);
  */
 export const POST = authedRoute(
   ({ json }) => [json],
-  async (ctx, body) => {
-    const limit = rateLimiter.check(ctx.userId);
-    if (!limit.allowed) return controllerResponse.error('RATE_LIMITED');
-
-    return billingController.previewChange(ctx, body);
-  },
-  { readsBody: true },
+  (ctx, body) => billingController.previewChange(ctx, body),
+  { readsBody: true, rateLimit: rateLimiter },
 );

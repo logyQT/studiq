@@ -18,6 +18,8 @@ import {
   previewPlanChange,
   scheduledCancellationDate,
   seatsSummary,
+  submitCancellation,
+  withCancellationOverride,
   withPersonalScope,
 } from '@/lib/billing-subscription';
 import { describe, expect, it } from 'vitest';
@@ -385,6 +387,8 @@ describe('previewPlanChange', () => {
       currency: 'PLN',
       effectiveAt: '2026-11-26T00:00:00.000Z',
       resumesAtPeriodEnd: false,
+      replacesPendingPlanKey: null,
+      blockedBySchedule: false,
     };
     const calls: Array<{ url: string; body: unknown }> = [];
     const post = (url: string, body: unknown): Promise<ChangePlanPreview> => {
@@ -402,6 +406,42 @@ describe('previewPlanChange', () => {
       },
     ]);
     expect(calls.some((call) => call.url === '/api/v1/billing/change-plan')).toBe(false);
+  });
+});
+
+describe('cancellation state', () => {
+  it('shows the scheduled cancellation from the endpoint result before the refetch', () => {
+    const view = withCancellationOverride(subscription({ cancelAtPeriodEnd: false }), true);
+
+    expect(scheduledCancellationDate(view)).toBe('2026-12-01T00:00:00.000Z');
+    expect(periodRow(view)).toBeNull();
+  });
+
+  it('submits the cancellation, applies the returned flag, then re-reads', async () => {
+    const calls: string[] = [];
+    const post = (url: string, body: unknown): Promise<{ cancelAtPeriodEnd: boolean }> => {
+      calls.push(`post:${url}:${JSON.stringify(body)}`);
+      return Promise.resolve({ cancelAtPeriodEnd: true });
+    };
+
+    const result = await submitCancellation({
+      cancel: true,
+      personal: true,
+      post,
+      effects: {
+        onCancelAtPeriodEnd: (value) => calls.push(`override:${value}`),
+        onChanged: () => calls.push('changed'),
+        scheduleRefresh: () => calls.push('refresh'),
+      },
+    });
+
+    expect(result).toEqual({ cancelAtPeriodEnd: true });
+    expect(calls).toEqual([
+      'post:/api/v1/billing/cancel:{"cancel":true,"scope":"personal"}',
+      'override:true',
+      'changed',
+      'refresh',
+    ]);
   });
 });
 

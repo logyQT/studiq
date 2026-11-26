@@ -119,6 +119,53 @@ export function activatedPlanLabel(
   return subscription?.billedPlanName ?? null;
 }
 
+/**
+ * Apply Stripe's cancel flag before the `customer.subscription.updated` webhook
+ * writes the mirror. The card keeps this override until a refetched view agrees.
+ */
+export function withCancellationOverride(
+  subscription: BillingSubscriptionView,
+  cancelAtPeriodEnd: boolean | null,
+): BillingSubscriptionView {
+  if (cancelAtPeriodEnd === null) return subscription;
+  return { ...subscription, cancelAtPeriodEnd };
+}
+
+export interface CancellationResult {
+  cancelAtPeriodEnd: boolean;
+}
+
+export interface CancellationEffects {
+  /** Show the provider's answer immediately, before the webhook lands. */
+  onCancelAtPeriodEnd: (value: boolean) => void;
+  onChanged: () => void;
+  /** Re-read once the webhook has had time to update the mirror. */
+  scheduleRefresh: () => void;
+}
+
+/**
+ * Cancel or resume, then report the provider's authoritative flag and schedule
+ * a delayed re-read. The endpoint returns `cancel_at_period_end` before the
+ * webhook writes the mirror, so a refetch alone would keep the old card.
+ */
+export async function submitCancellation(input: {
+  cancel: boolean;
+  personal: boolean;
+  effects: CancellationEffects;
+  post?: (url: string, body: unknown) => Promise<CancellationResult>;
+}): Promise<CancellationResult> {
+  const request = billingCardRequest({ type: 'cancel', cancel: input.cancel }, input.personal);
+  const post =
+    input.post ?? ((url: string, body: unknown) => apiPost<CancellationResult>(url, body));
+  const result = await post(request.url, request.body);
+
+  input.effects.onCancelAtPeriodEnd(result.cancelAtPeriodEnd);
+  input.effects.onChanged();
+  input.effects.scheduleRefresh();
+
+  return result;
+}
+
 /** A Stripe-hosted URL is rendered only when it is a non-empty string. */
 export function invoiceHref(url: string | null | undefined): string | null {
   const trimmed = url?.trim();

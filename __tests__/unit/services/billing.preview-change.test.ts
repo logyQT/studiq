@@ -101,6 +101,8 @@ function preview(overrides: Partial<ChangePlanPreview> = {}): ChangePlanPreview 
     currency: 'PLN',
     effectiveAt: '2026-11-26T00:00:00.000Z',
     resumesAtPeriodEnd: false,
+    replacesPendingPlanKey: null,
+    blockedBySchedule: false,
     ...overrides,
   };
 }
@@ -170,6 +172,7 @@ describe('BillingService.previewChange', () => {
       targetPriceId: 'price_ace',
       direction: 'upgrade',
       resume: false,
+      pendingPlanKey: null,
     });
   });
 
@@ -198,6 +201,18 @@ describe('BillingService.previewChange', () => {
 
     expect(result).toEqual(success(preview({ resumesAtPeriodEnd: true })));
     expect(gateway.previewChange).toHaveBeenCalledWith(expect.objectContaining({ resume: true }));
+  });
+
+  it('passes the pending scheduled plan so the preview can report its replacement', async () => {
+    vi.mocked(repository.findActiveSubscription).mockResolvedValueOnce(
+      success(activeSubscription({ pendingPlanKey: 'spark' })),
+    );
+
+    await service.previewChange(studentCtx, 'ace');
+
+    expect(gateway.previewChange).toHaveBeenCalledWith(
+      expect.objectContaining({ pendingPlanKey: 'spark' }),
+    );
   });
 
   it('writes nothing while previewing', async () => {

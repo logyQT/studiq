@@ -172,6 +172,8 @@ describe('BillingController', () => {
       currency: 'PLN',
       effectiveAt: '2026-11-26T00:00:00.000Z',
       resumesAtPeriodEnd: false,
+      replacesPendingPlanKey: null,
+      blockedBySchedule: false,
     };
 
     it('returns 422 without a plan key', async () => {

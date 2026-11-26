@@ -36,9 +36,15 @@ const preview: ChangePlanPreview = {
   currency: 'PLN',
   effectiveAt: '2026-11-26T12:00:00.000Z',
   resumesAtPeriodEnd: false,
+  replacesPendingPlanKey: null,
+  blockedBySchedule: false,
 };
 
-function render(state: PlanChangePreviewState, currentPlanName = 'StudiQ Ace') {
+function render(
+  state: PlanChangePreviewState,
+  currentPlanName = 'StudiQ Ace',
+  replacedPlanName = 'StudiQ Plus',
+) {
   return renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
@@ -48,10 +54,12 @@ function render(state: PlanChangePreviewState, currentPlanName = 'StudiQ Ace') {
         state,
         currentPlanName,
         targetPlanName: 'StudiQ Max',
+        replacedPlanName,
         applying: false,
         onOpenChange: () => {},
         onConfirm: () => {},
         onRetry: () => {},
+        onKeepCurrentPlan: () => {},
       }),
     ),
   );
@@ -76,6 +84,29 @@ describe('PlanChangeDialog', () => {
     });
 
     expect(markup).toContain(en.BillingPage.plan_change_resume_notice);
+  });
+
+  it('says a change replaces a scheduled change', () => {
+    const markup = render({
+      status: 'ready',
+      preview: { ...preview, replacesPendingPlanKey: 'spark' },
+    });
+
+    expect(markup).toContain('This change replaces your scheduled change to StudiQ Plus.');
+  });
+
+  it('offers to keep the current plan, not Confirm, when a schedule blocks the preview', () => {
+    const markup = render({
+      status: 'ready',
+      preview: { ...preview, blockedBySchedule: true, replacesPendingPlanKey: 'spark' },
+    });
+
+    expect(markup).toContain(
+      'You already have a scheduled change to StudiQ Plus. Keep your current plan before choosing another.',
+    );
+    expect(markup).toContain(en.BillingPage.keep_current_plan);
+    expect(markup).not.toContain(en.BillingPage.plan_change_confirm);
+    expect(markup).not.toContain(en.BillingPage.retry);
   });
 
   it('omits the resume notice when the subscription does not cancel', () => {

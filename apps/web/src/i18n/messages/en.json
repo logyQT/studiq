@@ -754,6 +754,8 @@
     "plan_change_no_charge": "No charge today",
     "plan_change_effective": "Effective from",
     "plan_change_resume_notice": "Your subscription is scheduled to cancel. This change resumes it and removes the cancellation.",
+    "plan_change_replaces_schedule": "This change replaces your scheduled change to {plan}.",
+    "plan_change_blocked_by_schedule": "You already have a scheduled change to {plan}. Keep your current plan before choosing another.",
     "plan_change_cancel": "Cancel",
     "plan_change_confirm": "Confirm change"
   },
