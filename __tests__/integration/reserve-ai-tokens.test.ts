@@ -68,9 +68,9 @@ function shippedDeleteRevoke(): string {
 
 /**
  * The #1482 revokes, replayed from the migration so a mutation to that file
- * reaches the running stack. The privilege case below asserts the resulting
- * grants, so removing INSERT/UPDATE from this file leaves the restored grant
- * visible to that assertion.
+ * reaches the running stack. `beforeAll` applies them to every case; the
+ * privilege case re-grants first, so removing INSERT/UPDATE from this file
+ * leaves the restored grant visible to its assertions.
  */
 function shippedActivityRevokes(): string[] {
   return ACTIVITY_MIGRATION_SOURCE.split('\n')
@@ -83,25 +83,33 @@ async function installShippedRevokes(): Promise<void> {
   try {
     await sql.unsafe(SHIPPED_FUNCTION);
     // The review trigger runs as the caller when it is not definer, so the
-    // revoke below is only safe with the shipped body installed.
+    // revokes below are only safe with the shipped body installed.
     await sql.unsafe(latestShippedFunction('increment_reviews'));
     await sql.unsafe(shippedDeleteRevoke());
+    // Replay #1482's write revokes for every case, not only the privilege one.
+    // A stack that has not applied the migration still grants INSERT/UPDATE,
+    // so the booking case would pass with an invoker-rights trigger.
+    for (const statement of shippedActivityRevokes()) {
+      await sql.unsafe(statement);
+    }
   } finally {
     await sql.end();
   }
 }
 
 /**
- * Recreate the pre-#1482 write grant, then replay the migration's revokes. A
- * stack that already applied the migration has them revoked, so the grant keeps
- * this case independent of stack age and gives a mutation reach: remove
- * INSERT/UPDATE from the file and the restored grant survives into the
- * assertions below.
+ * Recreate the pre-#1482 write grants, then replay the migration's revokes. A
+ * stack that already applied the migration has them revoked, so the grants keep
+ * this case independent of stack age and give every revoke a mutation reach:
+ * remove one from the file and the restored grant survives into the assertions
+ * below. The migration history never granted `anon` a write, so that grant is
+ * installed here only to prove the defensive revoke still works.
  */
 async function restoreThenRevokeActivityWrites(): Promise<void> {
   const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
   try {
     await sql.unsafe('grant insert, update on public.user_daily_activity to authenticated');
+    await sql.unsafe('grant insert, update, delete on public.user_daily_activity to anon');
     for (const statement of shippedActivityRevokes()) {
       await sql.unsafe(statement);
     }
@@ -484,27 +492,48 @@ describe('reserve_ai_tokens', () => {
     try {
       const privilegeRows = await sql<
         Array<{
+          role: string;
           insertable: boolean;
           updatable: boolean;
           deletable: boolean;
           selectable: boolean;
         }>
       >`
-        select has_table_privilege('authenticated', 'public.user_daily_activity', 'INSERT')
-                 as insertable,
-               has_table_privilege('authenticated', 'public.user_daily_activity', 'UPDATE')
-                 as updatable,
-               has_table_privilege('authenticated', 'public.user_daily_activity', 'DELETE')
-                 as deletable,
-               has_table_privilege('authenticated', 'public.user_daily_activity', 'SELECT')
-                 as selectable
+        select r as role,
+               has_table_privilege(r, 'public.user_daily_activity', 'INSERT') as insertable,
+               has_table_privilege(r, 'public.user_daily_activity', 'UPDATE') as updatable,
+               has_table_privilege(r, 'public.user_daily_activity', 'DELETE') as deletable,
+               has_table_privilege(r, 'public.user_daily_activity', 'SELECT') as selectable
+        from unnest(array['anon', 'authenticated', 'service_role']) as r
+        order by r
       `;
-      expect(privilegeRows[0]).toEqual({
-        insertable: false,
-        updatable: false,
-        deletable: false,
-        selectable: true,
-      });
+      // The migration's closing guard asserts the same facts when `db reset`
+      // replays it; this case pins them on the running stack, so a grant that
+      // appears afterwards fails a named test. `anon` has no SELECT grant: the
+      // stats surfaces run as `authenticated`.
+      expect(privilegeRows).toEqual([
+        {
+          role: 'anon',
+          insertable: false,
+          updatable: false,
+          deletable: false,
+          selectable: false,
+        },
+        {
+          role: 'authenticated',
+          insertable: false,
+          updatable: false,
+          deletable: false,
+          selectable: true,
+        },
+        {
+          role: 'service_role',
+          insertable: true,
+          updatable: true,
+          deletable: true,
+          selectable: true,
+        },
+      ]);
     } finally {
       await sql.end();
     }
@@ -514,9 +543,10 @@ describe('reserve_ai_tokens', () => {
     await clear();
 
     // The practice write comes from a real signed-in session, so the trigger
-    // runs with `authenticated` as its caller. Without `security definer` it
-    // needs the INSERT grant this change revokes and the insert fails 42501;
-    // with it, the activity row is booked as before.
+    // runs with `authenticated` as its caller. `beforeAll` replays the shipped
+    // body and revokes, so this case cannot pass on a stack that still grants
+    // INSERT/UPDATE: without `security definer` the trigger then needs that
+    // INSERT and the practice insert fails 42501.
     const { error } = await session.from('flashcard_practice').insert({
       user_id: userId,
       was_correct: true,

@@ -5831,8 +5831,9 @@ Landed in this slice:
   the RPC used to subtract as well, and are now clamped to zero). #1482 makes
   `increment_reviews` `security definer` with an empty `search_path` — the shape
   `increment_quizzes` already had — and revokes `INSERT`, `UPDATE` and `DELETE`
-  from `authenticated` and `anon`; only the two trigger functions and
-  `reserve_ai_tokens` write the table now. The exposure was a reset of one's own
+  from `authenticated` and `anon`; no user-client caller writes the table now
+  (the two trigger functions and `reserve_ai_tokens` do, and service-role test
+  cleanup keeps its grants). The exposure was a reset of one's own
   meter, not a grant over anyone else's: no privilege escalation and no
   cross-user metering. It was recorded and deferred in phase 7, and is now
   closed.

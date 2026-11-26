@@ -9,9 +9,9 @@
 --
 -- This file closes the residual: the review trigger becomes `security definer`
 -- with an empty `search_path` (same shape as `increment_quizzes` and
--- `reserve_ai_tokens`), and every write grant goes. The table is now written
--- only by the two trigger functions and `reserve_ai_tokens`; every TypeScript
--- caller is a SELECT.
+-- `reserve_ai_tokens`), and every write grant goes. No user-client caller
+-- writes the table: the two trigger functions and `reserve_ai_tokens` do, and
+-- service-role test cleanup keeps its grants.
 --
 -- `increment_quizzes()` already carries both properties (it was replaced by
 -- `20261113120000_daily_activity_quizzes.sql`), so its body is not restated here
