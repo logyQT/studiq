@@ -13,7 +13,7 @@ const rateLimiter = createRateLimiter(60_000, 10);
 
 /**
  * Owner/customer/subscription/price are resolved server-side (#662 §9.2); the
- * body only carries the target plan key.
+ * body carries the target plan key and the optional `scope` literal.
  */
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {

@@ -11,7 +11,8 @@ export type PlanAction = 'none' | 'register' | 'checkout' | 'change-plan' | 'con
  *
  * `hasActivePlan` is tri-state: `null` means the plan read is still pending or
  * failed. A failed read must not claim the reader has no subscription, so the
- * row prints no action until the answer is known (the badge and prices stay).
+ * row prints no action until the answer is known (the prices stay; the
+ * current-plan badge needs a known plan identity).
  */
 export function pricingPlanAction(input: {
   signedIn: boolean;

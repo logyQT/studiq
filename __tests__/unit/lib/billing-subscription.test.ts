@@ -4,6 +4,7 @@ import type { PlanInfo } from '@studiq/server/services/subscription-plan.service
 import {
   activatedPlanLabel,
   alternativePlans,
+  billingCardRequest,
   billingPlanFamily,
   billingScopeUrl,
   billingStatusKey,
@@ -291,6 +292,54 @@ describe('billingScopeUrl', () => {
     expect(billingScopeUrl('/api/v1/stripe/portal?locale=pl', true)).toBe(
       '/api/v1/stripe/portal?locale=pl&scope=personal',
     );
+  });
+});
+
+describe('billingCardRequest', () => {
+  it('names the personal scope on all four provider actions', () => {
+    // Portal and release read like the billing read: the scope is in the URL.
+    expect(billingCardRequest({ type: 'portal', locale: 'pl' }, true)).toEqual({
+      method: 'GET',
+      url: '/api/v1/stripe/portal?locale=pl&scope=personal',
+    });
+    expect(billingCardRequest({ type: 'release' }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/release-scheduled-plan?scope=personal',
+      body: {},
+    });
+    // Change and cancel write it into the JSON body.
+    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan',
+      body: { planKey: 'ace', scope: 'personal' },
+    });
+    expect(billingCardRequest({ type: 'cancel', cancel: true }, true)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/cancel',
+      body: { cancel: true, scope: 'personal' },
+    });
+  });
+
+  it('keeps every action org-first off a personal surface', () => {
+    expect(billingCardRequest({ type: 'portal', locale: 'pl' }, false)).toEqual({
+      method: 'GET',
+      url: '/api/v1/stripe/portal?locale=pl',
+    });
+    expect(billingCardRequest({ type: 'release' }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/release-scheduled-plan',
+      body: {},
+    });
+    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/change-plan',
+      body: { planKey: 'ace' },
+    });
+    expect(billingCardRequest({ type: 'cancel', cancel: false }, false)).toEqual({
+      method: 'POST',
+      url: '/api/v1/billing/cancel',
+      body: { cancel: false },
+    });
   });
 });
 

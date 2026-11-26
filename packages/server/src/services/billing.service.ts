@@ -161,7 +161,10 @@ export class BillingService {
     gateway: PaymentGateway | GatewayProvider,
     private readonly repository: StripeBillingRepository = stripeBillingRepository,
     private readonly reads: BillingReadRepository = billingReadRepository,
-    private readonly plans: Pick<SubscriptionPlanService, 'getMyPlan'> = subscriptionPlanService,
+    private readonly plans: Pick<
+      SubscriptionPlanService,
+      'getMyPlan' | 'getPersonalPlan'
+    > = subscriptionPlanService,
   ) {
     this.gatewayProvider = typeof gateway === 'function' ? gateway : () => gateway;
   }
@@ -261,37 +264,43 @@ export class BillingService {
    * (`/me/plan`) and keeps every provider action disabled, which is exactly
    * what the existing mock QA specs expect.
    *
-   * The plan fields always describe the **effective** entitlement (#971), so
-   * this endpoint cannot disagree with `/me/plan` for a seated student. The
-   * mirror supplies only lifecycle state (status/dates/cancel/pending plan).
+   * The plan fields describe the plan behind the row the read selects: the
+   * effective entitlement in the default org-first mode (#971), so it cannot
+   * disagree with `/me/plan` for a seated student, and the caller's own
+   * `profiles.personal_plan_key` in personal mode, the same answer
+   * `/me/personal-plan` gives. The mirror supplies only lifecycle state
+   * (status/dates/cancel/pending plan).
    *
-   * `personal` asks for the caller's own row (`/app/billing`, `/edu/billing`);
-   * without it the read keeps the org-first owner of `/manage/billing`.
+   * `personal` asks for the caller's own row and plan (`/app/billing`,
+   * `/edu/billing`); without it the read keeps the org-first owner and
+   * effective plan of `/manage/billing`.
    */
   async getSubscription(
     ctx: RequestContext,
     personal = false,
   ): Promise<ServiceResult<BillingSubscriptionView>> {
-    const planResult = await this.plans.getMyPlan(ctx);
+    const planResult = personal
+      ? await this.plans.getPersonalPlan(ctx)
+      : await this.plans.getMyPlan(ctx);
 
     // A caller with no plan yet (an incomplete account) still gets a read model;
     // a real database failure must not be hidden behind a synthetic free plan.
     if (isFailure(planResult) && planResult.error !== 'NOT_FOUND') return planResult;
 
-    const effectivePlan = planResult.success ? planResult.data : null;
+    const selectedPlan = planResult.success ? planResult.data : null;
     const base: BillingSubscriptionView = {
       provider: this.gateway.driver,
-      planKey: effectivePlan?.key ?? null,
-      planName: effectivePlan?.name ?? null,
+      planKey: selectedPlan?.key ?? null,
+      planName: selectedPlan?.name ?? null,
       billedPlanKey: null,
       billedPlanName: null,
       entitlementAppliedPlanKey: null,
-      status: effectivePlan ? (effectivePlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
+      status: selectedPlan ? (selectedPlan.priceMonthly > 0 ? 'active' : 'free') : 'none',
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
       pendingPlanKey: null,
-      priceMonthly: effectivePlan?.priceMonthly ?? 0,
-      currency: effectivePlan?.currency ?? 'PLN',
+      priceMonthly: selectedPlan?.priceMonthly ?? 0,
+      currency: selectedPlan?.currency ?? 'PLN',
       canManagePortal: false,
       canChangePlan: false,
       canCancel: false,
@@ -310,7 +319,7 @@ export class BillingService {
     const subscription = subscriptionResult.data;
     if (!subscription) return success(base);
 
-    // No effective plan is unusual, but the mirror still knows what Stripe
+    // No selected plan is unusual, but the mirror still knows what Stripe
     // bills, so fall back to the catalog row for display values only.
     let planKey = base.planKey;
     let planName = base.planName;
@@ -318,7 +327,7 @@ export class BillingService {
     let currency = base.currency;
     let billedPlanName: string | null;
 
-    if (!effectivePlan) {
+    if (!selectedPlan) {
       const catalog = await this.repository.getPlan(subscription.planKey);
       if (isFailure(catalog)) return catalog;
       planKey = subscription.planKey;
@@ -326,11 +335,12 @@ export class BillingService {
       priceMonthly = catalog.data?.priceMonthly ?? 0;
       currency = catalog.data?.currency ?? 'PLN';
       billedPlanName = catalog.data?.name ?? null;
-    } else if (effectivePlan.key === subscription.planKey) {
-      billedPlanName = effectivePlan.name;
+    } else if (selectedPlan.key === subscription.planKey) {
+      billedPlanName = selectedPlan.name;
     } else {
-      // The effective plan is a seat/comped plan; resolve the name of the plan
-      // Stripe actually bills for the success-page confirmation.
+      // The selected plan differs from the billed row (a seat/comped plan in
+      // the default read); resolve the name of the plan Stripe actually bills
+      // for the success-page confirmation.
       const catalog = await this.repository.getPlan(subscription.planKey);
       if (isFailure(catalog)) return catalog;
       billedPlanName = catalog.data?.name ?? null;
@@ -379,9 +389,10 @@ export class BillingService {
   /**
    * Open the Billing Portal for the authenticated owner (#662 §7.1).
    *
-   * The owner comes from `ctx` only: an organization owner already required
-   * `org.billing.manage` in the active org inside `ownerFromContext`, so the
-   * `active_org_id` cookie hint alone never authorizes an org call. A missing
+   * The owner comes from `ctx` plus the server-side `personal` literal: an
+   * organization owner already required `org.billing.manage` in the active org
+   * inside `ownerFromContext`, so the `active_org_id` cookie hint alone never
+   * authorizes an org call, and `personal` never names an owner id. A missing
    * customer mapping is a clean `NOT_FOUND` ("buy a plan"), never a broken
    * portal.
    */

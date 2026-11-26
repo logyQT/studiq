@@ -11,14 +11,13 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   alternativePlans,
-  billingScopeUrl,
+  billingCardRequest,
   billingStatusKey,
   hasProviderActions,
   invoiceHref,
   noActionsMessageKey,
   periodRow,
   planChangeFeedback,
-  withPersonalScope,
 } from '@/lib/billing-subscription';
 import { apiGet, apiPost, ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
@@ -114,9 +113,8 @@ export function BillingSubscriptionCard({
   async function openPortal() {
     setBusy('portal');
     try {
-      const { url } = await apiGet<{ url: string }>(
-        billingScopeUrl(`/api/v1/stripe/portal?locale=${locale}`, personal),
-      );
+      const request = billingCardRequest({ type: 'portal', locale }, personal);
+      const { url } = await apiGet<{ url: string }>(request.url);
       window.location.href = url;
     } catch (error) {
       toast.error(
@@ -133,10 +131,8 @@ export function BillingSubscriptionCard({
     const cancel = !subscription?.cancelAtPeriodEnd;
     setBusy('cancel');
     try {
-      const result = await apiPost<{ cancelAtPeriodEnd: boolean }>(
-        '/api/v1/billing/cancel',
-        withPersonalScope({ cancel }, personal),
-      );
+      const request = billingCardRequest({ type: 'cancel', cancel }, personal);
+      const result = await apiPost<{ cancelAtPeriodEnd: boolean }>(request.url, request.body);
       toast.success(result.cancelAtPeriodEnd ? t('cancel_success') : t('resume_success'));
       onChanged();
     } catch {
@@ -149,10 +145,8 @@ export function BillingSubscriptionCard({
   async function keepCurrentPlan() {
     setBusy('keep');
     try {
-      const result = await apiPost<{ released: boolean }>(
-        billingScopeUrl('/api/v1/billing/release-scheduled-plan', personal),
-        {},
-      );
+      const request = billingCardRequest({ type: 'release' }, personal);
+      const result = await apiPost<{ released: boolean }>(request.url, request.body);
       if (result.released) {
         toast.success(t('keep_current_plan_success'));
       } else {
@@ -171,10 +165,8 @@ export function BillingSubscriptionCard({
   async function changePlan(planKey: string) {
     setBusy(planKey);
     try {
-      const result = await apiPost<ChangePlanResult>(
-        '/api/v1/billing/change-plan',
-        withPersonalScope({ planKey }, personal),
-      );
+      const request = billingCardRequest({ type: 'change', planKey }, personal);
+      const result = await apiPost<ChangePlanResult>(request.url, request.body);
       const feedback = planChangeFeedback(result);
 
       setPendingInvoiceUrl(feedback.hostedInvoiceUrl);

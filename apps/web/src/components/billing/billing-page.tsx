@@ -23,9 +23,10 @@ interface BillingPageProps {
   /** Dashboard the "upgrade" button sends the user to (`/app/upgrade`, `/edu/upgrade`). */
   upgradePath: string;
   /**
-   * `/app/billing` and `/edu/billing` are the personal surfaces: the read and
-   * every action select the caller's own subscription, even when they may bill
-   * the active organization (#1493 follow-up).
+   * `/app/billing` and `/edu/billing` are the personal surfaces: the plan card,
+   * the subscription read and every action select the caller's own plan and
+   * subscription (`/me/personal-plan`, `scope=personal`), even when they may
+   * bill the active organization (#1493 follow-up).
    */
   personal?: boolean;
 }
@@ -42,9 +43,16 @@ export function BillingPage({ accountType, upgradePath, personal = false }: Bill
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  /*
+   * The card describes the plan the reader pays for. On a personal surface that
+   * is `/me/personal-plan`; `/me/plan` is org-first for a caller holding
+   * `org.billing.manage`, so it would name the organization's plan here. The
+   * key names the endpoint, so the two answers cannot share a cache entry.
+   */
+  const planSource = personal ? 'personal-plan' : 'plan';
   const { data: plan, isLoading } = useApiQuery<PlanInfo>({
-    queryKey: ['me', 'plan'],
-    url: '/api/v1/me/plan',
+    queryKey: ['me', planSource],
+    url: `/api/v1/me/${planSource}`,
     enabled: !!user,
   });
   const { data: plans } = useApiQuery<PlanInfo[]>({
@@ -71,12 +79,12 @@ export function BillingPage({ accountType, upgradePath, personal = false }: Bill
     );
   }
 
-  // The header names one plan, so its lists must be that plan's catalogue row:
-  // `/me/plan` carries the *effective* composition for programmatic use, whose
-  // org-scope limits are 0 outside a verified org and whose feature list is the
+  // The header names one plan, so its lists must be that plan's catalogue row.
+  // The plan read carries an effective composition for programmatic use: its
+  // org-scope limits are 0 outside a verified org and its feature list is the
   // union of every layer — neither belongs under a single plan's name and price.
   // While the catalogue is unavailable the lists stay empty: falling back to
-  // `plan` would put exactly that union back under the one plan's name.
+  // `plan` would put that union back under the one plan's name.
   const shown = plans?.find((candidate) => candidate.key === plan.key);
 
   const hasPrice = plan.priceMonthly > 0;

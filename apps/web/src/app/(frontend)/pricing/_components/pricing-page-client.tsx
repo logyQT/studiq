@@ -94,7 +94,8 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
    *
    * `null` until the plan read succeeds: a pending or failed read must not
    * turn a subscriber into a checkout, so the row prints no action rather than
-   * guessing. The badge and prices still render.
+   * guessing. Prices still render; the current-plan badge cannot, because the
+   * plan identity is unknown.
    */
   const hasActivePlan: boolean | null = planLoaded ? currentPlan.priceMonthly > 0 : null;
 

@@ -77,7 +77,7 @@ describe('BillingController', () => {
       expect(billing.getSubscription).toHaveBeenCalledWith(ctx, true);
     });
 
-    it('rejects an unknown scope with 422', async () => {
+    it('rejects an unknown scope on the subscription read with 422', async () => {
       const response = await controller.getSubscription(ctx, { scope: 'organization' });
 
       expect(response).toMatchObject({
@@ -132,7 +132,7 @@ describe('BillingController', () => {
       expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', false);
     });
 
-    it('selects the caller’s own subscription when the body names the personal scope', async () => {
+    it('selects the caller’s own subscription when the change body names the personal scope', async () => {
       billing.changePlan.mockResolvedValueOnce(success({ status: 'applied' }));
 
       await controller.changePlan(ctx, { planKey: 'ace', scope: 'personal' });
@@ -140,7 +140,7 @@ describe('BillingController', () => {
       expect(billing.changePlan).toHaveBeenCalledWith(ctx, 'ace', true);
     });
 
-    it('rejects an unknown scope with 422', async () => {
+    it('rejects an unknown scope on the change body with 422', async () => {
       const response = await controller.changePlan(ctx, { planKey: 'ace', scope: 'organization' });
 
       expect(response).toMatchObject({ success: false, statusCode: 422 });
@@ -172,7 +172,7 @@ describe('BillingController', () => {
       expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx, false);
     });
 
-    it('selects the caller’s own subscription when the body names the personal scope', async () => {
+    it('selects the caller’s own subscription when the release query names the personal scope', async () => {
       billing.releaseScheduledChange.mockResolvedValueOnce(success({ released: true }));
 
       await controller.releaseScheduledPlan(ctx, { scope: 'personal' });
@@ -180,7 +180,7 @@ describe('BillingController', () => {
       expect(billing.releaseScheduledChange).toHaveBeenCalledWith(ctx, true);
     });
 
-    it('rejects an unknown scope with 422', async () => {
+    it('rejects an unknown scope on the release query with 422', async () => {
       const response = await controller.releaseScheduledPlan(ctx, { scope: 'organization' });
 
       expect(response).toMatchObject({ success: false, statusCode: 422 });
@@ -279,7 +279,7 @@ describe('BillingController', () => {
       expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, false, false);
     });
 
-    it('selects the caller’s own subscription when the body names the personal scope', async () => {
+    it('selects the caller’s own subscription when the cancel body names the personal scope', async () => {
       billing.cancelSubscription.mockResolvedValueOnce(success({ cancelAtPeriodEnd: true }));
 
       await controller.cancelSubscription(ctx, { cancel: true, scope: 'personal' });
@@ -287,7 +287,7 @@ describe('BillingController', () => {
       expect(billing.cancelSubscription).toHaveBeenCalledWith(ctx, true, true);
     });
 
-    it('rejects an unknown scope with 422', async () => {
+    it('rejects an unknown scope on the cancel body with 422', async () => {
       const response = await controller.cancelSubscription(ctx, {
         cancel: true,
         scope: 'organization',
