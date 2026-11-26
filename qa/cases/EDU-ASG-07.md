@@ -21,11 +21,13 @@ accounts):
 - `__tests__/qa/profiles/EDU-ASG-07.json` declares the default `content` profile: one
   organization (`qa-edu-asg-07-<suffix>`) with the default group `G1`, its manager,
   an `educator` teacher and a `student` — the tenant's „SC”;
-- the tenant's `teacher` is an org member, so `assignment.*` resolves to the `own`
-  scope: it may create, target, publish and grade **its own** assignments.
-  `teacher_assignments` is scoped by `organization_id`, and the results service
-  (`GET /api/v1/teacher/assignments/:id/results`) is gated by `created_by`, so the
-  list can only contain this tenant's attempts;
+- the tenant's `teacher` holds `assignment.read` at the `group` scope and the writes
+  (`assignment.create` / `update` / `delete`) at `own` (ADR-0015 D29): it may create,
+  target, publish and grade **its own** assignments, and read the org's runs that
+  target a class it teaches. The `teacher_assignments` SELECT policy is the one rule
+  for "may read this run" — author / targeted / `assignment.read` (D-5e2-2) — while
+  the results service (`GET /api/v1/teacher/assignments/:id/results`) stays gated by
+  `created_by`, so the results list only carries this tenant's attempts;
 - the tenant's `student` is an org member and a `G1` member — the assignment's group
   target, i.e. the „SC” who completes the quiz;
 - the spec builds the prerequisite through the product API inside this tenant: one

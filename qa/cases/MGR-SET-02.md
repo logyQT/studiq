@@ -29,7 +29,7 @@ The legacy `manager@dev.local` + WSB Merito seed is replaced by this case's own
   `hub` przez `change_org_plan`, ten sam RPC, który wywołuje webhook płatności.
   `branding` jest kluczem nie-markerowym, więc rozstrzyga go profil roli
   (`entitlement_profile = 'all'` roli `admin` managera) przecięty z pułapem planu;
-  wiersz `org_role_features` nie przyznaje już takiego klucza i nie jest tu używany.
+  osobny magazyn uprawnień per rola już nie istnieje i nie jest tu używany.
   Wspólny katalog planów i `entitlement_flags` nie są zapisywane, więc żadna inna
   organizacja ani globalny stan admina nie jest ruszany.
 - Logo fixture: a deterministic 1×1 PNG uploaded through the real "Wgraj logo"

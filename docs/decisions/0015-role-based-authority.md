@@ -289,6 +289,17 @@ Scope resolution:
   `withAuth`.
 - `organization` → the caller's role has the permission at org scope.
 
+> **2026-11-25 (phase 6e).** For **content** reads, `group` scope means the
+> classes the caller **teaches** (`group_members.role = 'teacher'`), per the
+> plan's 2b-2 operator decision (`docs/plans/role-authority-plan.md`, 2b-2:
+> "Teacher reaches only the classes they teach") — not "any member of the
+> group". A plain `member` of a class is its audience, so membership alone must
+> not widen a content read. The `group` **read** line above keeps its meaning for
+> the class itself; this note fixes what `group` scope reaches when the row is
+> content. The seeded Member role carries no `assignment.*` key, so the
+> membership guard in `TeacherAssignmentService.list` protects a **custom** role
+> granted `assignment.read` at `group`, not a shipped default.
+
 A group teacher **does not** get `org.member.manage`. Inviting a student to a
 class is `group.invite` on that group, not an org invitation. The invitation row
 carries `group_id` and `target_group_role`; RLS checks `group.invite` for that
@@ -418,6 +429,19 @@ it has a surface.
 > in the app today, so its correct state in v1 is **absent**, not gated and not
 > permanently deleted. Re-adding it is data (catalog + flag + plan/seed rows),
 > not a resolver change.
+>
+> **Checklists:** [extendability.md](../plans/extendability.md) — adding and
+> retiring a key, every step naming its file/table and whether it is code, data
+> or both, plus the steps that are still code and their owners.
+
+> **2026-11-25 (phase 8, D23).** The release gate passed on a live app: the
+> fictional `voice.notes` shipped as **one migration, one `ENTITLEMENTS` entry
+> and one `requireEntitlement` call**, with a **zero-line resolver diff**. A
+> pre-existing org and a fresh org resolved it identically once on a plan that
+> carries it, a plan change backfilled it with no prune job, and removing it
+> narrowed the ceiling with no 404/500 anywhere. Evidence and the two checklists
+> are in [extendability.md](../plans/extendability.md). CI deliberately does not
+> regenerate or diff `database.ts` (D36, §15).
 >
 > **2026-11-23 (phase 5d, register row 12).** `quiz.builder` → `quiz.templates`
 > and `advanced.stats` → `stats.insights`, renamed in place in
@@ -1299,6 +1323,27 @@ features/permissions in the meantime.
 > plane inside one slice; the phase-5 closure owns the narrowing with the rest
 > of this section.
 
+> **2026-11-25 (phase 6e).** The run **list** now reads at the caller's scope:
+> `TeacherAssignmentService.list` returns the active org's runs the caller
+> authored **or** that target a class they **teach**
+> (`ctx.groupRoles[groupId] === 'teacher'`, the plan's 2b-2 operator decision —
+> not plain `ctx.groupIds` membership, because a `member` of a class is its
+> audience, not its staff). The run **detail** is deliberately narrower than the
+> RLS SELECT, which admits any member of a targeted class: `getById` stays the
+> author's, or an `organization`-scope `assignment.read` holder's (R23). The
+> reason is the key — the detail payload is the live composer or the frozen
+> snapshot **with** its answer key (`withAnswerKey`) behind the authorship /
+> `organization`-scope gate, so widening that gate hands a co-teacher a
+> colleague's key. (The seal's author exemption, D-5e1, is about item sealing,
+> not key visibility.) The asymmetry is recorded at `getById`; its owner is
+> **phase 7** (e.g. a read-only header for a colleague's run). The `group` arm is
+> pinned to the active org, so a teacher who belongs to two orgs no longer lists
+> their authored runs from the other org (before this slice the `group` scope
+> fell through to `created_by` only), while `getById` still serves the author;
+> this is deliberate for the active-org list, no follow-up. The 2026-11-20 note
+> above still governs the assignment's **item set**; this note governs the run
+> list.
+
 ---
 
 ## 13. Migration plan (ordered batches)
@@ -1611,6 +1656,16 @@ interpretation.
 > same manager already authored. The product intent for a manager is "may edit,
 > may not create personal decks", which row 14 expresses per user rather than by
 > persona.
+
+> **2026-11-25 (D36).** CI does not regenerate or diff
+> `packages/server/src/types/database.ts`. It types the schema, not catalog rows:
+> a new entitlement key or plan row changes no type, so a diff gate would catch
+> nothing the extendability checklist adds. It would also need the pinned CLI and
+> a database in CI, and the pinned CLI cannot reproduce the committed file
+> byte-for-byte, so a strict diff would be red on `main` for reasons unrelated to
+> the PR. Catalog drift stays `catalog-invariants`' job, in both directions;
+> schema changes keep the manual pinned-CLI regeneration, reviewed by the
+> integrator. (Phase 8, `feat/authority-8`.)
 
 ---
 

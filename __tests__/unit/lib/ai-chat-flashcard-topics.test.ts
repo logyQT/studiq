@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { planTopicGroups, saveCards } from '@/lib/ai-chat-flashcard-topics';
+import { describeSaveFailure, planTopicGroups, saveCards } from '@/lib/ai-chat-flashcard-topics';
 import { ApiError, apiGet, apiPost } from '@/lib/api';
 
 vi.mock('@/lib/api', async (importOriginal) => ({
@@ -136,6 +136,21 @@ describe('saveCards (#1330)', () => {
     expect(batches()[1]).toEqual({ deckId: 'deck', cards: [plain('b')] });
   });
 
+  it.each([400, 403, 404, 409, 422, 429])(
+    'resends a batch without its topic after a %i refusal',
+    async (status) => {
+      refuse = (_url, body) =>
+        JSON.stringify(body).includes('cell-id') ? new ApiError('REFUSED', status) : undefined;
+
+      await save();
+
+      expect(batches().slice(0, 2)).toEqual([
+        { deckId: 'deck', cards: [plain('a')], topicIds: ['cell-id'] },
+        { deckId: 'deck', cards: [plain('a')] },
+      ]);
+    },
+  );
+
   it('retries a batch the API refused without its topic', async () => {
     refuse = (_url, body) =>
       JSON.stringify(body).includes('cell-id') ? new ApiError('BAD_REQUEST', 400) : undefined;
@@ -151,7 +166,11 @@ describe('saveCards (#1330)', () => {
 
   it.each([
     ['a lost connection', new ApiError('NETWORK_ERROR', 0)],
+    ['a 500', new ApiError('INTERNAL_SERVER', 500)],
+    ['a bad gateway', new ApiError('BAD_GATEWAY', 502)],
+    ['a 503', new ApiError('SERVICE_UNAVAILABLE', 503)],
     ['a gateway timeout', new ApiError('TIMEOUT', 504)],
+    ['an unreadable answer', new SyntaxError('Unexpected end of JSON input')],
   ])('does not resend a batch after %s, which may have been written', async (_label, error) => {
     refuse = (url) => (url === '/api/v1/flashcards/batch/create' ? error : undefined);
 
@@ -168,5 +187,28 @@ describe('saveCards (#1330)', () => {
     await expect(save()).rejects.toThrow('USAGE_LIMIT_EXCEEDED');
 
     expect(onSaved.mock.calls).toEqual([[[0]]]);
+  });
+});
+
+describe('describeSaveFailure (#1330)', () => {
+  const refused = new ApiError('USAGE_LIMIT_EXCEEDED', 429);
+  const unknown = new ApiError('INTERNAL_SERVER', 500);
+
+  it.each([
+    ['a refusal before any card', refused, 0, true, 'flashcard_save_failed', false],
+    ['a refusal after some cards', refused, 3, true, 'flashcard_saved_partially', true],
+    ['an unknown result before any card', unknown, 0, true, 'flashcard_save_uncertain', true],
+    ['an unknown result after some cards', unknown, 3, true, 'flashcard_save_uncertain', true],
+    [
+      'another error after the deck exists',
+      new TypeError('x'),
+      0,
+      true,
+      'flashcard_save_uncertain',
+      true,
+    ],
+    ['a failed deck creation', unknown, 0, false, 'flashcard_save_failed', false],
+  ])('describes %s', (_label, error, savedCount, deckReady, messageKey, keepDeck) => {
+    expect(describeSaveFailure(error, savedCount, deckReady)).toEqual({ messageKey, keepDeck });
   });
 });

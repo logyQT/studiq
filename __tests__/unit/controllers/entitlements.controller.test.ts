@@ -39,7 +39,6 @@ const RESOLVED: ResolvedEntitlements = {
     personal: null,
     overrides: [],
     revokedOverrides: [],
-    revokedRoleRows: [],
     flagsOff: [],
   },
   plan: {

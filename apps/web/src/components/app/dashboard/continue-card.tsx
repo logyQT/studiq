@@ -51,7 +51,7 @@ export function ContinueCard({ quiz, deck, isLoading, isError, onRetry }: Contin
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">
-                        {quiz.title ?? t('untitled_quiz')}
+                        {quiz.title ?? t('practice_quiz')}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {t('quiz_progress', { answered: quiz.answered, total: quiz.total })}

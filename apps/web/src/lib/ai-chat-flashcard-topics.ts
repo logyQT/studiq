@@ -64,11 +64,21 @@ async function fetchOwnTopics(): Promise<TopicRef[]> {
 }
 
 /**
- * True when the API itself turned the request down, so nothing was written. A
- * lost connection or a gateway timeout says nothing about the write.
+ * True only for a 4xx answer: the API refused the request and wrote nothing. After a lost
+ * connection, a 5xx or another error, the write can be complete.
  */
 function isRefused(error: unknown): boolean {
-  return error instanceof ApiError && error.status > 0 && ![502, 504].includes(error.status);
+  return error instanceof ApiError && error.status >= 400 && error.status < 500;
+}
+
+/** What a failed save tells the user, and whether the next save must use the same deck. */
+export function describeSaveFailure(error: unknown, savedCount: number, deckReady: boolean) {
+  if (deckReady && !isRefused(error)) {
+    return { messageKey: 'flashcard_save_uncertain', keepDeck: true } as const;
+  }
+  return savedCount > 0
+    ? ({ messageKey: 'flashcard_saved_partially', keepDeck: true } as const)
+    : ({ messageKey: 'flashcard_save_failed', keepDeck: false } as const);
 }
 
 const createBatch = (body: object) => apiPost<unknown>('/api/v1/flashcards/batch/create', body);

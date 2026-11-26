@@ -1,4 +1,4 @@
-import { sample } from '@studiq/server/lib/random';
+import { type Rng, sample, shuffle } from '@studiq/server/lib/random';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { mapSupabaseError } from '@studiq/server/lib/supabase-errors';
@@ -150,11 +150,93 @@ export function sampleServed<T extends { question_id: string | null }>(
   return links.filter((link) => !!link.question_id && served.has(link.question_id));
 }
 
+/** The bucket for an item whose type is not known (a link without a snapshot). */
+const UNKNOWN_TYPE = 'unknown';
+
+/**
+ * How many items each type contributes to a draw of `count` from a pool (#1295): proportional to
+ * the pool's mix, so the draw matches the pool within one item per type.
+ *
+ * Every type gets its whole share; the seats left over are drawn **stochastically**, without
+ * replacement, each type's chance proportional to the fraction it fell short by. A deterministic
+ * largest-remainder seat went to the same type for every student, so a type that never had the
+ * largest remainder was never served to anyone: `4 mcq + 1 open` with count 2 always drew two mcq,
+ * and `40 open + 2 mcq` with count 10 always drew ten open, leaving the graded item unreachable.
+ * Weighting by the remainder — rather than choosing uniformly — keeps the expected quota equal to
+ * the type's share, so the mix stays proportional within one item per type, while a class's
+ * attempts collectively cover every type.
+ *
+ * Only a fractional type can take a leftover seat, and a quota never exceeds its type's size: a
+ * share is `size * count / total < size` because `count < total`, so a fractional type's floor
+ * leaves room for its one extra seat.
+ */
+function stratifiedQuotas(sizes: readonly number[], count: number, rng: Rng): number[] {
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  const shares = sizes.map((size) => (size * count) / total);
+  const quotas = shares.map((share) => Math.floor(share));
+  let seats = count - quotas.reduce((sum, quota) => sum + quota, 0);
+
+  const remaining = shares
+    .map((share, index) => ({ index, weight: share - Math.floor(share) }))
+    .filter((entry) => entry.weight > 0);
+
+  while (seats > 0 && remaining.length > 0) {
+    const totalWeight = remaining.reduce((sum, entry) => sum + entry.weight, 0);
+    let ticket = rng() * totalWeight;
+    let pick = remaining.length - 1;
+    for (const [index, entry] of remaining.entries()) {
+      ticket -= entry.weight;
+      if (ticket < 0) {
+        pick = index;
+        break;
+      }
+    }
+    const chosen = remaining.splice(pick, 1)[0];
+    if (!chosen) break;
+    quotas[chosen.index] = (quotas[chosen.index] ?? 0) + 1;
+    seats -= 1;
+  }
+
+  return quotas;
+}
+
 /**
  * One attempt's draw: `count` items from `pool`, or the whole pool when the teacher set no count.
- * A subset is drawn at random so an early item is not favoured by its position.
+ *
+ * A subset is stratified by item type (#1295): two students in one class must not get ten open
+ * items and ten true/false items respectively, because open items are ungraded today and the two
+ * sheets would not measure the same thing. Each type contributes in proportion to its share of
+ * `pool`: its whole share is guaranteed and the leftover seats are allocated stochastically, by
+ * fractional remainder, so a small type is served to some students rather than to none. The items
+ * inside a type are drawn uniformly (Fisher–Yates), and the result is shuffled so its order does
+ * not reveal the types. An item whose type is unknown (`typeOf` returns nothing) forms a bucket of
+ * its own.
+ *
+ * `pool` is whatever the caller already narrowed to: for a retake that is the items still eligible,
+ * so the mix follows what is left rather than the original bound pool.
  */
-export function drawSample<T>(pool: readonly T[], count: number | null): T[] {
+export function drawStratifiedSample<T>(
+  pool: readonly T[],
+  count: number | null,
+  typeOf: (item: T) => string | null | undefined,
+  rng: Rng = Math.random,
+): T[] {
   if (count === null || count >= pool.length) return [...pool];
-  return sample(pool, count);
+
+  const buckets = new Map<string, T[]>();
+  for (const item of pool) {
+    const type = typeOf(item) ?? UNKNOWN_TYPE;
+    const bucket = buckets.get(type);
+    if (bucket) bucket.push(item);
+    else buckets.set(type, [item]);
+  }
+
+  const groups = [...buckets.values()];
+  const quotas = stratifiedQuotas(
+    groups.map((group) => group.length),
+    count,
+    rng,
+  );
+  const drawn = groups.flatMap((group, index) => sample(group, quotas[index] ?? 0, rng));
+  return shuffle(drawn, rng);
 }

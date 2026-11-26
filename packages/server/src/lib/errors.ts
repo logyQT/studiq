@@ -23,6 +23,8 @@ export const APP_ERRORS = {
   EXPOSURE_ACK_REQUIRED: { code: 'ERROR_EXPOSURE_ACK_REQUIRED', status: 409 },
   PAYLOAD_TOO_LARGE: { code: 'ERROR_PAYLOAD_TOO_LARGE', status: 413 },
   UNPROCESSABLE_ENTITY: { code: 'ERROR_UNPROCESSABLE_ENTITY', status: 422 },
+  /** A retired or deleted question was offered to a new assessment binding (#1171, #1185). */
+  QUESTION_NOT_OPEN: { code: 'ERROR_QUESTION_NOT_OPEN', status: 422 },
   RATE_LIMITED: { code: 'ERROR_RATE_LIMITED', status: 429 },
   USAGE_LIMIT_EXCEEDED: { code: 'ERROR_USAGE_LIMIT_EXCEEDED', status: 429 },
   FEATURE_REQUIRES_UPGRADE: { code: 'ERROR_FEATURE_REQUIRES_UPGRADE', status: 402 },

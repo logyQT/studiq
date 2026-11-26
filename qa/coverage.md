@@ -4,7 +4,7 @@ Every case in `qa/cases/` mapped to the technique that should own it. This is th
 classification, not the scoreboard — what has actually shipped is tracked in `#926`
 (which owns the counts, so this file does not restate a snapshot that goes stale).
 
-- **192 cases**: 174 end-to-end, 10 API-level,
+- **193 cases**: 175 end-to-end, 10 API-level,
   8 manual-owned — four of them carry a partial spec, and all eight are listed
   with the reason automation cannot cover the whole case at the bottom.
 - First pass, generated from each case's front-matter and steps; a case that mixes UI and
@@ -23,7 +23,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | --------- | ------: | -----: | -----: | ------: |
 | AUT       |      20 |      0 |      0 |      20 |
 | BIL       |       6 |      0 |      0 |       6 |
-| EDU       |      40 |      0 |      2 |      42 |
+| EDU       |      41 |      0 |      2 |      43 |
 | LIM       |       2 |      1 |      1 |       4 |
 | MGR       |      28 |      0 |      0 |      28 |
 | NFR       |       3 |      0 |      5 |       8 |
@@ -31,7 +31,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | PUB       |       8 |      0 |      0 |       8 |
 | SEC       |       5 |      8 |      0 |      13 |
 | STU       |      52 |      1 |      0 |      53 |
-| **total** | **174** | **10** |  **8** | **192** |
+| **total** | **175** | **10** |  **8** | **193** |
 
 ## Cases
 
@@ -75,6 +75,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | EDU-ASG-08  | EDU  | P1   | e2e    |                                                                      |
 | EDU-ASG-09  | EDU  | P2   | e2e    |                                                                      |
 | EDU-ASG-10  | EDU  | P2   | manual | print layout - needs a print/PDF pipeline, not a DOM assertion       |
+| EDU-ASG-11  | EDU  | P2   | e2e    | kartkówka kolegi na liście, szczegół odmówiony (ADR-0015 6e)         |
 | EDU-DECK-01 | EDU  | P2   | e2e    |                                                                      |
 | EDU-DECK-02 | EDU  | P1   | e2e    |                                                                      |
 | EDU-DECK-03 | EDU  | P2   | e2e    |                                                                      |

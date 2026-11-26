@@ -109,6 +109,15 @@ export default function EditAssignmentClient() {
     !assignment.closed_at &&
     (!assignment.start_time || new Date(assignment.start_time).getTime() <= Date.now());
 
+  // Every sampling rule is frozen once the run is published (#1300): a scheduled run can still be
+  // withdrawn to a draft, a run that has started cannot.
+  const samplingFrozen =
+    assignment.status === 'draft'
+      ? undefined
+      : !assignment.start_time || new Date(assignment.start_time).getTime() <= Date.now()
+        ? 'started'
+        : 'scheduled';
+
   const initial: AssignmentFormValues = {
     title: assignment.title,
     description: assignment.description ?? '',
@@ -131,6 +140,7 @@ export default function EditAssignmentClient() {
         initial={initial}
         isPending={updateMutation.isPending}
         live={live}
+        samplingFrozen={samplingFrozen}
         deadlineError={deadlineError}
         onDeadlineChange={() => setDeadlineError(null)}
         onCloseNow={live ? () => void handleCloseNow() : undefined}

@@ -12,11 +12,10 @@
 
 "Agent Q" is a runtime AI chat session built with Vercel AI SDK's `streamText()`. It is **not** a persistent database entity — there is no `agents` table, no agent CRUD, no lifecycle management. The agent exists only within a single HTTP request to `POST /api/v1/ai/chat`.
 
-### What the agent can do (8 tools)
+### What the agent can do (7 tools)
 
 | Tool                  | Side Effects                              | DB Access |
 | --------------------- | ----------------------------------------- | --------- |
-| `create_plan`         | Logs to trace DB                          | None      |
 | `ask_user`            | Logs to trace DB, triggers SSE stop       | None      |
 | `fetch_material`      | Nested LLM call (`generateText`)          | None      |
 | `webfetch`            | External HTTP `fetch()` to arbitrary URLs | None      |

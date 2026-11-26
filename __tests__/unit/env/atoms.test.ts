@@ -129,9 +129,9 @@ describe('env atom grammar', () => {
     expect(parsed.yes).toBe(true);
   });
 
-  it('parses the realtime and analytics capability atoms', () => {
-    const parsed = atoms.parseCommand(['ensure', '--profile', 'api', '--realtime', '--analytics']);
-    expect(parsed.ensure).toMatchObject({ capabilityAtoms: ['realtime', 'analytics'] });
+  it('parses the analytics capability atom', () => {
+    const parsed = atoms.parseCommand(['ensure', '--profile', 'api', '--analytics']);
+    expect(parsed.ensure).toMatchObject({ capabilityAtoms: ['analytics'] });
   });
 
   it('parses the functions capability atom', () => {
@@ -142,6 +142,8 @@ describe('env atom grammar', () => {
   it('rejects conflicting, unsupported and unknown atoms', () => {
     throwsUsage(['ensure', '--profile', 'api', '--seed', '--no-seed'], /conflicts/);
     throwsUsage(['ensure', '--profile', 'api', '--reconcile'], /unknown option/);
+    // Realtime has no atom: `[realtime] enabled = false` stops the CLI starting it.
+    throwsUsage(['ensure', '--profile', 'api', '--realtime'], /unknown option/);
     throwsUsage(['ensure', '--profile', 'api', '--runtime', 'podman'], /not supported/);
     throwsUsage(['ensure', '--profile', 'api', '--runtime', 'auto'], /not allowed/);
     throwsUsage(['ensure', '--profile', 'api', '--port-block', '3'], /unknown option/);

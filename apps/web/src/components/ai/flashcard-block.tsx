@@ -5,10 +5,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Check, ExternalLink, Layers, Loader2, Pencil } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import { toast } from 'sonner';
 import { GeneratedCards, type FlashcardData } from '@/components/ai/generated-cards';
-import { planTopicGroups, saveCards } from '@/lib/ai-chat-flashcard-topics';
+import { describeSaveFailure, planTopicGroups, saveCards } from '@/lib/ai-chat-flashcard-topics';
 import { apiPost } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
@@ -48,12 +48,14 @@ export function FlashcardBlock({
 
   const [keepTopics, setKeepTopics] = useState(true);
   const keepTopicsId = useId();
-  /** What a save that failed partway already wrote; the retry continues from it. */
-  const progress = useRef<{ deckId?: string; saved: Set<number> }>({ saved: new Set() });
-  const [partlySaved, setPartlySaved] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
+  /** Cards that a save confirmed. The next save skips them. */
+  const [savedIndices, setSavedIndices] = useState<ReadonlySet<number>>(new Set<number>());
+  /** The deck of a failed save that has cards, or can have them. The next save uses it. */
+  const [keptDeckId, setKeptDeckId] = useState<string | null>(null);
 
-  const visibleCards = flashcards.filter((_, i) => !removedIndices.has(i));
+  const unsavedCount = flashcards.filter(
+    (_, i) => !removedIndices.has(i) && !savedIndices.has(i),
+  ).length;
   const removedCount = removedIndices.size;
   const topicNames = planTopicGroups(flashcards, removedIndices, []).flatMap(
     (group) => group.name ?? [],
@@ -72,15 +74,15 @@ export function FlashcardBlock({
   };
 
   const handleSave = async () => {
-    if (visibleCards.length === 0) return;
+    if (unsavedCount === 0) return;
     setSaving(true);
-    const { saved } = progress.current;
+    const saved = new Set(savedIndices);
+    let deckId = targetDeck?.id ?? keptDeckId;
     try {
-      let deckId = targetDeck?.id ?? progress.current.deckId;
       if (!deckId) {
         const deck = await apiPost<{ id: string }>('/api/v1/flashcards/decks', { name });
+        if (!deck.id) throw new Error('No deck ID returned');
         deckId = deck.id;
-        if (!deckId) throw new Error('No deck ID returned');
       }
 
       const { topicCount, topicsFailed } = await saveCards({
@@ -89,14 +91,11 @@ export function FlashcardBlock({
         skipped: new Set([...removedIndices, ...saved]),
         keepTopics,
         onSaved: (indices) => {
-          // Only a deck that holds cards is reused: after an earlier failure the
-          // next attempt creates its own, under whatever the name field says then.
-          progress.current.deckId = deckId;
           for (const index of indices) saved.add(index);
+          setSavedIndices(new Set(saved));
         },
       });
 
-      setSavedCount(saved.size);
       setSavedDeckId(deckId);
       if (topicsFailed) {
         toast.warning(t('flashcard_topics_failed'));
@@ -109,9 +108,11 @@ export function FlashcardBlock({
             : t('flashcard_deck_created', { count: saved.size }),
         );
       }
-    } catch {
-      setPartlySaved(saved.size > 0);
-      toast.error(t('flashcard_save_failed'));
+    } catch (error) {
+      const { messageKey, keepDeck } = describeSaveFailure(error, saved.size, deckId !== null);
+      // A deck without cards is not reused: the next save creates one with the current name.
+      if (keepDeck) setKeptDeckId(deckId);
+      toast.error(t(messageKey, { count: saved.size }));
     } finally {
       // Deck, card and topic lists are cached with `staleTime: Infinity`, and a
       // failed save may still have written some of them.
@@ -140,22 +141,26 @@ export function FlashcardBlock({
     );
   }
 
+  const deckLink = (id: string) => (
+    <a
+      href={`${deckBasePath}/flashcards/${id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+    >
+      {t('open_deck')}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+
   if (savedDeckId) {
     return (
       <div className="mt-2 space-y-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3">
         <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
           <Check className="h-4 w-4 shrink-0" />
-          <span>{t('flashcard_saved', { count: savedCount })}</span>
+          <span>{t('flashcard_saved', { count: savedIndices.size })}</span>
         </div>
-        <a
-          href={`${deckBasePath}/flashcards/${savedDeckId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-        >
-          {t('open_deck')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        {deckLink(savedDeckId)}
       </div>
     );
   }
@@ -198,7 +203,7 @@ export function FlashcardBlock({
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    disabled={partlySaved}
+                    disabled={keptDeckId !== null}
                     className="h-7 text-xs"
                     placeholder={t('flashcard_deck_name')}
                   />
@@ -228,10 +233,12 @@ export function FlashcardBlock({
         toggleLabels={{ remove: t('remove_card'), keep: t('keep_card') }}
       />
 
+      {keptDeckId && deckLink(keptDeckId)}
+
       {!readOnly && (
         <Button
           onClick={handleSave}
-          disabled={saving || visibleCards.length === 0}
+          disabled={saving || unsavedCount === 0}
           size="sm"
           variant="secondary"
           className="w-full"
@@ -242,8 +249,8 @@ export function FlashcardBlock({
             <Layers className="mr-2 h-3 w-3" />
           )}
           {targetDeck
-            ? t('flashcard_save_into_deck', { count: visibleCards.length })
-            : t('flashcard_save_deck', { count: visibleCards.length })}
+            ? t('flashcard_save_into_deck', { count: unsavedCount })
+            : t('flashcard_save_deck', { count: unsavedCount })}
         </Button>
       )}
     </div>

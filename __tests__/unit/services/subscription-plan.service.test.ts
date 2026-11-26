@@ -144,6 +144,7 @@ describe('SubscriptionPlanService', () => {
       const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb(limits));
 
       const result = await service.listActive();
@@ -160,6 +161,7 @@ describe('SubscriptionPlanService', () => {
         { id: 'p-3', key: 'base', name: 'Base', scope: 'personal', audience: 'student' },
       ];
       mock.from.mockReturnValueOnce(qb(plans));
+      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
@@ -187,6 +189,7 @@ describe('SubscriptionPlanService', () => {
       ];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([{ key: 'ai.chat', is_enabled: true }]));
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.listActive();
@@ -206,6 +209,7 @@ describe('SubscriptionPlanService', () => {
       ];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([{ key: 'branding', is_enabled: true }]));
       mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.listActive();
@@ -219,6 +223,7 @@ describe('SubscriptionPlanService', () => {
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.listActive({ scope: 'personal', audience: 'student' });
 
@@ -229,6 +234,118 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('returns error on plans query failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.listActive();
+
+      expect(result.success).toBe(false);
+    });
+
+    it('drops a plan_entitlements row for a key the TS catalog does not know', async () => {
+      // A DB-ahead key advertises nothing: the resolver drops it, so pricing
+      // must too. The enabled flag row proves the catalog filter is what drops
+      // it, not the flag gate.
+      const features = [
+        {
+          plan_key: 'hub',
+          entitlement_key: 'voice.probe',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        { plan_key: 'hub', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+      ];
+      mock.from.mockReturnValueOnce(qb([planRow('hub')]));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([{ key: 'voice.probe', is_enabled: true }]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
+    });
+
+    it('drops a surface key whose flag row is disabled', async () => {
+      const features = [
+        {
+          plan_key: 'pro',
+          entitlement_key: 'stats.insights',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+      ];
+      mock.from.mockReturnValueOnce(qb([planRow('pro')]));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([{ key: 'stats.insights', is_enabled: false }]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
+    });
+
+    it('drops a surface key with no flag row because the resolver fails closed', async () => {
+      const features = [
+        {
+          plan_key: 'pro',
+          entitlement_key: 'stats.insights',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+      ];
+      mock.from.mockReturnValueOnce(qb([planRow('pro')]));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
+    });
+
+    it('keeps a baseline key with no flag row: baseline keys are never gated', async () => {
+      const features = [
+        { plan_key: 'base', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        {
+          plan_key: 'base',
+          entitlement_key: 'flashcards',
+          entitlement_catalog: { seat_eligible: true },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb([planRow('base')]));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz', 'flashcards']);
+    });
+
+    it('keeps seatEligible derived from the unfiltered rows', async () => {
+      // `branding` is not seat-eligible and is filtered out of `features`, but
+      // it still decides `seatEligible` — the rule `addPool` mirrors, which
+      // reads `plan_entitlements` regardless of flags.
+      const features = [
+        { plan_key: 'hub', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        {
+          plan_key: 'hub',
+          entitlement_key: 'branding',
+          entitlement_catalog: { seat_eligible: false },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb([planRow('hub')]));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb([{ key: 'branding', is_enabled: false }]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result)[0]?.features).toEqual(['quiz']);
+      expect(expectSuccess(result)[0]?.seatEligible).toBe(false);
+    });
+
+    it('returns error on the flag query failure', async () => {
+      mock.from.mockReturnValueOnce(qb([planRow('base')]));
+      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.listActive();
@@ -585,12 +702,43 @@ describe('SubscriptionPlanService', () => {
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getByKey('base');
 
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('key', 'base');
       expect(expectSuccess(result).key).toBe('base');
+    });
+
+    it('applies the same public filter as the list', async () => {
+      const plan = planRow('pro');
+      const features = [
+        {
+          plan_key: 'pro',
+          entitlement_key: 'voice.probe',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        {
+          plan_key: 'pro',
+          entitlement_key: 'stats.insights',
+          entitlement_catalog: { seat_eligible: true },
+        },
+        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+      ];
+      mock.from.mockReturnValueOnce(qb(plan));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { key: 'voice.probe', is_enabled: true },
+          { key: 'stats.insights', is_enabled: false },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getByKey('pro');
+
+      expect(expectSuccess(result).features).toEqual(['quiz']);
     });
 
     it('returns NOT_FOUND when not found', async () => {

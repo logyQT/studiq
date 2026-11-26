@@ -18,22 +18,36 @@ numbers); chat history is never the source of truth.
 
 States: `pending` · `active` · `pr-open` · `green` · `merged` · `blocked`.
 
-| Phase | What                                           | State   | PR                                                                               | CI  | QA shards                 | Updated    |
-| ----- | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
-| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged  | #1162                                                                            | —   | checks                    | 2026-11-19 |
-| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged  | #1387                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1a    | database types regenerated with the pinned CLI | merged  | #1388                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1b    | catalog rename (tables, limits, permissions)   | merged  | #1389                                                                            | —   | checks, unit, integration | 2026-11-19 |
-| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged  | #1390                                                                            | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
-| 2     | authority cutover + control-plane RLS          | merged  | #1397–#1404                                                                      | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
-| 3     | entitlements and limits                        | merged  | #1406–#1409                                                                      | —   | LIM, BIL, STU             | 2026-11-22 |
-| 4     | seats and personal plans                       | merged  | #1410                                                                            | —   | MGR, BIL, LIM             | 2026-11-22 |
-| 5     | enforcement closure                            | merged  | #1411, #1414–#1416, #1421, #1424                                                 | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
-| 6     | UI and cache                                   | active  | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d `feat/authority-6d` | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
-| 7     | delete, full QA, close                         | pending | —                                                                                | —   | all 192 + E2E             |            |
-| 8     | extendability audit (release gate)             | pending | —                                                                                | —   | all 192 + E2E             | 2026-11-19 |
+| Phase | What                                           | State  | PR                                                                           | CI  | QA shards                 | Updated    |
+| ----- | ---------------------------------------------- | ------ | ---------------------------------------------------------------------------- | --- | ------------------------- | ---------- |
+| 0     | docs, ADR-0015, ledger, orchestrator contract  | merged | #1162                                                                        | —   | checks                    | 2026-11-19 |
+| 0b    | batch-0 cleanup (N1, dead code, invariants)    | merged | #1387                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1a    | database types regenerated with the pinned CLI | merged | #1388                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1b    | catalog rename (tables, limits, permissions)   | merged | #1389                                                                        | —   | checks, unit, integration | 2026-11-19 |
+| 1c    | catalog cutover (ENTITLEMENTS, documents)      | merged | #1390                                                                        | —   | PUB, ADM, LIM, BIL        | 2026-11-19 |
+| 2     | authority cutover + control-plane RLS          | merged | #1397–#1404                                                                  | —   | AUT, MGR, EDU, SEC        | 2026-11-21 |
+| 3     | entitlements and limits                        | merged | #1406–#1409                                                                  | —   | LIM, BIL, STU             | 2026-11-22 |
+| 4     | seats and personal plans                       | merged | #1410                                                                        | —   | MGR, BIL, LIM             | 2026-11-22 |
+| 5     | enforcement closure                            | merged | #1411, #1414–#1416, #1421, #1424                                             | —   | STU, EDU, MGR, PUB, BIL   | 2026-11-23 |
+| 6     | UI and cache                                   | merged | 6a-1 #1426; 6a-2 #1427; 6c #1428; 6b-1 #1429; 6b-2 #1447; 6d #1449; 6e #1459 | —   | PUB, AUT, MGR, STU, EDU   | 2026-11-25 |
+| 7     | delete, full QA, close                         | merged | PR 1 #1475 (`7fa5663f`); PR 2 #1476 (`b08321d8`) — **closed by phase 8**     | —   | all 193 + E2E             | 2026-11-25 |
+| 8     | extendability audit (release gate)             | merged | #1486 (this PR)                                                              | —   | all 193 + E2E             | 2026-11-25 |
 
-**Next action:** **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
+**Next action:** **the programme is complete.** Phase 7 merged as `7fa5663f`
+(#1475) and `b08321d8` (#1476); phase 8's extendability audit passed and closed
+phase 7 on 2026-11-25 (D23) — one migration + one catalog constant + one surface
+call, resolver diff 0, both org vintages identical, removal clean, deploy-order
+matrix fail-closed with no crash. The checklists and the "when there are users"
+answers live in [extendability.md](extendability.md).
+**Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
+#1502 (#1503), #1484 (#1506), #1482 (#1510), #1478 (#1474) and #1492 (#1512) have merged;
+the defect list is empty. Next are the plans, then the shell, then the `/app` decision, then
+onboarding.
+**Open follow-ups (owned):** **#1483** notify org admins when a new entitlement
+is grantable; row 14 (per-user personal default permission set) still defers. A
+default-outside-any-plan layer is **proposed** as D37 and needs an ADR-0015
+amendment before anyone builds it.
+Phase 6 closed with **6e** (`6e92e52d`, #1459). **phases 0b → 5 are merged; phase 5 closed 2026-11-23 with 5e-2**
 (`8667e6ca`, #1424). Phase 5 slices: 5a `0fb14a7e` (#1411), 5b `554cb696`
 (#1414), 5c `9b8059fe` (#1415), 5d `83515bb6` (#1416), 5e-1 `fc991415`
 (#1421), 5e-2 `8667e6ca` (#1424). Phase 3 (3a–3d, #1406–#1409) and phase 4
@@ -46,9 +60,9 @@ API surface are the two declared exceptions (R5 org/classroom creation),
 pinned by
 `__tests__/unit/guards/persona-gates.test.ts`; since 5e-2 **no policy and no
 `public` function** reads the JWT `account_type` except `handle_new_user`, which
-mints the claim. **Next slice: 6e (Teacher assignment reads)**; **6d** (one role
-save, caller-scope awareness in the editor, the `/me/plan` union badge) is
-**active, not merged**, on `feat/authority-6d` (reviewed head `bc42290f`).
+mints the claim. **Next slice: 6e (Teacher assignment reads)**, active on
+`feat/authority-6e`; **6d** (one role save, caller-scope awareness in the editor,
+the `/me/plan` union badge) is merged as `7aaca9d4` (#1449).
 6a-1 `bcd874f0` (#1426), 6a-2 `800129fe` (#1427),
 6c `14262016` (#1428) and **6b-1** `999c45ab` (#1429 — route rules,
 `resolveDashboardArea`, the landing) are merged; **6b-2** (`AreaGate`, nav-item
@@ -139,6 +153,8 @@ slices plus 2b-9's guard make phase 2 done.
 | R46 | A key's **exclusion** from a personal/default permission set is a claim about another layer: prove it with a call that holds the key and still gets that layer's refusal, or the next reader cannot tell a deliberate exclusion from a missing grant.                                                                                                                                                                                                | 6c: `quiz.*` and `assignment.create` are excluded from `PERSONAL_PERMISSION_KEYS` because their services refuse a no-org call; `assignment.publish`/`grade` because the persona default never granted them; the three assignment verbs a personal NULL-org row supports are included. A route-level 403 would be satisfied by the permission gate alone, so the proof calls both create services with a context that holds the key                                                                                            |
 | R47 | One predicate cannot answer "where is home" and "may this caller use this area": the two questions name different key sets when an area's home is typified by its management keys while its pages are usable through content reads, so name each predicate, state its question, and derive the admission set from the catalog.                                                                                                                       | 6b-2: reusing `resolveDashboardArea` for the gate would deny `/edu` to every Member — the landing names the three class-management keys that make `/edu` someone's _home_, while the area's pages are readable through content `.read` keys a Member holds, and the API answers `200` the moment the gate admits them                                                                                                                                                                                                         |
 | R48 | A label that gains provenance is a QA-corpus change, not a component change: grep the literal label across `__tests__/qa` and `qa/cases`, and keep the badge on its generic `data-slot` while adding `data-plan-union` — a single-element text matcher on the surrounding card keeps resolving the status badge through `:not([data-plan-union])`, and the component's own test only proves the string it builds.                                    | 6d: `PlanUnionBadge` named every `/me/plan` layer, so five specs pinning „StudiQ Launch”/„StudiQ Hub” on `/manage/billing` and `/manage/settings`, BIL-01's card description and six case texts went stale while the component test stayed green; overriding `data-slot="badge"` turned the generic billing badge locator into 0 elements, and restoring it made the two status-badge text matchers resolve the union badge until they excluded it with `:not([data-plan-union])`                                             |
+| R49 | A deletion sweep greps the object it deletes, not only the retired marker keys: the `org.manage` gate stayed clean while a live tracker still listed the dropped table as a per-role store, because no sweep named `org_role_features`. Grep every dropped table/function name and classify each hit as live/history, or a doc keeps advertising a store the migration removed.                                                                      | phase 7: `docs/ROADMAP.md` still advertised a per-role (`org_role_features`) flag store after the migration dropped it; the implementer's grep gate covered only `org.manage`                                                                                                                                                                                                                                                                                                                                                 |
+| R50 | A refusing write cannot inform a later read: if the guard discards the refused increment, a check-then-act gate that reads the counter never trips, so the quota is unbounded. Record the attempt (and let the gate be the only refuser), or clamp the stored value to the limit in the same statement — never leave the counter below the ceiling that justified the refusal.                                                                       | phase 7 review: `reserve_ai_tokens` returned `accepted = false` and wrote nothing, so at `current = limit − ε` every later request passed the pre-stream gate indefinitely; the write now always records and the gate trips on the next request. (R29 still applies where the write itself is the authorised act; it does not apply to a meter whose refuser is a later read.)                                                                                                                                                |
 
 ## 4. Decisions
 
@@ -178,6 +194,7 @@ All settled 2026-11-13; the full wording is ADR-0015 §15.
 | D32 | `subscription_plans.scope`/`audience` replace `for_account_type` (dropped in the same migration); `solo` is the free manager personal plan; manager profiles holding an organization-scope plan are backfilled to `solo`; `org_seat_pools.plan_key` FKs the plan table — landed in 4a (`feat/authority-4a`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | D33 | A seat is a licence of a personal plan validated from live catalog data: `addPool` requires an active `scope='personal'` plan whose keys are all `seatEligible` in `entitlement_catalog` (422 on `planKey`); `assignSeat` requires the target's `profiles.account_type` to equal the plan `audience` (BAD_REQUEST); `PLAN_TIER_MAP`/`ROLE_TIER_MAP` deleted — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | D34 | Plan composition keys on plan scope, not the caller's persona: inside a verified org an organization-scope personal plan never applies; `getMyPlan` = seat plan, else org plan with `org.billing.manage`, else personal; `resolveApplicablePlan` audience-checks personal plans only and answers FORBIDDEN for an org plan with no org id; `/subscription-plans` filters are `scope`/`audience` — landed in 4a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D36 | **CI does not regenerate or diff `database.ts`.** `packages/server/src/types/database.ts` types the schema, not catalog rows: a new entitlement key or plan row changes no type, so a diff gate would catch nothing the extendability checklist adds. It would also need the pinned CLI and a database in CI, and the phase-1a review recorded that the pinned CLI cannot reproduce the committed file byte-for-byte — a strict diff is red on `main` for unrelated reasons. Catalog drift is covered by `catalog-invariants` in both directions; schema changes keep the manual pinned-CLI regeneration, reviewed by the integrator. (Phase 8.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 New decisions discovered during execution go here **and** into ADR-0015 in the
 same PR. An orchestrator that needs a decision it cannot find stops and asks.
@@ -419,9 +436,9 @@ file — a hand edit only survives until the next regeneration.
   the seeds, so relying on `99_dev_grants.sql` alone would leave the default
   `arwdDxtm` (TRUNCATE bypasses RLS) in place there.
 - Seeds: `00_plans.sql` and `99_dev_grants.sql` renamed (the latter later
-  retired); `09_perms.sql` now seeds the 44-key catalog and derives the
+  retired); `09_perms.sql` seeded the 44-key catalog and derived the
   system-role grants from `category = 'content'`, exactly like the org-creation
-  trigger.
+  trigger (retired in #1502: the migration chain owns both).
 - `PERMISSIONS` (44 keys with metadata) ships beside the unchanged `Permission`
   (26) and `DEFAULT_ROLE_PERMISSIONS`; the readers (`FeatureResolver`,
   `SubscriptionPlanService`, the `feature-flag` and `plan-feature` admin
@@ -679,8 +696,9 @@ The table is in **landing order**, not the original plan's order: 2a-3 goes befo
 - `FeatureResolver`: org layer is profile → legacy rows (markers grant,
   `is_enabled = false` revokes) → seat (additive, admin-only strip) → personal →
   overrides → flags. `ctx.orgRoleId === null` resolves ∅ with no plan read.
-- `supabase/seeds/09_perms.sql` calls the function for every seeded organization
-  (the org-creation trigger already created their roles and profiles).
+- `supabase/seeds/09_perms.sql` called the function for every seeded organization
+  (the org-creation trigger already created their roles and profiles); #1502
+  retired that call, and a migration now performs the repair.
 - Tests: a table-driven resolver truth table (admin/teacher/member/custom,
   hub/launch, no role, seated non-admin), a new
   `__tests__/integration/entitlement-profile.test.ts` (trigger profiles, CHECK,
@@ -5424,8 +5442,8 @@ table).
   Wykładowcy **2 → 1** (**KILLED**); both reverted and re-verified green.
 
 **6d — one role save, caller-scope awareness and the `/me/plan` union badge**
-(active on `feat/authority-6d`, reviewed head `bc42290f`; not merged; no SQL, no
-migration, no new table).
+(merged as `7aaca9d4`, #1449; the measurements below are the reviewed head
+`bc42290f`, and no SQL, migration or new table was involved).
 
 - **One request, profile first, compensated.** `SetRolePermissionsSchema` gains
   `entitlementProfile: EntitlementProfileSchema.nullable().optional()` — the
@@ -5552,9 +5570,118 @@ migration, no new table).
   (`logError(` → `void (`) → "returns the permission failure when the profile
   restore also fails" **KILLED**.
 
-**Still open in phase 6:** 6e the Teacher assignment-read widening. 6d (active)
-carries the role editor's caller-scope awareness, the one-request profile write
-and the `/me/plan` union badge.
+**6e — the Teacher assignment read: the list widens, the detail stays the
+author's** (active on `feat/authority-6e`; no SQL, no migration, no new table).
+
+- **Three arms in `TeacherAssignmentService.list`, all inside the active org.**
+  `organization` → `organization_id = activeOrgId` (unchanged); `group` →
+  `organization_id = activeOrgId AND (created_by = me OR id IN (runs targeting a
+class I teach))`; anything else (`own`, or no active org) → `created_by = me`
+  (unchanged). Before this slice the `group` scope was as narrow as `own`, so
+  D29's `assignment.read @ group` was inert on the one read a Teacher actually
+  needs — "what runs exist for my classes". The response is assembled from
+  bounded queries rather than one request: the authored arm
+  (`organization_id` + `created_by`) plus, when the taught-group lookup returned
+  ids, `teacher_assignments` fetched in `TARGET_CHUNK`-sized `.in('id', …)`
+  batches, merged by id (a run may be both authored and targeted) and sorted
+  `created_at` desc. The id list used to ride in one
+  `.or('created_by.eq.…,id.in.(…)')` URL, which crosses the gateway's 8 KB limit
+  at ~213 ids — a teacher's lifetime list does.
+- **"Teaches" is `ctx.groupRoles[g] === 'teacher'`, never `ctx.groupIds` (§4.3,
+  2b-2).** The taught ids are resolved once, `assignment_targets` is read for
+  `assignment_id` in `TARGET_CHUNK` batches (a teacher's class list travels in
+  the request URL), and the targeted runs are fetched in `TARGET_CHUNK`-sized
+  `.in('id', …)` batches; an empty target set adds no chunk (an empty
+  `id.in.()` is a PostgREST 400), so the caller still reads their authored arm.
+  Plain membership would hand a learner every run aimed at their own class: a
+  `member` is the audience, not the staff.
+- **The detail stays narrow on purpose (R23).** `getById`, `verifyOwnership` and
+  `ownedClient` are untouched: the composer/detail payload is the draft **with
+  its answer key** (`withAnswerKey`) behind the authorship /
+  `organization`-scope gate, so widening that gate would hand a co-teacher of the
+  class a colleague's key. The seal's author exemption (D-5e1) concerns item
+  sealing, not key visibility. The API is therefore narrower than the RLS SELECT
+  (which admits any member of a targeted class) — the asymmetry is recorded at
+  `getById` and in ADR §12, owner **phase 7** (e.g. a read-only header for a
+  colleague's run). `select('*')` on `teacher_assignments` is safe to widen: the
+  row carries title/status/window/counters and no answer key (the generated
+  `Database['public']['Tables']['teacher_assignments']['Row']` has no key
+  column), so a target of the widening is not a key leak.
+- **Tests.** `__tests__/unit/services/teacher-assignment.service.test.ts`: the
+  group-scope caller with one taught class gets the author-OR-targeted query (the
+  filters the mock received), a caller who teaches nothing falls back to the
+  author filter, an `own` caller never gets the group arm even while teaching a
+  class, and a caller who is merely a `member` of a class in `groupIds` does not
+  get its runs. A 250-id case pins the bounded fetch: the list issues more than
+  one `teacher_assignments` fetch, every `.in('id', …)` carries ≤ 200 ids, the
+  merged result returns each id once, and the order is `created_at` desc.
+  `__tests__/integration/content-route-permission-api.test.ts`
+  (its route/session helpers are reused rather than cloned) seeds a Teacher who
+  teaches G-taught and is a plain `member` of G-member: the colleague's run for
+  G-taught is listed, the one for G-member is not, a Member gets 403 on the list
+  (the earlier `assignments (assignment.*)` case covers it, so it is not
+  duplicated here), the author gets **200** on the same run's detail, and the
+  colleague's run still answers **403** (not 404) from
+  `GET /api/v1/teacher/assignments/:id` — the pair that stops a future "fix"
+  from widening the detail.
+- **Corpus (R6, text + spec together).** EDU-ASG-07's case text and spec docblock
+  are corrected: the tenant's teacher holds `assignment.read` at `group` and the
+  writes at `own` (D29), the SELECT is author / targeted / `assignment.read`
+  (D-5e2-2), and the results service stays author-gated (`created_by`). The same
+  stale "`assignment.*` = `own`" claim was fixed in EDU-ASG-03's case text and in
+  EDU-ST-04's case text and spec docblock (the default tenant teacher is on the
+  system `teacher` role, not the old member-role default of R24).
+- **New case EDU-ASG-11** („Kartkówka kolegi z klasy, której uczę”, e2e): two
+  teachers, `groupTeachers: { teacher: [G1], teacher2: [G2] }`; teacher2 targets
+  one run at G1 (the class teacher 1 teaches) and one at G2 (a class teacher 1
+  does not teach), both drafts — the list does not filter by status, and a draft
+  is the state that _would_ render the composer, which is what makes the refusal
+  assertion meaningful. Teacher 1 sees the G1 run in `/edu/assignments` and via
+  the API, not the G2 one, and opening the colleague's run renders
+  „Nie znaleziono kartkówki” (the 403 as the app presents it) with no composer
+  and no key. The spec first opens the run's composer as teacher 2 (the
+  „Opublikuj” control and the title), so the later not-found state is provably a
+  refusal and not a broken page. `qa/index.md`, `qa/coverage.md` and
+  `qa/README.md` move to **193** cases (EDU 43).
+- **Gates on this branch (measured).** `typecheck:all` (root 983, web 875, server
+  220, authz 7, ui 65 files) and `typecheck:admin` (151) 0 errors; `lint` **1582**
+  files 0 problems; unit **326 files / 5125 passed, 1 skipped**; fresh-reset
+  serial integration **116 files / 1120 passed, 11 skipped, 0 failed**;
+  `review:static` clean (5/5 rule tests); `knip` clean; `format:check` **2267**
+  files; `dup:base` no new clones (**210** in the tree); build **22.4 s**, served
+  `:3000`, `build.state: current`. The coordinator owns build/serve/reset/
+  integration/Playwright; `pr:size` is **120/400** (M; tests and docs excluded from the
+  reviewable count) and the served walk is recorded below.
+- **Served QA (coordinator, 2026-11-25).** The four touched cases ran **5/5 each**
+  with a fresh tenant per pass, one process, a unique `--run` label per case —
+  EDU-ASG-11 5/5, EDU-ASG-07 5/5, EDU-ASG-03 5/5, EDU-ST-04 **10/10** (two tests
+  × 5, run under `env:run` because the spec needs the DB contract) — 25/25 test
+  passes, zero retries. The served-build mutation of the taught-group arm failed
+  the new case at the list assertion (`Received array: []`), then passed once
+  reverted and rebuilt.
+- **Delta review (fresh reviewer, pre-fix head and delta).** First pass
+  **READY-WITH-FIXES**: B1 the targeted run ids travelled in one request URL
+  (measured 8,096 bytes at 213 ids), which the fixed bounded fetch removes; S1
+  the 403 assertions lacked a 200 control (author-200 in integration, teacher2
+  composer in the QA spec); S2 §4.3 is amended to the taught-group rule; S3
+  D-5e1 was mis-cited; S4 the two-org own-run gap is recorded; S5 two tautological
+  unit assertions and a duplicate Member-403 case removed. Delta pass
+  **READY-WITH-FIXES** on documentation numbers only, all corrected here.
+- **Mutation proofs** (`bun run mutate`, clean tree, each reverted and re-run):
+  the taught-group arm deleted from `list` → "widens a group-scope read to the
+  runs authored or targeting a taught class" **KILLED**; the taught set replaced
+  with `ctx.groupIds` → "does not widen to a class the caller is merely a member
+  of" **KILLED**; the `group` arm widened to every caller with an active org →
+  "keeps an own-scope caller on the author filter even when they teach a class"
+  **KILLED**; the targeted chunk loop submitting all ids in one call
+  (`.slice(i, i + TARGET_CHUNK)` → `targeted.data`) → "fetches targeted runs in
+  URL-sized batches and merges them by id" **KILLED**.
+- **No new rule was earned.** The slice reuses **R23** (a deliberately narrower
+  API gate with a named owner) and R6; there is no new §3 row, by design rather
+  than by omission.
+
+**Still open in phase 6:** nothing — 6e is the last slice (6a–6d are merged and
+6e is on `feat/authority-6e`), so phase 7 is next.
 
 **Deliberately deferred from 6a-2 (not defects).** `refetchPartitioned` stays an
 optional argument: the default `true` is the common case and keeping it optional
@@ -5657,10 +5784,254 @@ Rule: R48.
 
 ### Phase 7 — delete and close
 
-_Not started._
+**PR 1 — delete and close (in progress on `feat/authority-7`, not yet a PR).**
+
+Landed in this slice:
+
+- **Legacy surface removed** (`20261125120000_legacy_role_feature_surface_removed.sql`):
+  `public.org_role_features` (`drop table … cascade`) and the four dead helpers
+  `has_org_feature(uuid,uuid,text)`, `is_org_manager(uuid,uuid)`,
+  `rls_caller_has_org_feature(uuid,text)`, `rls_caller_is_org_manager(uuid)`.
+  The closing guard (R26) pins both sides: the table and all four functions
+  `IS NULL` via `to_regclass`/`to_regprocedure`, **and** the surviving
+  `org_roles.entitlement_profile` column plus the phase-2/5e policies
+  (`Org managers update roles`, `Org managers insert roles`,
+  `Visible teacher assignments`) answer, so it cannot pass on an empty schema.
+  It also fails if any policy still names either helper.
+- **Resolver/catalog deletes:** the `org_role_features` embed and
+  `revokedRoleRows` left `entitlement.resolver.ts`; the field and comment left
+  `packages/authz/src/entitlements.ts`. The role layer is now stated as
+  `profile + seat ∩ ceiling`, with a docblock recording that the revoke store is
+  gone (D27, premarket), so nothing sits between the two arms.
+- **Atomic token accounting** (`20261125130000_reserve_ai_tokens.sql`, R29/R41):
+  `public.reserve_ai_tokens(p_day, p_input_tokens, p_output_tokens, p_limit)`
+  derives the actor from `auth.uid()` inside, is `security definer` with
+  `set search_path = ''`, grants execute to `authenticated` only, and **always
+  records** the increment in one `insert … on conflict … do update` upsert
+  (`-1` unlimited). It returns `accepted`, `input_total`, `output_total`, where
+  `accepted` is informational — it reports whether the written total stayed
+  within `p_limit`. `limits.ts#trackTokenUsage` calls it and logs an
+  `accepted: false`; no path throws. The same migration also revokes `DELETE` on
+  `user_daily_activity` from `authenticated` (a signed-in user could zero the AI
+  counter through PostgREST without the RPC), pinned by the closing guard.
+  The brief's literal shape — `where` guards on both the insert and the
+  `do update` — made the ceiling **unenforceable**: the write runs after the
+  stream has been served, so a refused increment left the stored total just
+  below the ceiling and the pre-stream `getUsage` gate passed on every later
+  request (only the 20/min rate limiter applied). The coordinator therefore
+  moved enforcement back to that gate and kept the atomic accounting: the write
+  is truthful, the next request trips on `current >= limit`, and one stream may
+  overshoot by its own token count.
+  **Residual closed by #1482** (#1510): phase 7 left `authenticated` with `INSERT`/`UPDATE` on its
+  own `user_daily_activity` row because the review/quiz triggers ran as the
+  invoking user, so a determined user could **reset** their own counter with a
+  direct `UPDATE`, or a PostgREST upsert of the day's row (negative counts on
+  the RPC used to subtract as well, and are now clamped to zero). #1482 makes
+  `increment_reviews` `security definer` with an empty `search_path` — the shape
+  `increment_quizzes` already had — and revokes `INSERT`, `UPDATE` and `DELETE`
+  from `authenticated` and `anon`; no user-client caller writes the table now
+  (the two trigger functions and `reserve_ai_tokens` do, and service-role test
+  cleanup keeps its grants). The exposure was a reset of one's own
+  meter, not a grant over anyone else's: no privilege escalation and no
+  cross-user metering. It was recorded and deferred in phase 7, and is now
+  closed.
+- **Fixtures/tests:** the per-role table RLS suite was recast as
+  `__tests__/integration/entitlement-org-resolution-rls.test.ts` (live resolver
+  cases kept, table cases deleted); `org-features` and `catalog-invariants`
+  assert absence; `change-org-plan` keeps the plan move and a permission
+  fingerprint; the RPC-wrapper assertions across `rls-tenant-isolation`,
+  `anon-grants`, `control-plane`, `org-control` and `org-role-manage` were
+  removed or moved to the resolver. New `reserve-ai-tokens.test.ts` (real
+  signed-in session, concurrent burst) and unit cases for the service mapping.
+- **`docs/limits.md`** rewritten for the shipped model; **`database.ts`**
+  regenerated with the pinned CLI in the same slice (R2/R14).
+
+Measured inventory at HEAD `6e92e52d` (live stack `514f452e`), then after:
+
+| Probe                                                           | Before                                               | After                               |
+| --------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
+| `org_role_features` rows / triggers / policies                  | 0 / 0 / 2 (both on the table itself)                 | table `NULL`, 0                     |
+| Four helper functions                                           | 4 present; 0 policy readers, 0 other function bodies | 0 present                           |
+| TS files naming `org_role_features` (excl. `types/database.ts`) | resolver, authz, 11 tests, mock helper               | 2 absence assertions only           |
+| `reserve_ai_tokens`                                             | absent                                               | present; generated types include it |
+
+Grep gate (`org.manage`): 32 files — 16 migrations, 7 `docs/plans`, 3 ADR,
+1 `docs/limits.md`, 1 `docs/audits`, 3 `qa/cases`, 1 integration test.
+Classification: **history** = migrations, plan/ADR/audit prose, `qa/cases`
+MGR-ROL-01/02 (both say the old gates were replaced) and MGR-SEAT-02 (now says
+the per-role store does not exist); **live** = none left (`docs/limits.md` keeps
+the markers only in the past-tense "left the catalog" sentence, and the
+resolver unit test's non-catalog fixture now uses fictional `test.*` keys);
+**stale** = none. `AUTHORITY_MODEL`, `legacyOnly`, `nextOnly`,
+`ADMIN_ONLY_*`, `ORG_SCOPED_*` remain at 0 in code (migration comments and
+plan/ADR prose retain the names) (`FEATURES` has only unrelated
+`FREE_FEATURES`/`HIGHLIGHTED_FEATURES` identifiers).
+
+The **object** sweep (R49, added by this PR) is separate and found one the
+marker gate could not: `docs/ROADMAP.md` still listed per-role
+(`org_role_features`) under the shipped flag surface, so the tracker advertised
+a store this migration drops. Corrected in the same PR. The other non-migration
+hits (`catalog-invariants`, `org-features`) are deliberate absence assertions;
+the rest is historical prose.
+
+**Full corpus on the disposable stack** (`7fa5663f`, fresh cold stack, seeded
+once, one process): **QA 261 passed / 8 skipped / 19 failed, E2E 142 passed,
+0 failed**. All 19 failures are the two documented local-environment gaps, not
+code:
+
+- **11 AI cases** (`STU-47` ×2, `STU-48` ×9): `ECONNREFUSED 127.0.0.1:4321` —
+  the QA AI specs drive `scripts/fake-llm`, which was not started. Proven green
+  by CI's `ai-suite` on this same tree.
+- **8 auth/invite cases** (`AUT-01`, `AUT-02` ×2, `AUT-06`, `AUT-12`, `AUT-13`,
+  `ONB-08`): `no e-mail matching /auth/callback?…` — the documented stack-mode
+  template gap (AGENTS.md; CI injects the branded templates). Proven green by
+  the `qa-suite (aut-nfr-onb-pub-lim)` shard on this same tree.
+
+No case failed for a reason attributable to the change (the changed cases —
+`MGR-SET-02`, `MGR-ROL-03` — passed 5/5 on the served build beforehand).
+
+**Phase 7 closes only when phase 8 passes** (D23); the extendability audit is
+the remaining gate.
+
+### Difficulty log — phase 7
+
+- The `org.manage` marker sweep was clean at every head, and the table still
+  appeared in a shipped tracker: the gate was written around the _names in
+  code_ (`org.manage`, `has_org_feature`) rather than the object being deleted
+  (`org_role_features`). A deletion is proven by grepping the deleted name;
+  marker names only find the code that used them.
+  Rule: R49.
+
+- The first `reserve_ai_tokens` guarded the write itself: a reservation past the
+  ceiling was refused and wrote **nothing**. Because the only enforcement is the
+  pre-stream `usage.current >= usage.limit`, and `current` then stayed below the
+  limit, every later request passed the gate — the quota became unbounded (only
+  rate limiting applied). The tests even pinned the hole (`stored = 8` against a
+  limit of 10). A refusal that discards the attempt cannot inform a later read:
+  the counter has to record what happened, and the gate has to be the refuser.
+  Rule: R50.
 
 ### Phase 8 — extendability (release gate)
 
-_Not started._ Specified in
+**Measured 2026-11-25 on `feat/authority-8` (`b08321d8` + the simulation diff)**,
+on this checkout's own stack with the app served and existing orgs/users. The
+deliverable is committed; the simulation is reverted. Specified in
 [role-authority-rollout.md](role-authority-rollout.md#8--extendability-audit-post-phase-7-release-gate);
-phase 7 is not closed until it passes (D23).
+**Phase 7 is closed as of 2026-11-25** — this audit passed (D23).
+
+**Acceptance: one migration + one catalog constant + one surface call, zero
+resolver changes.** Measured by adding the fictional `voice.notes`
+(`surface`/`personal`/`seatEligible`/`personalPortable`) to `hub`, `campus` and
+`master`:
+
+- **one migration** (`2026112514…_voice_notes_simulation.sql`: catalog row, flag
+  row, three plan rows; no grant, policy or type change), **one `ENTITLEMENTS`
+  entry**, **one `requireEntitlement(ctx, 'voice.notes')`** on
+  `GET /api/v1/stats/teacher/quizzes`
+  (`packages/server/src/controllers/stats.controller.ts`), and the surface's own
+  disabled-state copy (three `TeacherQuizStats` strings per locale in
+  `apps/web/src/app/(frontend)/edu/stats/quizzes/page.tsx`).
+  `packages/server/src/services/entitlement.resolver.ts` diff: **0 lines**. The
+  first attempt gated `GET /api/v1/teacher/quizzes` and turned `AUT-19`,
+  `SEC-05` and `EDU-QZ-06` red — a free read shared by students and free
+  teachers is not a gateable surface; see "Retrofitting a gate onto a free read"
+  in [extendability.md](extendability.md).
+- **Payload delta, hub educator:** `["ai.chat","flashcards","quiz","quiz.templates","stats.insights","branding"]`
+  → the same six in the same order plus `"voice.notes"` appended. Applying the
+  DB rows with the old build serving changed nothing — the TS constant is what
+  makes a DB row resolvable, so the redeploy is part of the cost — and the rebuild
+  added the key.
+- **Both vintages:** an org created before the key (then the key applied) and an
+  org created after it resolved the same payload once on `hub`; `launch → hub` on
+  an existing org backfilled the key with no prune job (`change_org_plan` moves
+  the plan only). A `team` org (has `quiz.templates`, not `voice.notes`) turned
+  the surface into `403` and the page into the plan card; the same org with a
+  personal `master` carried it via `personalPortable`.
+- **Retirement:** removing the `hub` plan row dropped the key, made the surface
+  `403`, hid it in the UI, and left `/me/entitlements`, `/me/permissions`,
+  `/me/plan`, `/flashcards`, `/questions/banks`, `/organization/groups` and
+  `/notifications` at `200` — no 404, no 500. Order is FK-forced: plan rows →
+  flag (its delete **cascades** plan rows and overrides) → catalog
+  (catalog-first is `23503`), with the TS constant in the same change, so
+  `catalog-invariants` is never red in a committed state. Re-entry returned the
+  key immediately with no rebuild **because the served build still carried the
+  constant**; once the constant is gone, re-entry is add-step 12 (rebuild).
+- **Drift:** `catalog-invariants` red for a bogus TS key (2 assertions) and for a
+  bogus DB row (1), both reverted. **D36** (ADR-0015 §15): no CI
+  regeneration/diff of `database.ts` (schema types, not catalog rows; the pinned
+  CLI cannot reproduce the file byte-for-byte) — catalog drift is the invariant's
+  job.
+- **Deploy order / split brain:** 12 cells measured on the served app
+  (code-ahead, missing flag, flag off, missing plan row, DB-ahead catalog/flag/
+  plan/override, quota FK, catalog-first retirement, a revoked catalog grant,
+  the UI and anonymous pricing), plus cell M — an unknown or absent
+  `org_roles.entitlement_profile` resolving to nothing — which is a unit case,
+  mutation-proved rather than measured on the served app. All pass: an absent key
+  is a `403` and an absent payload entry, never a `500`; an unknown DB row is
+  inert; pricing stays an anonymous `200`. Table in
+  [extendability.md](extendability.md).
+- **Mutation proofs** (`bun run mutate`, clean tree): catalog filter **KILLED**,
+  missing-flag fail-closed **KILLED**, a removed surface gate **KILLED**, and an
+  unrecognised role profile read as a grant **KILLED**:
+  `expected [ 'ai.chat', 'flashcards', …(2) ] to deeply equal []` (cell M). The
+  first run **SURVIVED** on the pre-existing unknown-plan-key assertion (profile
+  `all` never lets the row reach the payload), so that guard was rewritten on the
+  personal-plan path where the filter is load-bearing. The four runs,
+  re-runnable as written:
+
+  ```bash
+  # catalog filter — the isEntitlementKey guard in the plan-row loop is deleted
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "if (!isEntitlementKey(row.entitlement_key)) continue;" --replace "" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "ignores non-catalog keys in the personal plan rows (the catalog filter is load-bearing)"
+
+  # missing-flag fail-closed — a missing row must default off, not on
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "if (flagMap.get(key) !== true) {" \
+    --replace "if (flagMap.get(key) === false) {" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "removes a surface key whose flag row is missing (fail closed, D8)"
+
+  # removed surface gate — the find string is the create arm's two lines (the pair
+  # is unique: QUIZ_CREATE appears once in the file), replaced by the second one
+  bun run mutate -- --file packages/server/src/controllers/quiz-teacher.controller.ts \
+    --find "    await requireEntitlement(ctx, 'quiz.templates');
+    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');" \
+    --replace "    if (!(await can(ctx, Permission.QUIZ_CREATE))) return controllerResponse.error('FORBIDDEN');" \
+    --test __tests__/unit/controllers/quiz-teacher.controller.test.ts \
+    --name "refuses every gated write with FORBIDDEN before the permission check and the parse"
+
+  # unknown role profile — the guard becomes a bare cast, so the unknown value
+  # reaches applyProfile's learner arm (cell M)
+  bun run mutate -- --file packages/server/src/services/entitlement.resolver.ts \
+    --find "        if (role && isEntitlementProfile(role.entitlement_profile)) {
+          entitlementProfile = role.entitlement_profile;
+        }" \
+    --replace "        if (role) {
+          entitlementProfile = role.entitlement_profile as EntitlementProfile;
+        }" \
+    --test __tests__/unit/services/entitlement.resolver.test.ts \
+    --name "resolves nothing when the stored role profile is unrecognised, never the learner set"
+  ```
+
+- **Corpus:** the 37 at-risk cases from §4 plus `EDU-QZ-01/02/03/05/06` and the
+  two cases that read the touched surface (`EDU-ST-02`, `EDU-ST-04`) — 44 spec
+  files, **70 passed / 0 failed**, every tenant freshly seeded. The first
+  attempt (gate on `GET /teacher/quizzes`) failed 3 of them (`AUT-19`, `SEC-05`,
+  `EDU-QZ-06`); after moving the gate to the stats read, 0. A second run without
+  re-seeding failed 7 state-dependent MGR/SEC cases (role/seat mutations), which
+  is the documented "one tenant per attempt" rule, not the app. Run as:
+
+  ```bash
+  bun run env:run -- bun scripts/qa-tenant.ts --all --run phase8
+  bun run env:run -- bun run test:qa <the 44 spec files> --workers=1
+  ```
+
+- **Checklists:** [extendability.md](extendability.md) carries the adding and
+  retiring steps (code/data/both per line) and the "steps that are still code"
+  table. The steps that remain code: the `ENTITLEMENTS` entry, the surface call
+  and its UI copy, the dev-only plan rows in `supabase/seeds/00_plans.sql`
+  (the seed `DELETE`s `plan_entitlements` and re-inserts a hard-coded list, so a
+  `db reset` drops a migration-added plan row; production `db push` is
+  unaffected), and removing the TS constant with the catalog row at retirement.

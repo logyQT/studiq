@@ -1,0 +1,11 @@
+{
+  "profile": "content",
+  "members": [
+    { "key": "manager", "accountType": "manager", "orgRole": "admin" },
+    { "key": "teacher", "accountType": "educator", "orgRole": "teacher" },
+    { "key": "teacher2", "accountType": "educator", "orgRole": "teacher" },
+    { "key": "student", "accountType": "student", "orgRole": "member" }
+  ],
+  "groups": ["G1", "G2"],
+  "groupTeachers": { "teacher": ["G1"], "teacher2": ["G2"] }
+}

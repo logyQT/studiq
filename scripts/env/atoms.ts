@@ -160,7 +160,7 @@ export const USAGE = [
   '',
   `Profiles: ${PROFILE_NAMES.join(', ')} (web/qa/e2e build and serve; qa/e2e seed).`,
   '',
-  'Atoms: --db --rest --auth --storage --studio --mail --realtime --functions --analytics',
+  'Atoms: --db --rest --auth --storage --studio --mail --functions --analytics',
   '       --seed --no-seed --web --build --force-build --prod',
   '       --runtime <native|docker> --stack <name> --app-port <n> --wait <s>',
   '       --app <web|admin> --no-slot --no-lock',

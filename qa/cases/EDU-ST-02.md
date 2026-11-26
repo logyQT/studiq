@@ -65,3 +65,7 @@ Po kilku próbach quizów/fiszek studenta SC.
 - The three links sit at the bottom of the page and open `/edu/stats/quizzes`
   („Statystyki testów”), `/edu/flashcards/stats` („Statystyki fiszek”) and
   `/edu/statistics` („Pytania według typu”).
+- Each problematic question is a link on `/edu/stats/results`, `/edu/statistics`
+  and the `/edu` card (#654). It opens the question's bank with the start of the
+  question as the `search` parameter, and the search box holds that text. The spec
+  also checks that the `/edu` group chart shows its whole „100%” tick.

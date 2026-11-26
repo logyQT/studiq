@@ -43,51 +43,67 @@ async function login(page: Page, email: string) {
   await waitForDashboardArea(page);
 }
 
+/**
+ * A run that opened two hours ago, built through the API the way the Classroom teacher would. A
+ * start two hours back is what makes the run live, and it leaves room for a past deadline that is
+ * still after the start: the case the live rule decides, not the window rule. `onCreated` reports
+ * the id as soon as it exists, so the caller can clean up even when a later step fails.
+ */
+async function publishLiveRun(
+  page: Page,
+  title: string,
+  onCreated: (assignmentId: string) => void,
+): Promise<{ assignmentId: string; questionId: string }> {
+  const questionsRes = await page.request.get('/api/v1/questions');
+  expect(questionsRes.ok()).toBeTruthy();
+  const { data: questions } = await json<{ data?: Array<{ id: string }> }>(questionsRes);
+  const questionId = questions?.[0]?.id;
+  if (!questionId) throw new Error('The Classroom seed must contain a question');
+
+  const createRes = await page.request.post('/api/v1/teacher/assignments', {
+    data: { title, showResults: true },
+  });
+  expect(createRes.ok()).toBeTruthy();
+  const assignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
+  onCreated(assignmentId);
+
+  expect(
+    (
+      await page.request.post(`/api/v1/teacher/assignments/${assignmentId}/questions`, {
+        data: { questionIds: [questionId] },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  expect(
+    (
+      await page.request.put(`/api/v1/teacher/assignments/${assignmentId}/targets`, {
+        data: { studentIds: [STUDENT_ID] },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const published = await page.request.post(`/api/v1/teacher/assignments/${assignmentId}/publish`, {
+    data: { deadline: inHours(48), startTime: inHours(-2) },
+  });
+  expect(published.ok(), `publish -> ${published.status()}`).toBeTruthy();
+  return { assignmentId, questionId };
+}
+
 test.describe('a live assessment deadline may move, but not end the run (#1191)', () => {
   test('the field refuses a past close, a future shrink saves, and Close ends the run', async ({
     page,
     browser,
     baseURL,
   }) => {
-    let assignmentId: string | null = null;
+    const created: { id: string | null } = { id: null };
     const studentContext = await browser.newContext({ baseURL });
 
     try {
       await login(page, TEACHER_EMAIL);
 
-      const questionsRes = await page.request.get('/api/v1/questions');
-      expect(questionsRes.ok()).toBeTruthy();
-      const { data: questions } = await json<{ data?: Array<{ id: string }> }>(questionsRes);
-      const questionId = questions?.[0]?.id;
-      if (!questionId) throw new Error('The Classroom seed must contain a question');
-
-      const createRes = await page.request.post('/api/v1/teacher/assignments', {
-        data: { title: `E2E live deadline #1191 ${Date.now()}`, showResults: true },
+      const run = await publishLiveRun(page, `E2E live deadline #1191 ${Date.now()}`, (id) => {
+        created.id = id;
       });
-      expect(createRes.ok()).toBeTruthy();
-      assignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
-
-      expect(
-        (
-          await page.request.post(`/api/v1/teacher/assignments/${assignmentId}/questions`, {
-            data: { questionIds: [questionId] },
-          })
-        ).ok(),
-      ).toBeTruthy();
-      expect(
-        (
-          await page.request.put(`/api/v1/teacher/assignments/${assignmentId}/targets`, {
-            data: { studentIds: [STUDENT_ID] },
-          })
-        ).ok(),
-      ).toBeTruthy();
-      // A start two hours back is what makes the run live, and it leaves room for a past deadline
-      // that is still after the start — the case the live rule decides, not the window rule.
-      const published = await page.request.post(
-        `/api/v1/teacher/assignments/${assignmentId}/publish`,
-        { data: { deadline: inHours(48), startTime: inHours(-2) } },
-      );
-      expect(published.ok(), `publish -> ${published.status()}`).toBeTruthy();
+      const { assignmentId, questionId } = run;
 
       const studentPage = await studentContext.newPage();
       await login(studentPage, STUDENT_EMAIL);
@@ -154,12 +170,60 @@ test.describe('a live assessment deadline may move, but not end the run (#1191)'
       expect((await closed).status()).toBe(200);
       expect(await sealed(), 'the close releases the item').toBe(200);
     } finally {
-      if (assignmentId) {
+      if (created.id) {
         await page.request
-          .delete(`/api/v1/teacher/assignments/${assignmentId}`)
+          .delete(`/api/v1/teacher/assignments/${created.id}`)
           .catch(() => undefined);
       }
       await studentContext.close();
+    }
+  });
+
+  test('the sampling rules are frozen on a live run, and the rest still saves (#1300)', async ({
+    page,
+  }) => {
+    const created: { id: string | null } = { id: null };
+    try {
+      await login(page, TEACHER_EMAIL, /\/edu/);
+      const run = await publishLiveRun(page, `E2E frozen sampling #1300 ${Date.now()}`, (id) => {
+        created.id = id;
+      });
+
+      await page.goto(`/edu/assignments/${run.assignmentId}/edit`);
+      // No control that always refuses: the three frozen rules are disabled and say why.
+      await expect(page.getByLabel(t('EduAssignmentForm.attempt_item_count'))).toBeDisabled();
+      await expect(
+        page.getByRole('switch', { name: t('EduAssignmentForm.same_item_retake') }),
+      ).toBeDisabled();
+      await expect(
+        page.getByRole('switch', { name: t('EduAssignmentForm.unseen_only') }),
+      ).toBeDisabled();
+      await expect(
+        page.getByText(t('EduAssignmentForm.sampling_frozen_started')).first(),
+      ).toBeVisible();
+
+      // The form re-sends the stored sampling values on every save; that is not a change.
+      const saved = page.waitForResponse(
+        (res) =>
+          res.request().method() === 'PUT' &&
+          new URL(res.url()).pathname === `/api/v1/teacher/assignments/${run.assignmentId}`,
+      );
+      await page.getByLabel(t('EduAssignmentForm.title_field')).fill(`Renamed #1300 ${Date.now()}`);
+      await page.getByRole('button', { name: t('EduAssignmentForm.save_changes') }).click();
+      expect((await saved).status()).toBe(200);
+
+      // The server holds the rule on its own: a change to a frozen field is refused.
+      const refused = await page.request.put(`/api/v1/teacher/assignments/${run.assignmentId}`, {
+        data: { attemptItemCount: 5 },
+      });
+      expect(refused.status()).toBe(409);
+      expect(refused.headers()['x-error-code']).toBe('ASSESSMENT_LIVE');
+    } finally {
+      if (created.id) {
+        await page.request
+          .delete(`/api/v1/teacher/assignments/${created.id}`)
+          .catch(() => undefined);
+      }
     }
   });
 });

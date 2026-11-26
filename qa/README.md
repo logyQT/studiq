@@ -24,7 +24,7 @@ qa/
   README.md        this file
   AGENT-PROMPT.md  the copy-paste agent prompt
   context.md       global rules: accounts, org+seed data, plans, priorities, defect template (PL, verbatim)
-  index.md         all 192 scenarios: ID | Prio | Title | Prereqs | Module
+  index.md         all 193 scenarios: ID | Prio | Title | Prereqs | Module
   cases/<ID>.md    one scenario per file, steps verbatim (PL) + embedded prerequisite context
   source/          the original .docx (archival — the cases above are the corpus)
 ```
@@ -144,7 +144,8 @@ bun run env:run -- bun run test:qa __tests__/qa/STU/STU-21.spec.ts  # run it
 `env:run` exports the stack contract (`NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`)
 and sets `QA_APP_URL` to this checkout's app. A raw `bunx playwright` gets
-neither: it has no `QA_APP_URL` and falls back to the shared `:3010` app, while a
+neither: outside CI it fails fast (`QA_APP_URL is not set and there is no
+qa/env.json pointer`) instead of silently exercising the shared `:3010` app, and a
 spec that reads the database fails loudly (`qa-db: no Supabase URL`). The case
 skill's Commands block has the same sequence with the per-case reseed.
 

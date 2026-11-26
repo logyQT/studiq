@@ -24,10 +24,11 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ContinueCard } from '@/components/app/dashboard/continue-card';
 import { DueProgressCard } from '@/components/app/dashboard/due-progress-card';
 import { RecentActivityCard } from '@/components/app/dashboard/recent-activity-card';
+import { TodayDate } from '@/components/app/dashboard/today-date';
 import { UpcomingAssignmentsCard } from '@/components/app/dashboard/upcoming-assignments-card';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -86,16 +87,6 @@ export default function AppOverviewPage() {
     staleTime: 0,
   });
 
-  const todayStr = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-      }).format(new Date()),
-    [locale],
-  );
-
   // `user_metadata` is an untyped Supabase map; `name` must be narrowed.
   const rawName: unknown = user?.user_metadata.name;
   const fullName = typeof rawName === 'string' ? rawName : '';
@@ -106,9 +97,7 @@ export default function AppOverviewPage() {
       <OnboardingChecklist />
 
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          {todayStr}
-        </p>
+        <TodayDate locale={locale} />
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">

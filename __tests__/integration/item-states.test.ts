@@ -292,6 +292,8 @@ describe('Item states and versioning (#1171)', () => {
     );
     const response = await addQuestionsPost(request, { params });
     expect(response.status).toBe(422);
+    // A code of its own, so the composer can say which refusal it is (#1185).
+    expect((await json<{ error?: string }>(response)).error).toBe('QUESTION_NOT_OPEN');
   });
 
   it('hides a deleted item from authoring and practice, and keeps the versioned row', async () => {
@@ -434,7 +436,8 @@ describe('Item states and versioning (#1171)', () => {
         { active_org_id: teacher.orgId ?? '' },
       ),
     );
-    expect(createRes.status, await createRes.text()).toBe(422);
+    expect(createRes.status, await createRes.clone().text()).toBe(422);
+    expect((await json<{ error?: string }>(createRes)).error).toBe('QUESTION_NOT_OPEN');
 
     const fromQuizParams = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/quizzes/${quizId}/create-assignment`,
@@ -445,7 +448,8 @@ describe('Item states and versioning (#1171)', () => {
     const fromQuizRes = await createAssignmentFromQuiz(fromQuizParams.request, {
       params: fromQuizParams.params,
     });
-    expect(fromQuizRes.status, await fromQuizRes.text()).toBe(422);
+    expect(fromQuizRes.status, await fromQuizRes.clone().text()).toBe(422);
+    expect((await json<{ error?: string }>(fromQuizRes)).error).toBe('QUESTION_NOT_OPEN');
 
     const { count } = await service
       .from('teacher_assignments')

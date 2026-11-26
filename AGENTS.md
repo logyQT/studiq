@@ -147,6 +147,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
 | `bun run pr:size` | `scripts/pr-triage.ts` — reviewable line count (committed changes only) vs `origin/main`, with tests, Markdown docs, generated files, the lockfile and vendored files excluded; `--json` for machines, `--limit` overrides the 400-line budget, `--enforce` exits 1 over it |
+| `bun run merge:queue` | `scripts/merge-queue.sh` — serialized landing for a strict up-to-date base: `once` / `daemon` / `run <pr>` / `status` over `.dev/merge-queue.txt`. Merges only when the branch rules' own required contexts are green, updates a `BEHIND` branch first, halts on the first conflict/failing check/draft/timeout, never uses `--admin`. The native GitHub merge queue is unavailable on a user-owned repo — [docs/ci.md](docs/ci.md#merging) |
 | `bun run flaky` | `scripts/flaky-report.ts` — flaky-test ledger over Playwright JSON reports (see [docs/ci.md](docs/ci.md#flaky-tests)). Agent contract: exit `0` clean, `1` flaky/failing, `2` bad usage, `3` no report found; stdout is the JSON verdict. `-- --text` for a table, `-- --runs N` for the last N `verify` runs via `gh`, `-- --summary` for the GitHub step summary CI writes |
 | `bun scripts/bench/cache-equality.ts` | ADR-0014 §5, re-runnable: cold vs seeded build equality (three production builds, ~90 s). Needs the stack up and `bun run env:down` first; `--json` for machines |
 
@@ -425,10 +426,15 @@ These scripts help devs (and agents) work with feature branches and isolated wor
 | `scripts/spin --list`                   | List all active worktrees and the base each one was cut from                                       |
 | `scripts/spin <branch> --clean`         | Remove worktree and delete branch; refuses when it has uncommitted changes                         |
 | `scripts/spin <branch> --clean --force` | Remove it even with uncommitted changes (git-ignored files are removed either way)                 |
-| `scripts/pr [title]`                    | Create a PR from current branch via `gh` CLI                                                       |
+| `scripts/pr [title]`                    | Push the current branch and open its PR. If the branch has an open PR, print its URL               |
 | `scripts/pr --base <branch>`            | Create the PR against a base other than `main`; the base must exist on `origin`                    |
 | `scripts/pr --draft`                    | Create a draft PR                                                                                  |
-| `scripts/pr --list`                     | List open PRs for this repo                                                                        |
+| `scripts/pr --body-file <file>`         | Read the PR body from a file (`-` reads stdin)                                                     |
+
+`scripts/pr` runs `git push -u` each time. When there are new commits, the
+pre-push hooks check them. If the push fails, it creates no PR. Without a title or `--body-file`,
+`gh pr create --fill` takes the missing text from the commits. The script does
+not run on `main`, and it rejects an option that it does not know.
 
 `scripts/spin` records the full base SHA in `<worktree>/.spin-base` (git-ignored).
 It is the branch's intended fork point even after `origin/main` moves; read it
@@ -456,6 +462,8 @@ scripts/pr
 # Clean up when merged
 scripts/spin feat/quiz-ui --clean
 ```
+
+**Stop a worktree's environment before removing the worktree.** A running web server outlives the directory and keeps its port. `scripts/spin <branch> --clean` does this itself; before `git worktree remove` or any other removal, run `bun run env:down --all --yes` inside the worktree (plain `bun run env:down` when it uses a shared stack). A named stack needs its own `--stack <name>` run.
 
 Each worktree gets its own branch and working directory. Agents must not run `next dev` (`env:dev` is human-only and OOMs under agents); to check the app in a browser, use `bun run env:build` + `bun run env:serve` (or `bun run env:ensure --profile web`) — builds are cheap and cached. The main checkout stays untouched. Worktrees are created directly in the repo's parent directory, one per branch with `/` flattened to `-`: `feat/quiz-ui` → `../feat-quiz-ui`. `SPIN_WORKTREE_ROOT=<absolute dir>` relocates that root (e.g. `/tmp/builds/feat-quiz-ui`), for a harness or operator that keeps checkouts elsewhere.
 
@@ -795,6 +803,14 @@ UI dashboards: `/manage`, `/edu`, `/app` are **auth-only** — a link is navigat
 - **Supabase `eq(col, null)` is not `IS NULL`** — `.eq('organization_id', ctx.activeOrgId)` with `activeOrgId === null` serialises to `organization_id=eq.null`, which Postgres rejects on a `uuid` column (`22P02`, surfacing as a 500 — #148). For NOT NULL org columns guard first (`if (!ctx.activeOrgId) return failure('FORBIDDEN')`); for nullable-org personal content apply the org filter only when set (`if (ctx.activeOrgId) query = query.eq(...)`), matching `accessibleFilter`'s `own` scope.
 - **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun lint's `oxc/no-barrel-file` rule enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `oxc/no-barrel-file` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — a hand-run root `bun check` must stay at zero errors; use the per-workspace scripts for app code.
+
+---
+
+## Writing Style
+
+Write all prose, comments, and replies in ASD-STE100 Simplified Technical English: use active voice, simple present tense, one word per meaning, and short literal sentences with no metaphors or filler.
+
+This rule applies to issues, PR bodies, review comments, commit bodies, docs, and agent replies. UI strings follow the i18n rules and the product voice.
 
 ---
 

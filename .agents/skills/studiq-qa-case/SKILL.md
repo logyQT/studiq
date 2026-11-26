@@ -417,7 +417,8 @@ bun run review:static -- --changed origin/main   # tautology rules on the diff
 run (172 tenants, a few seconds), so a full reseed needs no wrapper. A spec that
 reads the database (`createQaSupabase`) fails loudly without the contract —
 `qa-db: no Supabase URL` — while a spec run with a raw `bunx playwright` instead
-of `env:run` has no `QA_APP_URL` and falls back to the shared `:3010` app.
+of `env:run` has no `QA_APP_URL` and, outside CI, fails fast with an actionable
+message instead of falling back to the shared `:3010` app.
 
 If another checkout owns the app (many agents, one environment), you are a consumer: copy its
 `qa/env.json` (`bun run env:share --write` writes it there), set `SUPABASE_SHARED=1`, take the

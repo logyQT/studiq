@@ -138,16 +138,25 @@ git commit -m "feat: add new feature"
 git push -u origin feat/my-feature
 ```
 
-The `scripts/pr` script will auto-push the branch if it hasn't been pushed yet.
+`scripts/pr` pushes the current branch each time that you run it. When there are
+new commits, the pre-push hooks check them. If the push fails, the script creates
+no pull request. If the branch has an open pull request, the script prints its URL.
 
 #### Creating a pull request
 
 ```bash
-scripts/pr                          # auto-generate title from commits
+scripts/pr                          # title and body from the commits
 scripts/pr "fix: resolve login bug" # custom title
+scripts/pr --body-file body.md      # body from a file ("-" reads stdin)
+scripts/pr --base feat/parent       # base branch other than main
 scripts/pr --draft                  # create as draft
-scripts/pr --list                   # list open PRs
-scripts/pr --view                   # open PR in browser
+```
+
+To list or open pull requests, use `gh`:
+
+```bash
+gh pr list                          # list open PRs
+gh pr view --web                    # open the PR of this branch in the browser
 ```
 
 #### Full agent workflow (start to finish)
@@ -207,8 +216,8 @@ keys set up.
 
 #### `gh pr create` fails with "could not determine base repository"
 
-Make sure you are inside the git repository (or a worktree). The `scripts/pr` script
-runs `git rev-parse --show-toplevel` to find the repo root.
+Make sure you are inside the git repository (or a worktree). `scripts/pr` stops if
+you run it outside a git repository.
 
 #### Agent cannot push to a fork
 
@@ -661,7 +670,7 @@ Run the deterministic gates locally before pushing: `bun run lint`,
 | `bun lint:all`                          | Type-check + lint                                                                |
 | `bun run review:static`                 | Ast-grep tautology rules + rule tests (+ oxlint unless `--rules-only`)           |
 | `gh auth status`                        | Check GitHub CLI authentication                                                  |
-| `scripts/pr`                            | Create a PR from current branch via `gh`                                         |
+| `scripts/pr`                            | Push the current branch and open its PR via `gh`                                 |
 | `scripts/spin <branch>`                 | Create worktree + branch for isolated work                                       |
 
 > `bun run env:supa status|list|db …` targets this branch's **default** stack

@@ -28,7 +28,6 @@ export const CAPABILITY_ATOMS = [
   'storage',
   'studio',
   'mail',
-  'realtime',
   'functions',
   'analytics',
 ] as const;
@@ -41,7 +40,6 @@ const ATOM_CAPABILITY: Record<CapabilityAtom, Capability> = {
   storage: 'storage',
   studio: 'studio',
   mail: 'mail',
-  realtime: 'realtime',
   functions: 'functions',
   analytics: 'analytics',
 };
@@ -71,7 +69,8 @@ export const PROFILES: Record<ProfileName, ProfileSpec> = {
 
 // The lean stack never starts realtime/functions/analytics/pooler; they stay in
 // the capability union so `-x` always excludes them unless an atom requests one
-// (`--realtime`/`--functions`/`--analytics`).
+// (`--functions`/`--analytics`). Realtime has no atom: `[realtime] enabled =
+// false` in config.toml means the CLI will not start it.
 const EXCLUDE_ORDER: readonly Capability[] = [
   'rest',
   'studio',

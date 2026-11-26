@@ -117,6 +117,8 @@ export interface AttemptScore {
   total_points?: number | null;
   /** Questions that can be auto-graded (`type !== 'open'`) — the practice denominator (#329). */
   gradable_questions: number;
+  /** Durable assignment marker; `assignment_id` is nulled when the assignment is deleted. */
+  is_assignment_attempt: boolean;
   /** Non-null only on assignment attempts, which stay teacher-graded in points. */
   assignment_id: string | null;
 }
@@ -134,23 +136,30 @@ export type AttemptScoreDisplay =
  * review headline (#321/#329/#619):
  *
  * - a withheld score is `hidden` — never a fabricated 0 % (#374);
+ * - an assignment attempt is told apart by the durable `is_assignment_attempt`
+ *   marker, never by `assignment_id`, which is nulled when the assignment is
+ *   deleted (#1141, #657). Such an orphan has no `show_results` left to honour,
+ *   so it is `hidden` rather than scored as a practice quiz;
  * - assignment attempts are scored against `total_points` (teacher grading);
  * - practice quizzes against their closed-question count, so open answers never
  *   enter the denominator; with no closed question there is nothing to grade and
  *   the attempt is a `self_check` instead of `0 %`.
  *
  * `Math.max(..., 1)` keeps a 0-point assignment attempt from producing
- * `NaN`/`Infinity`. A genuine zero still renders `0%`.
+ * `NaN`/`Infinity`. A genuine zero still renders `0%`, and the result is clamped
+ * so a bad denominator can never render more than `100%`.
  */
 export function attemptScoreDisplay(attempt: AttemptScore): AttemptScoreDisplay {
   if (attempt.score === null) return { kind: 'hidden' };
+  if (attempt.is_assignment_attempt && attempt.assignment_id === null) return { kind: 'hidden' };
 
-  const total = attempt.assignment_id
+  const total = attempt.is_assignment_attempt
     ? Math.max(attempt.total_points ?? attempt.total_questions, 1)
     : attempt.gradable_questions;
   if (total <= 0) return { kind: 'self_check' };
 
-  return { kind: 'percent', percentage: Math.round((attempt.score / total) * 100) };
+  const percentage = Math.round((attempt.score / total) * 100);
+  return { kind: 'percent', percentage: Math.min(100, Math.max(0, percentage)) };
 }
 
 /** `—` for a missing value, else `NN%` — shared by the stats cards and dashboard. */

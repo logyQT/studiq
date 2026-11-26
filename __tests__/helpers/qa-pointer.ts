@@ -5,9 +5,10 @@ import { join } from 'node:path';
  * The QA pointer a consumer worktree reads (`qa/env.json`).
  *
  * The owning checkout writes it with `bun run env:share --write`; it carries
- * URLs only — the service-role key stays in each checkout's `.env.local`. Absent
- * or malformed is normal for a single-checkout run, so every reader degrades to
- * `process.env` and then to the documented local default.
+ * URLs only — the service-role key stays in each checkout's `.env.local`. Absent,
+ * malformed or not a JSON object reads as no pointer, so the caller decides what
+ * comes next: `QA_APP_URL` first, then this pointer (`resolveQaAppUrl`), and
+ * outside CI there is no default at all.
  */
 export interface QaPointerFile {
   appUrl?: string;
@@ -40,7 +41,52 @@ export function readQaPointer(root = process.cwd()): QaPointerFile | null {
   };
 }
 
-/** The app a QA run talks to: explicit env, then the pointer, then the local default. */
-export function qaAppUrl(root = process.cwd()): string {
-  return process.env.QA_APP_URL ?? readQaPointer(root)?.appUrl ?? 'http://localhost:3010';
+/** The shared QA app, which the env tool deliberately never leases. */
+const SHARED_QA_APP_URL = 'http://localhost:3010';
+
+/**
+ * Many tools export `CI=false` or `CI=0` on a developer box, so presence is not a signal: only
+ * an affirmative value counts, and it is trimmed and compared case-insensitively.
+ */
+export function isCi(env: NodeJS.ProcessEnv): boolean {
+  const value = env.CI?.trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
+/**
+ * The app a QA run was told to talk to, or `null` when nobody told it (#1286): an explicit
+ * `QA_APP_URL`, then the pointer `env:share` wrote. CI exports `QA_APP_URL` and `CI` itself, so
+ * there the shared app is the right default; anywhere else `:3010` is another checkout's app and
+ * must never be a silent one. An empty `QA_APP_URL=` (the env schema declares the key optional)
+ * is "not set".
+ *
+ * Never throws, so it is safe where a config is merely loaded (listing, knip's Playwright plugin).
+ */
+export function resolveQaAppUrl(
+  root = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const url = env.QA_APP_URL || readQaPointer(root)?.appUrl;
+  if (url) return url;
+  return isCi(env) ? SHARED_QA_APP_URL : null;
+}
+
+/**
+ * The app a QA run talks to, or an actionable error: a bare `bunx playwright test` would
+ * otherwise silently exercise the shared `:3010` app, or hang on a port with nothing behind it.
+ * Reaching the shared app on purpose takes `QA_APP_URL=http://localhost:3010`.
+ */
+export function qaAppUrl(root = process.cwd(), env: NodeJS.ProcessEnv = process.env): string {
+  const url = resolveQaAppUrl(root, env);
+  if (url) return url;
+  throw new Error(
+    [
+      'QA_APP_URL is not set and there is no qa/env.json pointer: this run would silently hit',
+      `the shared QA app on ${SHARED_QA_APP_URL}, which is another checkout's app.`,
+      "Run it through the wrapper, which sets QA_APP_URL to this checkout's app:",
+      '  bun run env:run -- bun run test:qa <spec>',
+      'or set QA_APP_URL yourself, or write the pointer with `bun run env:share --write`.',
+      `To target the shared app on purpose, set QA_APP_URL=${SHARED_QA_APP_URL}.`,
+    ].join('\n'),
+  );
 }

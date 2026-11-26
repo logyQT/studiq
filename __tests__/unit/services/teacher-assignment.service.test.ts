@@ -161,6 +161,18 @@ function frozen(id: string, content = 'What?') {
   return { id, content, type: 'mcq', question_answers: [] };
 }
 
+/** Links whose snapshot type is `open` for an `open-*` id and `mcq` otherwise (#1295). */
+const typed = (ids: string[]) =>
+  ids.map((id, index) => ({
+    question_id: id,
+    order_index: index,
+    points: 1,
+    taught_item: false,
+    snapshot: { ...frozen(id), type: id.startsWith('open') ? 'open' : 'mcq' },
+    snapshot_version: 1,
+  }));
+const typeOfId = (id: string) => (id.startsWith('open') ? 'open' : 'mcq');
+
 /** The `assignment_questions` rows `readAssignmentSnapshots` reads for a set of ids. */
 function snapshotRows(ids: string[]) {
   return chain(ids.map((id) => ({ question_id: id, snapshot: frozen(id), snapshot_version: 1 })));
@@ -226,8 +238,22 @@ const ctx: RequestContext = {
   activeOrgId: orgId,
   orgRoleId: 'role-id',
   groupIds: [],
+  groupRoles: {},
   permissionScopes: {},
 };
+
+/** A caller whose role holds `assignment.read` at `group` (the seeded Teacher, D29). */
+function withGroupScope(
+  groupRoles: RequestContext['groupRoles'],
+  groupIds: string[] = Object.keys(groupRoles),
+): RequestContext {
+  return {
+    ...ctx,
+    groupIds,
+    groupRoles,
+    permissionScopes: { 'assignment.read': 'group', 'assignment.update': 'own' },
+  };
+}
 
 function withOrgScope(): RequestContext {
   return {
@@ -281,6 +307,16 @@ describe('TeacherAssignmentService', () => {
     service = new TeacherAssignmentService(() => Promise.resolve(mock));
   });
 
+  /** Ownership, then the one read that decides the freeze, then whatever the write returns. */
+  function mockRun(row: Record<string, unknown>, written: Record<string, unknown> = {}) {
+    const write = chain({ id: assignmentId, ...written });
+    mock.from
+      .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+      .mockReturnValueOnce(chain(row))
+      .mockReturnValue(write);
+    return write;
+  }
+
   describe('create', () => {
     it('creates an assignment successfully', async () => {
       const dbRow = { id: assignmentId, title: 'Quiz 1', organization_id: orgId };
@@ -311,6 +347,29 @@ describe('TeacherAssignmentService', () => {
       if (result.success) {
         expect(result.data).toEqual(dbRow);
       }
+    });
+
+    it('refuses a quiz copy whose item is retired or deleted with a code of its own (#1171, #1185)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', order_index: 0, points: 1 }]))
+        .mockReturnValueOnce(chain([])) // the item is no longer open
+        .mockReturnValue(chain({ id: assignmentId }));
+
+      const result = await service.create(
+        {
+          title: 'From a quiz',
+          shuffleQuestions: true,
+          shuffleAnswers: false,
+          showResults: false,
+          maxAttempts: 1,
+          quizId: 'quiz-1',
+        },
+        ctx,
+      );
+
+      expect(result).toEqual({ success: false, error: 'QUESTION_NOT_OPEN' });
+      // The quiz rows and the open-items check only: nothing was created.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns FORBIDDEN without an active org and never queries (row 11b)', async () => {
@@ -475,6 +534,173 @@ describe('TeacherAssignmentService', () => {
       expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
     });
 
+    it('widens a group-scope read to the runs authored or targeting a taught class', async () => {
+      const authoredRows = [
+        {
+          id: 'a-authored',
+          title: 'Mine',
+          created_by: userId,
+          organization_id: orgId,
+          created_at: '2026-01-02T00:00:00.000Z',
+        },
+      ];
+      const targetedRows = [
+        {
+          id: 'a-targeted',
+          title: 'Colleague',
+          created_by: 'colleague',
+          organization_id: orgId,
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+      ];
+      const targets = chain([{ assignment_id: 'a-targeted' }]);
+      const authoredChain = chain(authoredRows);
+      const targetedChain = chain(targetedRows);
+      mock.from
+        .mockReturnValueOnce(targets)
+        .mockReturnValueOnce(authoredChain)
+        .mockReturnValueOnce(targetedChain);
+
+      const result = await service.list(withGroupScope({ 'g-taught': 'teacher' }));
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual([...authoredRows, ...targetedRows]);
+      // The taught class's runs are resolved from the target table, then merged with
+      // the caller's authored runs inside the active org.
+      expect(targets.in).toHaveBeenCalledWith('group_id', ['g-taught']);
+      expect(authoredChain.eq).toHaveBeenCalledWith('organization_id', orgId);
+      expect(authoredChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(targetedChain.eq).toHaveBeenCalledWith('organization_id', orgId);
+      expect(targetedChain.in).toHaveBeenCalledWith('id', ['a-targeted']);
+      // The org conjunct stays: the group arm lives inside the active org.
+    });
+
+    it('fetches targeted runs in URL-sized batches and merges them by id', async () => {
+      const targetedIds = Array.from({ length: 250 }, (_, index) => `a${index}`);
+      const targetedRows = targetedIds.map((id, index) => ({
+        id,
+        title: `Colleague ${id}`,
+        created_by: 'colleague',
+        organization_id: orgId,
+        created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      }));
+      const authoredOnly = {
+        id: 'authored-only',
+        title: 'Mine',
+        created_by: userId,
+        organization_id: orgId,
+        created_at: '2027-01-01T00:00:00.000Z',
+      };
+      // `a5` arrives in both arms: authored here, targeted in the colleague's rows. The
+      // merge must return it once, from the targeted arm (fetched last).
+      const a5 = targetedRows[5];
+      if (!a5) throw new Error('expected a5 in the targeted rows');
+      const authoredRows = [
+        authoredOnly,
+        { ...a5, created_by: userId, created_at: '2026-06-01T00:00:00.000Z' },
+      ];
+
+      const chunks: string[][] = [];
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'assignment_targets') {
+          return chain(targetedIds.map((assignment_id) => ({ assignment_id })));
+        }
+        let ids: Set<string> | null = null;
+        let author: string | null = null;
+        const rowChain = chain([...authoredRows, ...targetedRows]);
+        rowChain.eq = vi.fn((column: string, value: unknown) => {
+          if (column === 'created_by') author = String(value);
+          return rowChain;
+        });
+        rowChain.in = vi.fn((column: string, values: unknown) => {
+          const idArgument = Array.isArray(values)
+            ? values.filter((value): value is string => typeof value === 'string')
+            : [];
+          chunks.push(idArgument);
+          ids = new Set(idArgument);
+          return rowChain;
+        });
+        rowChain.then = ((onFulfilled, onRejected) =>
+          Promise.resolve({
+            data: [...authoredRows, ...targetedRows].filter(
+              (row) =>
+                (ids === null || ids.has(row.id)) && (author === null || row.created_by === author),
+            ),
+            error: null,
+          }).then(onFulfilled, onRejected)) as QueryChain['then'];
+        return rowChain;
+      });
+
+      const result = await service.list(withGroupScope({ 'g-taught': 'teacher' }));
+
+      expect(result.success).toBe(true);
+      const fetchCount = mock.from.mock.calls.filter(([table]) => table === 'teacher_assignments');
+      expect(fetchCount.length, 'authored arm plus one fetch per chunk').toBeGreaterThan(1);
+      expect(chunks.length, 'the id list is split').toBeGreaterThan(1);
+      for (const ids of chunks) expect(ids.length).toBeLessThanOrEqual(200);
+
+      const merged = result.success ? asJson<Array<{ id: string }>>(result.data) : [];
+      const ids = merged.map((row) => row.id);
+      expect(ids).toHaveLength(new Set(ids).size);
+      expect(new Set(ids)).toEqual(new Set([...targetedIds, authoredOnly.id]));
+
+      const expected = new Map(authoredRows.map((row) => [row.id, row]));
+      for (const row of targetedRows) expected.set(row.id, row);
+      expect(ids).toEqual(
+        [...expected.values()]
+          .toSorted((a, b) => b.created_at.localeCompare(a.created_at))
+          .map((row) => row.id),
+      );
+    });
+
+    it('falls back to the author filter when the caller teaches no class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list(withGroupScope({}, []));
+
+      expect(result.success).toBe(true);
+      // Nothing taught: no target query, no `id.in.()` arm, just their own runs.
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('keeps an own-scope caller on the author filter even when they teach a class', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      const result = await service.list({
+        ...ctx,
+        groupIds: ['g-taught'],
+        groupRoles: { 'g-taught': 'teacher' },
+        permissionScopes: { 'assignment.read': 'own' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mock.from.mock.calls.map(([table]: [string]) => table)).toEqual([
+        'teacher_assignments',
+      ]);
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+      expect(listChain.or).not.toHaveBeenCalled();
+    });
+
+    it('does not widen to a class the caller is merely a member of', async () => {
+      const listChain = chain(listRows);
+      mock.from.mockReturnValue(listChain);
+
+      // `ctx.groupIds` contains the class — the membership is real — but the
+      // caller is its `member`, not its teacher (ADR-0015 §4.3).
+      const result = await service.list(withGroupScope({ 'g-member': 'member' }, ['g-member']));
+
+      expect(result.success).toBe(true);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_targets');
+      expect(listChain.or).not.toHaveBeenCalled();
+      expect(listChain.eq).toHaveBeenCalledWith('created_by', userId);
+    });
+
     it('returns empty array when no assignments', async () => {
       mock.from.mockReturnValue(chain([]));
 
@@ -485,13 +711,7 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns INTERNAL_SERVER on DB error', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn(() => ({
-          order: vi.fn(() => ({
-            eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          })),
-        })),
-      });
+      mock.from.mockReturnValue(failingChain({ code: 'XX000', message: 'DB error' }));
 
       const result = await service.list(ctx);
 
@@ -573,6 +793,102 @@ describe('TeacherAssignmentService', () => {
         const result = await service.update(assignmentId, { unseenOnly: true }, ctx);
 
         expect(result.success).toBe(true);
+      });
+    });
+
+    describe('sampling rules frozen at publish (#1300)', () => {
+      const stored = {
+        unseen_only: false,
+        allow_same_item_retake: false,
+        attempt_item_count: 2,
+      };
+
+      it.each([
+        ['the unseen-only mode', { unseenOnly: true }],
+        ['the same-item retake flag', { allowSameItemRetake: true }],
+        ['the item count', { attemptItemCount: 5 }],
+        ['the item count back to the whole pool', { attemptItemCount: null }],
+      ])('refuses to change %s on a published run', async (_label, patch) => {
+        mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(assignmentId, patch, ctx);
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+        // Ownership and the one read only: the refused edit never reaches the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('refuses when only one of several sampling fields changes', async () => {
+        mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          { title: 'T', unseenOnly: false, allowSameItemRetake: true, attemptItemCount: 2 },
+          ctx,
+        );
+
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toBe('ASSESSMENT_LIVE');
+      });
+
+      it('accepts a save that re-sends every stored sampling value', async () => {
+        const write = mockRun({ status: 'published', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          {
+            title: 'New title',
+            unseenOnly: false,
+            allowSameItemRetake: false,
+            attemptItemCount: 2,
+          },
+          ctx,
+        );
+
+        expect(result.success).toBe(true);
+        expect(write.update).toHaveBeenCalled();
+      });
+
+      it('accepts re-sending the whole pool (a stored null count)', async () => {
+        mockRun({ status: 'published', ...stored, attempt_item_count: null });
+
+        const result = await service.update(assignmentId, { attemptItemCount: null }, ctx);
+
+        expect(result.success).toBe(true);
+      });
+
+      it('does not read the run for a save that names no sampling field', async () => {
+        mock.from
+          .mockReturnValueOnce(
+            chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+          )
+          .mockReturnValue(chain({ id: assignmentId, title: 'T' }));
+
+        const result = await service.update(assignmentId, { title: 'T' }, ctx);
+
+        expect(result.success).toBe(true);
+        // Ownership, then straight to the write.
+        expect(mock.from).toHaveBeenCalledTimes(2);
+      });
+
+      it('lets a draft change every sampling rule, including clearing the count', async () => {
+        const write = mockRun({ status: 'draft', ...stored });
+
+        const result = await service.update(
+          assignmentId,
+          { unseenOnly: true, allowSameItemRetake: true, attemptItemCount: null },
+          ctx,
+        );
+
+        expect(result.success).toBe(true);
+        expect(write.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            unseen_only: true,
+            allow_same_item_retake: true,
+            attempt_item_count: null,
+          }),
+        );
       });
     });
 
@@ -877,6 +1193,23 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 2 });
+    });
+
+    it('refuses a retired or deleted question with a code of its own (#1171, #1185)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain({ status: 'draft' })) // not live
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1' }])) // q-2 is no longer open
+        .mockReturnValue(chain(null));
+
+      const result = await service.addQuestions(assignmentId, { questionIds: ['q-1', 'q-2'] }, ctx);
+
+      expect(result).toEqual({ success: false, error: 'QUESTION_NOT_OPEN' });
+      // Ownership, status, existing links and the open-items check: nothing was written.
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('skips already-added questions', async () => {
@@ -3332,6 +3665,20 @@ describe('TeacherAssignmentService', () => {
       return asJson<AttemptPayload>(result.data).questions.map((question) => question.id);
     }
 
+    /** The ids a second attempt (a retake) of `assignmentOverride` was served. */
+    async function retakeIds(assignmentOverride: Record<string, unknown>): Promise<string[]> {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, max_attempts: 2, ...assignmentOverride }))
+        .mockReturnValueOnce(chain([{ id: 'a-1', completed_at: '2026-11-01T00:00:00Z' }]))
+        .mockReturnValueOnce(chain({ id: 'attempt-2' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) return [];
+      return asJson<AttemptPayload>(result.data).questions.map((question) => question.id);
+    }
+
     // The model change (#1172 revisited): exposure is information, not a default exclusion. A
     // student who studied must still be served the item on a **first** attempt.
     describe('unseen_only', () => {
@@ -3417,6 +3764,86 @@ describe('TeacherAssignmentService', () => {
         if (result.success) {
           expect(asJson<AttemptPayload>(result.data).questions.map((q) => q.id)).toEqual(['q-2']);
         }
+      });
+    });
+
+    // #1295: a subset is stratified by item type, on the pool the retake rule leaves eligible.
+    describe('type-balanced samples (#1295)', () => {
+      const ATTEMPTS = 15;
+
+      beforeEach(() => {
+        attemptHistoryState.served = new Set();
+        attemptHistoryState.seen = new Set();
+        attemptHistoryState.exposed = new Set();
+      });
+
+      it('gives every student the pool mix on a first attempt', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+
+        // A plain random slice of 4 from 4 + 4 is 2 + 2 only about half the time; fifteen
+        // attempts in a row are the pool mix by construction.
+        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+          const ids = await servedIds({ attempt_item_count: 4 });
+          expect(
+            ids.filter((id) => typeOfId(id) === 'open'),
+            ids.join(),
+          ).toHaveLength(2);
+          expect(
+            ids.filter((id) => typeOfId(id) === 'mcq'),
+            ids.join(),
+          ).toHaveLength(2);
+        }
+      });
+
+      it('keeps a retake disjoint from the served items and balanced on what is left', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+        const served = new Set(['q-1', 'q-2', 'open-1', 'open-2']);
+        attemptHistoryState.served = served;
+        attemptHistoryState.seen = served;
+
+        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+          const ids = await retakeIds({ attempt_item_count: 2 });
+          expect(
+            ids.filter((id) => served.has(id)),
+            'a fresh sample is disjoint',
+          ).toEqual([]);
+          // What is left is q-3, q-4, open-3 and open-4: one of each type.
+          expect(ids.map(typeOfId).toSorted()).toEqual(['mcq', 'open']);
+        }
+      });
+
+      it('follows the mix of the eligible pool, not of the original one, on a retake', async () => {
+        linkRows.rows = typed(['q-1', 'q-2', 'q-3', 'q-4', 'open-1', 'open-2', 'open-3', 'open-4']);
+        const served = new Set(['q-1', 'q-2', 'q-3']);
+        attemptHistoryState.served = served;
+        attemptHistoryState.seen = served;
+
+        // Left: one mcq and four open items, so the mcq share of the two seats is 0.4 and the
+        // leftover seat is stochastic. Forty attempts observe that share instead of asserting which
+        // way one seat fell: the minority item must reach some students, never all of them.
+        let withMcq = 0;
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const ids = await retakeIds({ attempt_item_count: 2 });
+          expect(
+            ids.filter((id) => served.has(id)),
+            'a fresh sample is disjoint',
+          ).toEqual([]);
+          expect(ids).toHaveLength(2);
+          if (ids.some((id) => typeOfId(id) === 'mcq')) withMcq += 1;
+        }
+        expect(withMcq, 'the eligible pool’s minority item is reachable').toBeGreaterThan(0);
+        expect(withMcq, 'a 4 + 4 pool would serve it every time').toBeLessThan(40);
+      });
+
+      it('serves the whole pool, unchanged, when no count is set', async () => {
+        linkRows.rows = typed(['q-1', 'open-1', 'q-2', 'open-2']);
+
+        expect((await servedIds({ attempt_item_count: null })).toSorted()).toEqual([
+          'open-1',
+          'open-2',
+          'q-1',
+          'q-2',
+        ]);
       });
     });
   });

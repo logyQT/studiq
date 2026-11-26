@@ -14,7 +14,7 @@ import {
 import { loadTargetedAssignment } from '@studiq/server/lib/assignment-access';
 import {
   attemptHistory,
-  drawSample,
+  drawStratifiedSample,
   sampleEligible,
   sampleServed,
 } from '@studiq/server/lib/attempt-sample';
@@ -87,6 +87,9 @@ const STUDENT_ATTEMPT_SELECT =
   'assignment_id, id, score, total_questions, total_points, completed_at, expired_at, started_at';
 
 type QuizAttemptRow = Database['public']['Tables']['quiz_attempts']['Row'];
+
+/** The `teacher_assignments` row `list` reads and merges. */
+type AssignmentRow = Database['public']['Tables']['teacher_assignments']['Row'];
 
 /** A run the caller may write, with the client that proved they may. */
 interface OwnedWindow {
@@ -207,6 +210,9 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
   return related ?? null;
 }
 
+/** The item type a sample is stratified by (#1295); a link without a snapshot has none. */
+const linkType = (link: AssignmentLink): string | undefined => link.snapshot?.type;
+
 /**
  * Whether a published run has opened. Living inside the window is derived from the clock — there is
  * no extra enum value — so a run with no `start_time` is live from the moment it is published.
@@ -214,6 +220,28 @@ function joinOne<T>(value: T | T[] | null | undefined): T | null {
 function isLiveRun(run: { status?: string; start_time?: string | null }, now: Date): boolean {
   if (run.status !== 'published') return false;
   return !run.start_time || now.getTime() >= new Date(run.start_time).getTime();
+}
+
+/**
+ * Whether an update changes one of the sampling rules a published run froze (#1300): the item
+ * count, the same-item retake flag and the unseen-only mode all decide what a later attempt is
+ * served. Re-sending the value a run already has is not a change, which is what the edit form does
+ * on every save, and an omitted key leaves the column alone.
+ */
+function changesSamplingRule(
+  current: {
+    unseen_only: boolean;
+    allow_same_item_retake: boolean;
+    attempt_item_count: number | null;
+  },
+  data: UpdateTeacherAssignmentInput,
+): boolean {
+  return (
+    (data.unseenOnly !== undefined && data.unseenOnly !== current.unseen_only) ||
+    (data.allowSameItemRetake !== undefined &&
+      data.allowSameItemRetake !== current.allow_same_item_retake) ||
+    (data.attemptItemCount !== undefined && data.attemptItemCount !== current.attempt_item_count)
+  );
 }
 
 /**
@@ -324,7 +352,7 @@ export class TeacherAssignmentService {
         quizQuestions.map((question) => question.question_id),
       );
       if (isFailure(open)) return open;
-      if (open.data.size !== quizQuestions.length) return failure('UNPROCESSABLE_ENTITY');
+      if (open.data.size !== quizQuestions.length) return failure('QUESTION_NOT_OPEN');
     }
 
     const insertData: Database['public']['Tables']['teacher_assignments']['Insert'] = {
@@ -372,6 +400,19 @@ export class TeacherAssignmentService {
     return success(full);
   }
 
+  /**
+   * The composer/detail payload, deliberately narrower than `list` and than the
+   * data plane (R23): the RLS SELECT ("Visible teacher assignments") admits any
+   * member of a targeted class, while this path admits the author or an
+   * `assignment.read` holder at `organization` scope. The reason is the key — a
+   * draft is the live composer and a published run serves its frozen snapshot,
+   * both through `withAnswerKey` behind this authorship / `organization`-scope
+   * gate, so widening the gate would hand a co-teacher of the class a colleague's
+   * answer key. (The seal's author exemption, D-5e1, is about item sealing, not
+   * key visibility.) The asymmetry is recorded, not left as two unnamed
+   * answers; its owner is phase 7 (e.g. a read-only header for a colleague's
+   * run).
+   */
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
@@ -449,25 +490,111 @@ export class TeacherAssignmentService {
     });
   }
 
+  /**
+   * The runs the caller may read (ADR-0015 D29, phase 6e):
+   *
+   * - `organization` → every run of the active org;
+   * - `group` → that org's runs the caller authored **or** that target a class
+   *   they teach. "Teaches" is `ctx.groupRoles[groupId] === 'teacher'` (§4.3, the
+   *   rule 2b-2 installed), never plain `ctx.groupIds` membership: a `member` of
+   *   the class is its audience, so membership would show a learner every run
+   *   aimed at their own class;
+   * - anything else (`own`, or no active org) → the caller's own runs.
+   *
+   * `select('*')` is safe to widen here: `teacher_assignments` carries the title,
+   * status, window and counters and no answer key — the key lives on the item
+   * rows and their frozen snapshots, which no list read touches.
+   *
+   * The targeted ids are fetched in `TARGET_CHUNK` batches because the id list
+   * also travels in the request URL.
+   */
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
     const scope = ctx.permissionScopes['assignment.read'];
 
-    let query = supabase
-      .from('teacher_assignments')
-      .select('*')
-      .order('created_at', { ascending: false });
-
     if (scope === 'organization' && ctx.activeOrgId) {
-      query = query.eq('organization_id', ctx.activeOrgId);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+      const { data, error } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .order('created_at', { ascending: false });
+      if (error) return toDbFailure(error);
+      return success(dbRows(data));
     }
 
-    const { data, error } = await query;
+    if (scope === 'group' && ctx.activeOrgId) {
+      const targeted = await this.targetedRunIds(supabase, ctx);
+      if (isFailure(targeted)) return targeted;
+
+      // A run the caller both authored and targeted at a class they teach arrives in
+      // both arms; the map merges it by id.
+      const runs = new Map<string, AssignmentRow>();
+
+      const { data: authored, error: authoredError } = await supabase
+        .from('teacher_assignments')
+        .select('*')
+        .eq('organization_id', ctx.activeOrgId)
+        .eq('created_by', ctx.userId)
+        .order('created_at', { ascending: false });
+      if (authoredError) return toDbFailure(authoredError);
+      for (const row of dbRows(authored)) runs.set(row.id, row);
+
+      // An empty `id.in.()` is a PostgREST 400, so no chunk is issued without ids.
+      for (let i = 0; i < targeted.data.length; i += TARGET_CHUNK) {
+        const { data: targetedRows, error: targetedError } = await supabase
+          .from('teacher_assignments')
+          .select('*')
+          .eq('organization_id', ctx.activeOrgId)
+          .in('id', targeted.data.slice(i, i + TARGET_CHUNK))
+          .order('created_at', { ascending: false });
+        if (targetedError) return toDbFailure(targetedError);
+        for (const row of dbRows(targetedRows)) runs.set(row.id, row);
+      }
+
+      // Every query orders explicitly; the merge is the one place that sorts across them.
+      return success(
+        [...runs.values()].toSorted((a, b) =>
+          (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+        ),
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('teacher_assignments')
+      .select('*')
+      .eq('created_by', ctx.userId)
+      .order('created_at', { ascending: false });
     if (error) return toDbFailure(error);
     return success(dbRows(data));
+  }
+
+  /**
+   * The ids of the runs targeted at a class the caller teaches (§4.3). The
+   * caller's class list travels in the request URL, so it is read in
+   * `TARGET_CHUNK` batches rather than one `.in()`.
+   */
+  private async targetedRunIds(
+    supabase: SupabaseClient<Database>,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<string[]>> {
+    const taught = Object.entries(ctx.groupRoles).flatMap(([groupId, role]) =>
+      role === 'teacher' ? [groupId] : [],
+    );
+    if (taught.length === 0) return success([]);
+
+    const ids = new Set<string>();
+    for (let i = 0; i < taught.length; i += TARGET_CHUNK) {
+      const { data, error } = await supabase
+        .from('assignment_targets')
+        .select('assignment_id')
+        .in('group_id', taught.slice(i, i + TARGET_CHUNK));
+      if (error) return toDbFailure(error);
+      for (const row of dbRows(data)) {
+        if (row.assignment_id) ids.add(row.assignment_id);
+      }
+    }
+    return success([...ids]);
   }
 
   async update(
@@ -490,18 +617,23 @@ export class TeacherAssignmentService {
       if (refused) return refused;
     }
 
-    // The sampling mode is frozen at publish, like the item flags it changes (R8): flipping it on a
-    // live run would rewrite the samples of students who have not started yet. Re-sending the value
-    // the run already has — what the edit form does on every save — is not a change.
-    if (data.unseenOnly !== undefined) {
+    // Every sampling rule is frozen at publish, like the item flags (R8, #1300): changing the item
+    // count, the same-item retake flag or the unseen-only mode would rewrite what students who have
+    // not started yet are served. One read decides all three; re-sending a stored value is not a
+    // change. A scheduled run can be withdrawn to draft to change them, a live one cannot.
+    if (
+      data.unseenOnly !== undefined ||
+      data.allowSameItemRetake !== undefined ||
+      data.attemptItemCount !== undefined
+    ) {
       const { data: current, error: currentError } = await supabase
         .from('teacher_assignments')
-        .select('status, unseen_only')
+        .select('status, unseen_only, allow_same_item_retake, attempt_item_count')
         .eq('id', id)
         .maybeSingle();
       if (currentError) return toDbFailure(currentError);
       if (!current) return failure('NOT_FOUND');
-      if (current.status !== 'draft' && current.unseen_only !== data.unseenOnly) {
+      if (current.status !== 'draft' && changesSamplingRule(current, data)) {
         return failure('ASSESSMENT_LIVE');
       }
     }
@@ -992,7 +1124,7 @@ export class TeacherAssignmentService {
     // one is not bindable at all.
     const open = await openQuestionIds(supabase, newIds);
     if (isFailure(open)) return open;
-    if (open.data.size !== newIds.length) return failure('UNPROCESSABLE_ENTITY');
+    if (open.data.size !== newIds.length) return failure('QUESTION_NOT_OPEN');
 
     const rows = await this.nextQuestionLinks(supabase, id, newIds);
 
@@ -1803,13 +1935,15 @@ export class TeacherAssignmentService {
       const history = await this.attemptHistoryFor(id, studentId, links);
       if (isFailure(history)) return history;
       const same = sampleServed(links, history.data.served);
-      return success(drawSample(same.length > 0 ? same : links, options.itemCount));
+      return success(
+        drawStratifiedSample(same.length > 0 ? same : links, options.itemCount, linkType),
+      );
     }
 
     // A first attempt of a default assessment serves the whole pool: nothing can be stale yet, so
     // the history read would only ever be spent to prove it is empty.
     if (!options.unseenOnly && !options.isRetake) {
-      return success(drawSample(links, options.itemCount));
+      return success(drawStratifiedSample(links, options.itemCount, linkType));
     }
 
     const history = await this.attemptHistoryFor(id, studentId, links);
@@ -1821,7 +1955,7 @@ export class TeacherAssignmentService {
       options.unseenOnly,
     );
     if (eligible.length === 0) return failure('NO_UNSEEN_ITEMS');
-    return success(drawSample(eligible, options.itemCount));
+    return success(drawStratifiedSample(eligible, options.itemCount, linkType));
   }
 
   private async attemptHistoryFor(

@@ -1,37 +1,21 @@
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
-import {
-  ENTITLEMENT_KEYS,
-  LEARNER_ENTITLEMENTS,
-  SYSTEM_ROLE_NAMES,
-  SYSTEM_ROLE_TEMPLATES,
-  type SystemRoleName,
-} from '@studiq/authz';
+import { SYSTEM_ROLE_NAMES, SYSTEM_ROLE_TEMPLATES, type SystemRoleName } from '@studiq/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  cleanupOrganizationDeep,
-  seedOrgMembership,
-  useRealSupabase,
-} from '#test/integration/helpers';
+import { cleanupOrganizationDeep, useRealSupabase } from '#test/integration/helpers';
 import { createTypedServiceClient, latestShippedFunction } from '#test/integration/test-utils';
 
 // Phase 2a-1 (ADR-0015 §5.3, D18/D19): the role profile is the entitlement
-// subject, and `has_org_feature` reads it in its zero-row fallback. Both halves
-// are pinned here:
-//
-//  - the trigger writes admin/teacher `all`, member `learner`, custom `none`;
-//  - `seed_system_role_permissions()` is idempotent and mirrors
-//    `SYSTEM_ROLE_TEMPLATES`;
-//  - a user-authenticated PostgREST caller gets the profile (not the org plan)
-//    through the RLS fallback, which is where FP-01 was exploitable.
-//
-// Since 2b-7 the four legacy management markers are gone from the catalog, so
-// the profile governs every key and the `all` branch is the plan ceiling alone.
+// subject. The trigger writes admin/teacher `all`, member `learner` and custom
+// `none`, and `seed_system_role_permissions()` mirrors
+// `SYSTEM_ROLE_TEMPLATES`. Since 2b-7 the four legacy management markers are
+// gone from the catalog, so the profile governs every key and the `all` branch
+// is the plan ceiling alone. Phase 7 dropped the legacy RLS twin; the live
+// resolution path is covered by `entitlement-org-resolution-rls.test.ts`.
 
-const PASSWORD = 'Prof4Test!';
 const MIGRATION = 'supabase/migrations/20261119180000_authority_entitlement_profile.sql';
 /** Phase 3d: the teacher read-scope backfill lives in its own file. */
 const TEACHER_READ_MIGRATION = 'supabase/migrations/20261122140000_teacher_group_reads.sql';
@@ -83,36 +67,12 @@ async function runDirect(statement: string): Promise<void> {
     await sql.end();
   }
 }
-const HUB_ENTITLEMENTS = [
-  'flashcards',
-  'quiz',
-  'ai.chat',
-  'quiz.templates',
-  'stats.insights',
-  'branding',
-] as const;
-
-function anonSession(email: string): Promise<SupabaseClient<Database>> {
-  const client = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-  return client.auth.signInWithPassword({ email, password: PASSWORD }).then(({ error }) => {
-    if (error) throw new Error(`signIn failed for ${email}: ${error.message}`);
-    return client;
-  });
-}
-
 describe('org_roles.entitlement_profile', () => {
   const tag = `${crypto.randomUUID().slice(0, 8)}-${Date.now()}`;
-  const userEmail = `profile-user-${tag}@dev.local`;
 
   let service: SupabaseClient<Database>;
   let orgId: string;
   let customRoleId: string;
-  let userId: string;
-  let userSession: SupabaseClient<Database>;
 
   async function roleId(roleName: SystemRoleName): Promise<string> {
     const { data, error } = await service
@@ -144,15 +104,6 @@ describe('org_roles.entitlement_profile', () => {
     return data.entitlement_profile;
   }
 
-  async function hasOrgFeature(feature: string): Promise<boolean> {
-    const { data, error } = await userSession.rpc('rls_caller_has_org_feature', {
-      p_organization_id: orgId,
-      p_feature: feature,
-    });
-    expect(error).toBeNull();
-    return data === true;
-  }
-
   beforeAll(async () => {
     useRealSupabase();
     service = createTypedServiceClient();
@@ -161,7 +112,6 @@ describe('org_roles.entitlement_profile', () => {
     // The trigger is installed too, so a migration mutation to the profile write
     // reaches the organization created below.
     if (localDatabaseUrl) {
-      await runDirect(shippedFunction('has_org_feature'));
       await runDirect(shippedFunction('seed_system_role_permissions'));
       await runDirect(shippedFunction('handle_new_organization'));
     }
@@ -194,25 +144,10 @@ describe('org_roles.entitlement_profile', () => {
       .single();
     if (customError) throw new Error(`custom role create failed: ${customError.message}`);
     customRoleId = customRole.id;
-
-    const { data: created, error: userError } = await service.auth.admin.createUser({
-      email: userEmail,
-      password: PASSWORD,
-      email_confirm: true,
-      user_metadata: { name: 'profile-user', account_type: 'student' },
-    });
-    if (userError) throw new Error(`createUser failed: ${userError.message}`);
-    userId = created.user.id;
-
-    // The custom role starts with zero `org_role_features` rows, which is what
-    // puts the RLS fallback on its profile branch.
-    await seedOrgMembership({ organizationId: orgId, userId, orgRoleId: customRoleId });
-    userSession = await anonSession(userEmail);
   });
 
   afterAll(async () => {
     if (orgId) await cleanupOrganizationDeep(orgId).catch(() => {});
-    if (userId) await service.auth.admin.deleteUser(userId).catch(() => {});
   });
 
   it('the trigger writes all/learner profiles for the system roles and none for a custom role', async () => {
@@ -369,118 +304,4 @@ describe('org_roles.entitlement_profile', () => {
         .eq('permission_key', 'stats.read');
     },
   );
-
-  it('RLS: a zero-row none role has no hub entitlement, FP-01 closed', async () => {
-    for (const key of HUB_ENTITLEMENTS) {
-      expect(await hasOrgFeature(key), key).toBe(false);
-    }
-  });
-
-  it('RLS: a zero-row all role gets the whole plan ceiling', async () => {
-    const { error } = await service
-      .from('org_roles')
-      .update({ entitlement_profile: 'all' })
-      .eq('id', customRoleId);
-    expect(error).toBeNull();
-
-    expect(await hasOrgFeature('ai.chat')).toBe(true);
-    expect(await hasOrgFeature('branding')).toBe(true);
-    expect(await hasOrgFeature('quiz.templates')).toBe(true);
-    expect(await hasOrgFeature('stats.insights')).toBe(true);
-
-    // A key no plan carries (the 1c-removed `documents`) is denied: the `all`
-    // branch is the plan ceiling alone since 2b-7 removed the marker lists.
-    expect(await hasOrgFeature('documents')).toBe(false);
-  });
-
-  it('RLS: profile minus a revoke row — the table is revokes-only (D19)', async () => {
-    const { error: profileError } = await service
-      .from('org_roles')
-      .update({ entitlement_profile: 'all' })
-      .eq('id', customRoleId);
-    expect(profileError).toBeNull();
-
-    const { error: revokeError } = await service.from('org_role_features').insert({
-      org_role_id: customRoleId,
-      feature_key: 'branding',
-      is_enabled: false,
-    });
-    expect(revokeError).toBeNull();
-
-    // The revoked key is subtracted from the profile; a sibling profile key
-    // still resolves. This is the resolver's D19 semantics in the RLS twin.
-    expect(await hasOrgFeature('branding')).toBe(false);
-    expect(await hasOrgFeature('ai.chat')).toBe(true);
-
-    await service.from('org_role_features').delete().eq('org_role_id', customRoleId);
-  });
-
-  it('RLS: a seat re-adds a revoked key, and the seat is capped by the org ceiling', async () => {
-    // Resolver order: profile → revokes → seat ∩ ceiling. The revoke subtracts
-    // from the profile arm only, so a seat key re-adds it; a seat key the org
-    // plan does not carry stays out.
-    const { error: profileError } = await service
-      .from('org_roles')
-      .update({ entitlement_profile: 'all' })
-      .eq('id', customRoleId);
-    expect(profileError).toBeNull();
-
-    const { error: revokeError } = await service.from('org_role_features').insert({
-      org_role_id: customRoleId,
-      feature_key: 'ai.chat',
-      is_enabled: false,
-    });
-    expect(revokeError).toBeNull();
-    // `hub` carries `ai.chat`, so without a seat the revoke wins.
-    expect(await hasOrgFeature('ai.chat')).toBe(false);
-
-    const { data: pool, error: poolError } = await service
-      .from('org_seat_pools')
-      .insert({ organization_id: orgId, plan_key: 'master', total: 1 })
-      .select('id')
-      .single();
-    if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
-    const { error: seatError } = await service.from('org_seat_assignments').insert({
-      organization_id: orgId,
-      pool_id: pool.id,
-      user_id: userId,
-    });
-    expect(seatError).toBeNull();
-
-    // `master` carries `ai.chat`: the seat runs after the revoke and re-adds it.
-    expect(await hasOrgFeature('ai.chat')).toBe(true);
-
-    // `master` also carries `quiz.templates`, which `launch` does not. Once the
-    // org drops to `launch`, the seat cannot add it: seat ∩ ceiling.
-    const { error: planError } = await service
-      .from('organizations')
-      .update({ plan: 'launch' })
-      .eq('id', orgId);
-    expect(planError).toBeNull();
-    expect(await hasOrgFeature('quiz.templates')).toBe(false);
-
-    await service.from('org_seat_assignments').delete().eq('organization_id', orgId);
-    await service.from('org_seat_pools').delete().eq('organization_id', orgId);
-    await service.from('org_role_features').delete().eq('org_role_id', customRoleId);
-    await service.from('organizations').update({ plan: 'hub' }).eq('id', orgId);
-  });
-
-  it('RLS: a zero-row learner role gets only the learner set', async () => {
-    const { error } = await service
-      .from('org_roles')
-      .update({ entitlement_profile: 'learner' })
-      .eq('id', customRoleId);
-    expect(error).toBeNull();
-
-    expect(await hasOrgFeature('flashcards')).toBe(true);
-    expect(await hasOrgFeature('quiz')).toBe(true);
-    expect(await hasOrgFeature('ai.chat')).toBe(true);
-    expect(await hasOrgFeature('branding')).toBe(true);
-
-    for (const key of ENTITLEMENT_KEYS.filter(
-      (entitlement) => !LEARNER_ENTITLEMENTS.includes(entitlement),
-    )) {
-      expect(await hasOrgFeature(key), key).toBe(false);
-    }
-  });
 });

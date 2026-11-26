@@ -224,8 +224,12 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     await expect(page.getByText('Wygenerowano 6 fiszek')).toBeVisible();
     const decksBefore = await deckNames(page);
     await saveButton(page).click();
-    await expect(page.getByText('Nie udało się zapisać fiszek')).toBeVisible();
+    await expect(
+      page.getByText('Zapis przerwany. Potwierdzono 3 fiszki.', { exact: false }),
+    ).toBeVisible();
     await expect(page.getByPlaceholder('AI Wygenerowane Fiszki')).toBeDisabled();
+    await expect(page.getByRole('link', { name: 'Otwórz talię' })).toBeVisible();
+    await expect(saveButton(page)).toHaveText('Zapisz 3 fiszki jako talię');
 
     await saveButton(page).click();
     await expect(page.getByText('Zapisano 6 fiszek do talii')).toBeVisible();
@@ -235,9 +239,63 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
     expect(cardsSchema.parse(await cards.json()).data.items).toHaveLength(6);
   });
 
-  test('follows a plan through a nested material call, which is not metered today', async ({
+  test('keeps one deck after a 500 for a written batch, with no resend (#1330)', async ({
     page,
   }) => {
+    await openChat(page);
+    let batches = 0;
+    // The server writes the first batch, but the browser gets a 500.
+    await page.route('**/api/v1/flashcards/batch/create', async (route) => {
+      batches += 1;
+      if (batches > 1) {
+        await route.continue();
+        return;
+      }
+      expect((await route.fetch()).status()).toBe(201);
+      await route.fulfill({
+        status: 500,
+        json: { success: false, error: 'ERROR_INTERNAL_SERVER' },
+      });
+    });
+
+    await send(page, 'Fiszki o komórce z podziałem na tematy');
+    await expect(page.getByText('Wygenerowano 6 fiszek')).toBeVisible();
+    const decksBefore = await deckNames(page);
+    await saveButton(page).click();
+    await expect(
+      page.getByText('Zapis przerwany. Potwierdzono 0 fiszek.', { exact: false }),
+    ).toBeVisible();
+    expect(batches).toBe(1);
+    await expect(page.getByPlaceholder('AI Wygenerowane Fiszki')).toBeDisabled();
+    const href = await page.getByRole('link', { name: 'Otwórz talię' }).getAttribute('href');
+    const deckCards = async () => {
+      const response = await page.request.get(
+        `/api/v1/flashcards?deckIds=${href?.split('/').pop()}`,
+      );
+      return cardsSchema.parse(await response.json()).data.items.map((card) => card.back);
+    };
+    const written = await deckCards();
+    expect(written.toSorted()).toEqual(
+      ['Mitochondrium', 'Grzebienie', 'W macierzy mitochondrialnej'].toSorted(),
+    );
+
+    // The user removes from the list the three cards that the deck already has.
+    for (const index of [0, 1, 2]) {
+      await page.getByTitle('Usuń kartę').first().click();
+      await expect(saveButton(page)).toContainText(`Zapisz ${5 - index} `);
+    }
+    await saveButton(page).click();
+    await expect(page.getByText('Zapisano 3 fiszki do talii')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Otwórz talię' })).toHaveAttribute(
+      'href',
+      href ?? '',
+    );
+    expect(await deckNames(page)).toHaveLength(decksBefore.length + 1);
+    expect(new Set(await deckCards()).size).toBe(6);
+    expect(await deckCards()).toHaveLength(6);
+  });
+
+  test('runs a nested material call, which is not metered today', async ({ page }) => {
     await openChat(page);
     const before = await usedTokens(page);
 
@@ -248,20 +306,22 @@ test.describe('@case:STU-48 @area:STU @prio:P2 AI chat flashcard generation', ()
 
     // The preview can render before the last continuation request reaches the server.
     await expect
-      .poll(async () => (await fakeLlm.requestsOf('STU-48:plan-path')).length, { timeout: 10_000 })
-      .toBe(5);
+      .poll(async () => (await fakeLlm.requestsOf('STU-48:material-path')).length, {
+        timeout: 10_000,
+      })
+      .toBe(4);
     const requests = await fakeLlm.journal();
-    const outer = requests.filter((entry) => entry.fixture === 'STU-48:plan-path');
-    const nested = requests.filter((entry) => entry.fixture === 'STU-48:plan-material');
-    expect(outer.map((entry) => entry.turn)).toEqual([0, 1, 2, 3, 4]);
+    const outer = requests.filter((entry) => entry.fixture === 'STU-48:material-path');
+    const nested = requests.filter((entry) => entry.fixture === 'STU-48:material-content');
+    expect(outer.map((entry) => entry.turn)).toEqual([0, 1, 2, 3]);
     expect(outer.every((entry) => wasStreamed(entry))).toBe(true);
     expect(nested).toHaveLength(1);
     expect(nested.every((entry) => wasStreamed(entry))).toBe(false);
 
-    // The five streamed turns report 1 160 + 320 + 580 + 790 + 940 = 2 830 tokens; the
-    // nested call's 2 000 never reach the daily counter. If metering is fixed, this
-    // number changes by design.
-    await expect.poll(() => usedTokens(page)).toBe(before + 2830);
+    // The four streamed turns report 320 + 580 + 790 + 940 = 2 630 tokens; the nested
+    // call's 2 000 never reach the daily counter. If metering is fixed, this number
+    // changes by design.
+    await expect.poll(() => usedTokens(page)).toBe(before + 2630);
   });
 
   test('feeds a truncated tool call back to the model and creates nothing', async ({ page }) => {

@@ -29,6 +29,7 @@ interface ProblematicQuestion {
   id: string;
   correctRate: number;
   totalAnswers: number;
+  bankId: string;
 }
 
 interface BySubjectRow {
@@ -1052,6 +1053,44 @@ describe(`Stats Integration`, () => {
       // 5 attempts, one answer each, 2 of them correct.
       expect(multi?.totalAnswers).toBe(5);
       expect(multi?.correctRate).toBeCloseTo(0.4, 4);
+    });
+
+    it('names the bank of each question, so an alert can link to it (#654)', async () => {
+      mockUser(pqTeacher.user);
+
+      const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
+        active_org_id: pqTeacher.orgId!,
+      });
+      const body = await json<TeacherStatsBody>(await teacherGet(req));
+
+      const reported = body.data.subject.problematicQuestions.find((q) => q.id === problematicId);
+      expect(reported?.bankId).toBe(pqBankId);
+    });
+
+    it('drops a deleted question, whose alert would lead nowhere (#654)', async () => {
+      mockUser(pqTeacher.user);
+      const service = createTypedServiceClient();
+      const setStatus = async (status: 'open' | 'deleted') => {
+        const { error } = await service.from('questions').update({ status }).eq('id', multiId);
+        if (error) throw new Error(`[setup] status update failed: ${error.message}`);
+      };
+      const listedIds = async () => {
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
+          active_org_id: pqTeacher.orgId!,
+        });
+        const body = await json<TeacherStatsBody>(await teacherGet(req));
+        return body.data.subject.problematicQuestions.map((q) => q.id);
+      };
+
+      expect(await listedIds()).toContain(multiId);
+      await setStatus('deleted');
+      try {
+        const ids = await listedIds();
+        expect(ids).not.toContain(multiId);
+        expect(ids).toContain(problematicId);
+      } finally {
+        await setStatus('open');
+      }
     });
 
     it('sorts worst-first', async () => {

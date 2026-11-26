@@ -49,6 +49,7 @@ function question(id: string, totalAnswers: number): ProblematicQuestionStats {
     id,
     content: `Question ${id}`,
     type: 'mcq',
+    bankId: `bank-${id}`,
     totalAnswers,
     correctRate: 0.126,
   };
@@ -169,6 +170,31 @@ describe('teacher dashboard cards', () => {
     expect(html).toContain('13%');
     expect(html).toContain(t('problem_answers', { count: 3 }));
     expect(html).toContain('href="/edu/stats/results"');
+  });
+
+  it('links each question row to its question in its bank (#654)', () => {
+    const html = render(
+      createElement(ProblemQuestionsCard, {
+        ...idle,
+        questions: [question('1', 3), question('2', 3)],
+      }),
+    );
+
+    expect(html).toContain('href="/edu/questions/bank-1?search=Question+1"');
+    expect(html).toContain('href="/edu/questions/bank-2?search=Question+2"');
+  });
+
+  it('renders the same rows with no link at all on a public page (#654)', () => {
+    const html = render(
+      createElement(ProblemQuestionsCard, {
+        ...idle,
+        questions: [question('1', 3)],
+        linked: false,
+      }),
+    );
+
+    expect(html).toContain('Question 1');
+    expect(html).not.toContain('<a ');
   });
 
   it('shows empty feed and question states when no items qualify', () => {

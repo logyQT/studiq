@@ -24,7 +24,6 @@ vi.mock('node:dns/promises', () => ({
 }));
 
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
-import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
 import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluate-quality.tool';
 import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract-concepts.tool';
 import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
@@ -132,19 +131,6 @@ describe('askUserTool', () => {
     const ctx = mockCtx();
     await askUserTool.execute({ question: 'What topic?' }, ctx);
     expect(ctx.callbacks.onQuestion).not.toHaveBeenCalled();
-  });
-});
-
-describe('createPlanTool', () => {
-  it('returns the plan as-is', async () => {
-    const ctx = mockCtx();
-    const plan = {
-      steps: [{ action: 'fetch', rationale: 'need data' }],
-      estimatedComplexity: 'simple',
-      needsClarification: false,
-    };
-    const result = await createPlanTool.execute(plan, ctx);
-    expect(result).toEqual(plan);
   });
 });
 

@@ -46,6 +46,15 @@ bun run mutate -- --spec .tmp/mutations.json --json
 - `outcome` is `KILLED` (the test caught it), `SURVIVED` (it did not), or
   `ERROR` (**never proof** — see the trap below). `executed` counts the tests
   that actually ran in the run that decided the outcome.
+- `--name` is the test's **exact title**. vitest treats `-t` as a regex, so the
+  tool escapes every metacharacter and anchors the title: `clamps a (negative)
+  value` is a literal. vitest matches `-t` against the full name, so `--name`
+  matches the title itself or a full name whose trailing segment is that title
+  (`suite > title`). Two tests with the same title in different suites both
+  match: the tool reports `matched N tests` and the caller disambiguates with the
+  full name. `--name-regex <pattern>` passes a raw `-t` pattern through
+  unchanged, for a family of titles; pass exactly one of the two. A `--spec` row
+  uses `name` (exact) or `nameRegex` (pattern) the same way.
 - `--json` writes NDJSON on stdout and progress on stderr, so the table is
   pasteable. Exit is non-zero when any mutation is `ERROR`, so CI can gate on a
   broken harness.
@@ -76,13 +85,17 @@ bun run mutate -- --spec .tmp/mutations.json --json
   `--find` is malformed does, because the table itself is wrong. A table stopped
   by a failed revert still emits a line per remaining row ("not run").
 
-**The trap, stated once.** `vitest run <file> -t "<title>"` where the title
-matches nothing **exits 0** and reports the test as *skipped*. Two harnesses in
-the ADR-0014 arc read "no test ran" as "mutant survived" — and a mistyped title
-is the first thing an author types. `scripts/mutate.ts` classifies on
-`numPassedTests + numFailedTests`, never the exit code, and a run with zero
-executed tests is `ERROR` / `no test matched`, never `SURVIVED`. If you hand-roll
-a run instead of using the tool, you own that trap.
+**The trap, stated once.** `vitest run <file> -t "<title>"` treats the title as
+a **regex**, and a pattern that matches nothing **exits 0** and reports the test
+as *skipped*. Two harnesses in the ADR-0014 arc read "no test ran" as "mutant
+survived" — and a mistyped title is the first thing an author types.
+`scripts/mutate.ts` classifies on `numPassedTests + numFailedTests`, never the
+exit code, and a run with zero executed tests is `ERROR` / `no test matched`,
+never `SURVIVED`. The regex itself is the second half of the trap: a valid title
+containing parentheses or brackets used to report `ERROR — 0 executed` (#1492),
+because `(never learner)` is a group and `…` is not a wildcard. `--name` now
+escapes and anchors the title; only `--name-regex` is a pattern. If you
+hand-roll a run instead of using the tool, you own both traps.
 
 ## When to run it
 
@@ -157,7 +170,8 @@ mutation targets**, not somewhere upstream:
 3. **The tree is clean before and after.** `git status --porcelain` empty at both
    ends. `scripts/mutate.ts` enforces it; a hand-rolled probe must too.
 4. **An error is never proof**, and **`-t` matching nothing is `ERROR`, never
-   `SURVIVED`.**
+   `SURVIVED`.** Use `--name` for a literal title; `--name-regex` is a pattern you
+   are responsible for.
 5. **Only the named test runs.** A whole-file or whole-suite run tells you the
    mutant died, not which test killed it.
 

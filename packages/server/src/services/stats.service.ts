@@ -24,12 +24,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 /**
- * Single rounding rule for per-attempt percentages. `avgScore` in
- * `getStudentStats` keeps its own expression on purpose — reusing this helper
- * there would change its rounding and shift existing values by ±1.
+ * Single rounding rule for per-attempt percentages, clamped to 0–100. `avgScore`
+ * in `getStudentStats` keeps its own expression on purpose — reusing this helper
+ * there would change its rounding and shift existing values by ±1 — but is
+ * clamped the same way. A bad denominator can never render 140 %.
  */
 function percentageOf(attempt: { score: number | null }, total: number): number {
-  return Math.round(((attempt.score ?? 0) / total) * 100);
+  return Math.min(100, Math.max(0, Math.round(((attempt.score ?? 0) / total) * 100)));
 }
 
 /**
@@ -211,7 +212,9 @@ export class StatsService {
     // and is not the scope of a personal read: the filter below is the caller's own user_id.)
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('id, score, total_questions, total_points, started_at, config, assignment_id')
+      .select(
+        'id, score, total_questions, total_points, started_at, config, assignment_id, is_assignment_attempt',
+      )
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
@@ -226,9 +229,17 @@ export class StatsService {
     );
     if (isFailure(hidden)) return hidden;
 
-    const scoredAttempts = dbRows(attempts).filter(
-      (attempt) => !attempt.assignment_id || !hidden.data.has(attempt.assignment_id),
-    );
+    // An attempt is an assignment attempt because of the durable
+    // `is_assignment_attempt` marker, never because `assignment_id` is set:
+    // deleting the assignment nulls the FK, and the attempt must not turn into a
+    // practice quiz (#1141, #657). A marker-true attempt with no surviving
+    // assignment has no `show_results` left to honour, so it fails closed like
+    // the dashboard: it stays taken (`totalQuizzes`) but contributes no result.
+    const scoredAttempts = dbRows(attempts).filter((attempt) => {
+      if (!attempt.is_assignment_attempt) return true;
+      if (!attempt.assignment_id) return false;
+      return !hidden.data.has(attempt.assignment_id);
+    });
 
     // A practice score is correct answers over the *closed* questions only
     // (#329): `total_questions` counts open answers that can never be graded, so
@@ -237,7 +248,9 @@ export class StatsService {
     // never enter this lookup.
     const gradable = await gradableQuestionCounts(
       supabase,
-      scoredAttempts.filter((attempt) => !attempt.assignment_id).map((attempt) => attempt.id),
+      scoredAttempts
+        .filter((attempt) => !attempt.is_assignment_attempt)
+        .map((attempt) => attempt.id),
     );
     if (isFailure(gradable)) return gradable;
 
@@ -245,7 +258,7 @@ export class StatsService {
     // attempt with no closed question has no denominator at all, so it is left
     // out of the score aggregates instead of being faked as 0 %.
     const gradedAttempts = scoredAttempts.flatMap((attempt) => {
-      const total = attempt.assignment_id
+      const total = attempt.is_assignment_attempt
         ? attemptTotal(attempt)
         : (gradable.data.get(attempt.id) ?? 0);
       return total > 0 ? [{ attempt, total }] : [];
@@ -291,13 +304,23 @@ export class StatsService {
 
     const totalQuizzes = dbRows(attempts).length;
     // `null` = no attempt had a gradable denominator, so there is no result to
-    // report. The UI renders `—` instead of a fabricated 0 % (#619).
+    // report. The UI renders `—` instead of a fabricated 0 % (#619). Clamped so a
+    // score above its own max cannot report more than 100 %.
     const avgScore =
       gradedAttempts.length > 0
-        ? Math.round(
-            (gradedAttempts.reduce((sum, { attempt, total }) => sum + attempt.score / total, 0) /
-              gradedAttempts.length) *
-              100,
+        ? Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(
+                (gradedAttempts.reduce(
+                  (sum, { attempt, total }) => sum + attempt.score / total,
+                  0,
+                ) /
+                  gradedAttempts.length) *
+                  100,
+              ),
+            ),
           )
         : null;
     // Highest per-attempt percentage. Unfinished attempts score 0, so they can

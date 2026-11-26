@@ -1,5 +1,5 @@
 import { devices } from '@playwright/test';
-import { qaAppUrl } from '#test/helpers/qa-pointer';
+import { resolveQaAppUrl } from '#test/helpers/qa-pointer';
 import { defineSuiteConfig } from '#playwright/base';
 
 /**
@@ -15,6 +15,8 @@ import { defineSuiteConfig } from '#playwright/base';
 export default defineSuiteConfig({
   // `testDir` resolves relative to this config file, so `.` is `__tests__/qa`.
   testDir: '.',
+  // Fails a run that was not told which app to hit before its first test (#1286).
+  globalSetup: './fixtures/require-app-url.ts',
   fullyParallel: false,
   workers: Number(process.env.QA_WORKERS ?? 1),
   // The per-test budget for a whole long flow stays generous (this box also
@@ -28,8 +30,10 @@ export default defineSuiteConfig({
   reporter: [['list']],
   use: {
     // `QA_APP_URL` when a consumer is told which app to hit, else the pointer
-    // `env:share` wrote, else this machine's local default.
-    baseURL: qaAppUrl(),
+    // `env:share` wrote; outside CI nothing else (#1286). Unresolved stays undefined
+    // here and `globalSetup` refuses the run, instead of falling back to the shared
+    // `:3010` app.
+    baseURL: resolveQaAppUrl() ?? undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

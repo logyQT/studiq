@@ -58,6 +58,7 @@ const attempt = (overrides: Partial<Parameters<typeof attemptScoreDisplay>[0]>) 
   total_questions: 0,
   total_points: null,
   gradable_questions: 0,
+  is_assignment_attempt: false,
   assignment_id: null,
   ...overrides,
 });
@@ -82,6 +83,7 @@ describe('attemptScoreDisplay (#321/#329/#619)', () => {
           total_questions: 4,
           total_points: 5,
           gradable_questions: 2,
+          is_assignment_attempt: true,
           assignment_id: 'assignment-1',
         }),
       ),
@@ -96,10 +98,46 @@ describe('attemptScoreDisplay (#321/#329/#619)', () => {
           total_questions: 3,
           total_points: null,
           gradable_questions: 1,
+          is_assignment_attempt: true,
           assignment_id: 'assignment-1',
         }),
       ),
     ).toEqual({ kind: 'percent', percentage: 67 });
+  });
+
+  it('hides an assignment attempt whose assignment was deleted (#1141)', () => {
+    // The marker survives `ON DELETE SET NULL`; no `show_results` does, so the
+    // orphan fails closed instead of being scored as a practice quiz.
+    expect(
+      attemptScoreDisplay(
+        attempt({
+          score: 7,
+          total_questions: 5,
+          total_points: 10,
+          gradable_questions: 5,
+          is_assignment_attempt: true,
+          assignment_id: null,
+        }),
+      ),
+    ).toEqual({ kind: 'hidden' });
+  });
+
+  it('clamps a percentage above 100 (#1141)', () => {
+    expect(
+      attemptScoreDisplay(attempt({ score: 7, total_questions: 5, gradable_questions: 5 })),
+    ).toEqual({ kind: 'percent', percentage: 100 });
+    expect(
+      attemptScoreDisplay(
+        attempt({
+          score: 7,
+          total_questions: 5,
+          total_points: 5,
+          gradable_questions: 5,
+          is_assignment_attempt: true,
+          assignment_id: 'assignment-1',
+        }),
+      ),
+    ).toEqual({ kind: 'percent', percentage: 100 });
   });
 
   it('renders a self-check state when a practice attempt has no closed question', () => {
@@ -117,6 +155,7 @@ describe('attemptScoreDisplay (#321/#329/#619)', () => {
           total_questions: 4,
           total_points: 4,
           gradable_questions: 2,
+          is_assignment_attempt: true,
           assignment_id: 'assignment-1',
         }),
       ),

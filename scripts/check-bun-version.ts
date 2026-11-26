@@ -4,9 +4,9 @@
  * native toolchain the repo relies on:
  *   - `bun fmt`   (prettier-compatible formatter)
  *   - `bun check` (tsc-compatible type checker)
- *   - `bun lint`  (native linter; canary-only as of 1.4.4 stable)
+ *   - `bun lint`  (native linter; stable 1.4.5 still lacks it, so a canary is required)
  *
- * Stable 1.4.4 has fmt + check but not `lint`. Asking `bun lint` in a project
+ * Stable 1.4.5 has fmt + check but not `lint`. Asking `bun lint` in a project
  * that has a `lint` script silently re-runs that script (infinite recursion),
  * so detection happens in an empty temp directory instead of the repo root.
  */
@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const MIN = { major: 1, minor: 4, patch: 4 } as const;
+const MIN = { major: 1, minor: 4, patch: 5 } as const;
 
 function fail(message: string): never {
   console.error(`\n  x ${message}\n`);
@@ -34,7 +34,7 @@ if (
   (major === MIN.major && minor === MIN.minor && patch < MIN.patch)
 ) {
   fail(
-    `Bun ${Bun.version} is too old. This repo needs Bun >= 1.4.4 (canary while \`bun lint\` is canary-only).\n` +
+    `Bun ${Bun.version} is too old. This repo needs Bun >= 1.4.5 (a canary while \`bun lint\` is canary-only).\n` +
       `    bun upgrade --canary\n` +
       `    # or: npm i -g bun@canary`,
   );
@@ -51,7 +51,7 @@ try {
   if (probe.exitCode !== 0 || !output.includes('Usage: bun lint')) {
     fail(
       `Bun ${Bun.version} does not ship \`bun lint\`.\n` +
-        `    Stable 1.4.4 has \`bun fmt\` and \`bun check\` but the linter is canary-only.\n` +
+        `    Stable 1.4.5 has \`bun fmt\` and \`bun check\` but the linter is canary-only.\n` +
         `    bun upgrade --canary\n` +
         `    # or: npm i -g bun@canary`,
     );

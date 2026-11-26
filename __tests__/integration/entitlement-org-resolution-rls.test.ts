@@ -12,14 +12,13 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
 
-// Regression tests for issue #124: org_role_features had RLS enabled with zero
-// policies, so every user-session query silently returned [] (service_role
-// bypasses RLS, which is why nothing noticed). These tests sign in a REAL user
-// with the anon key — the exact access path entitlement.resolver.ts uses in
-// production — and assert the rows are visible, scoped to the caller's own
-// organizations. org_limits carried the same bug but was dropped in #229; org
-// capacity now resolves from `organizations.plan → plan_limits` through the
-// same user session, so the limits read path is covered here too.
+// Regression tests for issue #124: the resolver's reads ran under RLS, and a
+// user-session query that returned [] silently changed the answer. These tests
+// sign in a REAL user with the anon key — the exact access path
+// entitlement.resolver.ts uses in production — and assert the org layer
+// (profile, plan, seat) resolves through it. The legacy per-role feature table
+// that first exposed the bug was dropped in phase 7; its replacement is the
+// profile column and the seat plan.
 
 const PASSWORD = 'Rls4Test!';
 
@@ -35,17 +34,15 @@ function anonSession(email: string): Promise<SupabaseClient<Database>> {
   });
 }
 
-describe(`org_role_features RLS`, () => {
+describe(`org entitlement resolution under RLS`, () => {
   const tag = `${suiteId}-${Date.now()}`;
   const memberEmail = `rls-member-${tag}@dev.local`;
   const outsiderEmail = `rls-outsider-${tag}@dev.local`;
 
   let service: SupabaseClient<Database>;
   let org1: string; // the member's org
-  let org2: string; // a foreign org neither user belongs to
   let hubOrg: string; // the member's org on a paid plan (limit RLS probe)
   let org1MemberRole: string;
-  let org2AdminRole: string;
   let hubMemberRole: string;
   let memberId: string;
   let outsiderId: string;
@@ -91,10 +88,8 @@ describe(`org_role_features RLS`, () => {
     service = createTypedServiceClient();
 
     org1 = await createOrg(`rls-org1-${tag}`);
-    org2 = await createOrg(`rls-org2-${tag}`);
     hubOrg = await createOrg(`rls-org-hub-${tag}`);
     org1MemberRole = await roleId(org1, 'member');
-    org2AdminRole = await roleId(org2, 'admin');
     hubMemberRole = await roleId(hubOrg, 'member');
 
     // A paid plan makes org-derived limits differ from the member's personal
@@ -132,49 +127,9 @@ describe(`org_role_features RLS`, () => {
 
   afterAll(async () => {
     await cleanupOrganizationDeep(org1).catch(() => {});
-    await cleanupOrganizationDeep(org2).catch(() => {});
     await cleanupOrganizationDeep(hubOrg).catch(() => {});
     if (memberId) await service.auth.admin.deleteUser(memberId).catch(() => {});
     if (outsiderId) await service.auth.admin.deleteUser(outsiderId).catch(() => {});
-  });
-
-  it('member session reads their org role feature rows (the bug: always [])', async () => {
-    // Fresh orgs have no feature rows since phase 3c (profiles are the role
-    // layer), so the RLS probe uses the one row shape that still exists: a
-    // revoke. `stats.insights` is outside the launch ceiling, so it does not
-    // change the resolver assertion in the next test.
-    const { error: revokeError } = await service.from('org_role_features').insert({
-      org_role_id: org1MemberRole,
-      feature_key: 'stats.insights',
-      is_enabled: false,
-    });
-    expect(revokeError).toBeNull();
-
-    const { data, error } = await memberSession
-      .from('org_role_features')
-      .select('feature_key, is_enabled')
-      .eq('org_role_id', org1MemberRole);
-
-    expect(error).toBeNull();
-    expect(data).toEqual([{ feature_key: 'stats.insights', is_enabled: false }]);
-
-    // Exactly what the service-role client sees — RLS no longer hides rows.
-    const { data: expected } = await service
-      .from('org_role_features')
-      .select('feature_key, is_enabled')
-      .eq('org_role_id', org1MemberRole);
-    expect(data).toEqual(expected);
-  });
-
-  it('role features stay inside the caller org: no cross-org or non-member reads', async () => {
-    const { data: foreign } = await memberSession
-      .from('org_role_features')
-      .select('id')
-      .eq('org_role_id', org2AdminRole);
-    expect(foreign).toEqual([]);
-
-    const { data: outsiderRows } = await outsiderSession.from('org_role_features').select('id');
-    expect(outsiderRows).toEqual([]);
   });
 
   it('EntitlementResolver uses the org-role profile for a non-seated member', async () => {
@@ -196,8 +151,8 @@ describe(`org_role_features RLS`, () => {
     // The member role's profile is `learner` on the `launch` org: the learner
     // set intersected with the launch ceiling is exactly ['flashcards', 'quiz']
     // (`documents` left the catalog in phase 1c, the four management markers
-    // in 2b-7). Without the RLS fix the org_roles/org_role_features reads
-    // return [], and a resolver that trusted them would over- or under-grant.
+    // in 2b-7). Without the RLS fix an empty org_roles read would resolve
+    // `none` and under-grant every member.
     expect(entitlements).toEqual(['flashcards', 'quiz']);
   });
 

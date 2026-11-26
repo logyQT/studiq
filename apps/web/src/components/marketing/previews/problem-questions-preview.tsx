@@ -25,7 +25,7 @@ export function ProblemQuestionsPreview() {
       isError={false}
       onRetry={() => {}}
       headingLevel={3}
-      showResultsLink={false}
+      linked={false}
     />
   );
 }

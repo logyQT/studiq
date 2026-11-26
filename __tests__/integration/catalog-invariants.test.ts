@@ -9,14 +9,15 @@ import {
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import type { Database } from '@studiq/server/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import postgres from 'postgres';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createServiceClient } from '#test/integration/helpers';
 
 // Catalog invariants for the role-authority programme (ADR-0015 §8.2).
 //
-// The catalogs exist in three places — TypeScript (`PERMISSIONS`,
-// `ENTITLEMENTS`, `LIMITS`), the migrations and the seeds — and only the
-// database knows whether they agree. Every assertion here reads the live
+// The catalogs exist in two places — TypeScript (`PERMISSIONS`,
+// `ENTITLEMENTS`, `LIMITS`) and the migrations — and only the database knows
+// whether they agree. Every assertion here reads the live
 // catalog:
 //
 //  - `permissions` is exactly `PERMISSIONS` (key, category, allowed_scopes,
@@ -50,7 +51,6 @@ describe('catalog invariants', () => {
   let limitRows: Array<{ key: string; scope: string }>;
   let flagKeys: string[];
   let planEntitlementKeys: string[];
-  let roleFeatureKeys: string[];
 
   beforeAll(async () => {
     service = createServiceClient();
@@ -94,14 +94,6 @@ describe('catalog invariants', () => {
       throw new Error(`[catalog] plan_entitlements lookup failed: ${planError.message}`);
     }
     planEntitlementKeys = dbRows(planEntitlements).map((row) => row.entitlement_key);
-
-    const { data: roleFeatures, error: roleFeaturesError } = await service
-      .from('org_role_features')
-      .select('feature_key');
-    if (roleFeaturesError) {
-      throw new Error(`[catalog] org_role_features lookup failed: ${roleFeaturesError.message}`);
-    }
-    roleFeatureKeys = dbRows(roleFeatures).map((row) => row.feature_key);
   });
 
   it('no permission is an entitlement key: the namespaces are disjoint', () => {
@@ -117,10 +109,11 @@ describe('catalog invariants', () => {
 
   it('the four legacy management markers are gone from every entitlement table', () => {
     // The 2b-7 migration deleted `role.builder`, `org.manage`, `member.manage`
-    // and `group.manage` from `org_role_features`, `plan_entitlements`,
-    // `entitlement_flags` and `entitlement_catalog`. The surviving half of the
-    // old overlap is asserted too: `group.manage` is still a permission, in the
-    // DB catalog and in `PERMISSIONS`.
+    // and `group.manage` from `plan_entitlements`, `entitlement_flags` and
+    // `entitlement_catalog`; phase 7 then dropped the legacy per-role table
+    // outright. The surviving half of the old overlap is asserted too:
+    // `group.manage` is still a permission, in the DB catalog and in
+    // `PERMISSIONS`.
     const markers = ['role.builder', 'org.manage', 'member.manage', 'group.manage'];
 
     const catalogKeys = new Set(entitlementRows.map((row) => row.key));
@@ -131,12 +124,62 @@ describe('catalog invariants', () => {
     const planKeys = new Set(planEntitlementKeys);
     expect(markers.filter((key) => planKeys.has(key))).toEqual([]);
 
-    const roleFeatureSet = new Set(roleFeatureKeys);
-    expect(markers.filter((key) => roleFeatureSet.has(key))).toEqual([]);
-
     const permissionKeys = new Set(permissionRows.map((row) => row.key));
     expect(permissionKeys.has('group.manage')).toBe(true);
     expect('group.manage' in PERMISSIONS).toBe(true);
+  });
+
+  it('the legacy org-feature surface is gone, and the profile layer it left is live', async () => {
+    // Phase 7 (D19/D27) dropped the revoke store and its four readers. A guard
+    // that only asserted absence would pass on an empty schema, so the second
+    // half pins the state the deletion leaves: the profile column and a
+    // phase-2/5e predicate.
+    const raw = process.env.SUPABASE_DB_URL;
+    if (!raw) {
+      throw new Error(
+        'catalog-invariants needs SUPABASE_DB_URL to assert the dropped objects; run the ' +
+          'suite through `bun run env:run -- bun run test:integration`.',
+      );
+    }
+    const sql = postgres(raw, { max: 1, onnotice: () => {} });
+    try {
+      const [dropped] = await sql<
+        { table: string | null; has_org_feature: string | null; is_org_manager: string | null }[]
+      >`
+        select
+          to_regclass('public.org_role_features')::text as table,
+          to_regprocedure('public.has_org_feature(uuid,uuid,text)')::text as has_org_feature,
+          to_regprocedure('public.is_org_manager(uuid,uuid)')::text as is_org_manager
+      `;
+      expect(dropped).toEqual({
+        table: null,
+        has_org_feature: null,
+        is_org_manager: null,
+      });
+
+      const [surviving] = await sql<{ profile: string; check: string; policy: string }[]>`
+        select
+          (select data_type
+             from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'org_roles'
+              and column_name = 'entitlement_profile') as profile,
+          (select conname
+             from pg_constraint
+            where conrelid = 'public.org_roles'::regclass
+              and conname = 'org_roles_entitlement_profile_check') as check,
+          (select policyname
+             from pg_policies
+            where schemaname = 'public'
+              and tablename = 'org_roles'
+              and policyname = 'Org managers update roles') as policy
+      `;
+      expect(surviving.profile).toBe('text');
+      expect(surviving.check).toBe('org_roles_entitlement_profile_check');
+      expect(surviving.policy).toBe('Org managers update roles');
+    } finally {
+      await sql.end();
+    }
   });
 
   it('the permissions table is exactly the PERMISSIONS catalog', () => {
