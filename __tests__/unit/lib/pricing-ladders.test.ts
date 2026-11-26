@@ -104,7 +104,7 @@ describe('isRecommendedPlan', () => {
   it('gives every ladder exactly one plan the signal action can belong to', () => {
     const { individual, organization } = getPlanLadders(catalogue);
     const ladders = [
-      { plans: individual, recommended: 'spark' },
+      { plans: individual, recommended: 'ace' },
       { plans: organization, recommended: 'hub' },
     ];
 

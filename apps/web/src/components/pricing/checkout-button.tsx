@@ -1,10 +1,9 @@
 'use client';
 
-import { Button } from '@studiq/ui';
-import { Loader2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { apiPost } from '@/lib/api';
 import { checkoutSessionBody } from '@/lib/checkout-entry';
 
@@ -14,15 +13,24 @@ interface CheckoutButtonProps {
   /** Organization the plan is bought for; required for organization (manager) plans. */
   orgId?: string;
   children: React.ReactNode;
-  variant?: 'default' | 'outline';
+  /**
+   * The row's rule, not the caller's taste: the recommended plan's action carries
+   * the page's one `signal` fill, every other action stays `quiet`.
+   */
+  tone?: 'signal' | 'quiet';
+  /** Layout only: the price list's action column is narrower than a card. */
   className?: string;
 }
 
+/**
+ * The plan surfaces mix navigation and this POST in one column, so the button is
+ * `CtaButton`'s `action` branch rather than a second control look.
+ */
 export function CheckoutButton({
   planKey,
   orgId,
   children,
-  variant = 'default',
+  tone = 'quiet',
   className,
 }: CheckoutButtonProps) {
   const t = useTranslations('CheckoutPage');
@@ -49,9 +57,15 @@ export function CheckoutButton({
   }
 
   return (
-    <Button className={className} variant={variant} onClick={handleClick} disabled={isLoading}>
-      {isLoading && <Loader2 className="size-4 mr-2 animate-spin" />}
+    <CtaButton
+      action="button"
+      tone={tone}
+      onClick={handleClick}
+      loading={isLoading}
+      fullWidth
+      className={className}
+    >
       {children}
-    </Button>
+    </CtaButton>
   );
 }

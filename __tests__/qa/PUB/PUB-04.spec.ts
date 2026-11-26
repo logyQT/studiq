@@ -51,7 +51,7 @@ interface PlanInfo {
 const INDIVIDUAL_PLAN_KEYS = ['base', 'spark', 'ace', 'pro'] as const;
 
 /** The personal plan the page recommends to this ladder. */
-const RECOMMENDED_PLAN = 'spark';
+const RECOMMENDED_PLAN = 'ace';
 
 /** The individual FAQ, in the order the page asks it. */
 const FAQ_PAIRS = [

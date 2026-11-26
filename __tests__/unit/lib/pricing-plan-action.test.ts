@@ -29,10 +29,15 @@ describe('pricingPlanAction', () => {
     expect(action({ signedIn: true, isFree: true })).toBe('none');
   });
 
-  it('prints no action on a free row even when the reader pays for another plan', () => {
-    // The free row is not a subscription to change: the subscriber's action is
-    // the change-plan link on the paid rows, never a free-row checkout.
-    expect(action({ signedIn: true, isFree: true, hasActivePlan: true })).toBe('none');
+  it('sends the subscriber’s free row to the billing downgrade', () => {
+    // The free row is a downgrade for a subscriber, not a second checkout and
+    // not an empty cell (#1523).
+    expect(action({ signedIn: true, isFree: true, hasActivePlan: true })).toBe('change-plan');
+  });
+
+  it('prints no action on a free row for a reader with no subscription', () => {
+    // There is nothing to check out on a free row, so the cell stays empty.
+    expect(action({ signedIn: true, isFree: true, hasActivePlan: false })).toBe('none');
   });
 
   it('marks the paid plan the reader owns as current', () => {

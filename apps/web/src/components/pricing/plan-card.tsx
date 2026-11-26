@@ -1,13 +1,13 @@
 'use client';
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '@studiq/ui';
+import { Badge, Card, CardContent, CardHeader, CardTitle, Separator } from '@studiq/ui';
 import { Check, Sparkles } from 'lucide-react';
-import Link from 'next/link';
 import { useLocale } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
-import { CheckoutButton } from '@/components/pricing/checkout-button';
+import { PlanAction } from '@/components/pricing/plan-action';
 import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
+import { planCopy } from '@/lib/pricing-copy';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
 
@@ -32,10 +32,7 @@ export function PlanCard({
   billingHref: string;
 }) {
   const locale = useLocale();
-  const descKey = `plan_${plan.key}_desc`;
-  const noteKey = `plan_${plan.key}_note`;
-  const description = t.has(descKey) ? t(descKey) : null;
-  const note = t.has(noteKey) ? t(noteKey) : null;
+  const { description, note } = planCopy(t, plan);
   const ctaKey = ctaMessageKey(plan);
   const ctaLabel = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
   const recommended = isRecommendedPlan(plan.key);
@@ -94,39 +91,17 @@ export function PlanCard({
           ))}
         </ul>
 
-        {action === 'contact' ? (
-          // Campus is a 699 zł conversation, not a self-serve checkout: the label
-          // says contact sales, so the action under it must too.
-          <Button className="w-full" variant="outline" asChild>
-            <Link href="/contact">{ctaLabel}</Link>
-          </Button>
-        ) : action === 'current' ? (
-          <Button variant="outline" disabled className="w-full rounded-control">
-            {t('cta_current')}
-          </Button>
-        ) : action === 'change-plan' ? (
-          <CtaButton href={billingHref} tone={recommended ? 'signal' : 'quiet'} fullWidth>
-            {t('cta_change_plan')}
-          </CtaButton>
-        ) : action === 'checkout' ? (
-          <CheckoutButton
-            planKey={plan.key}
-            orgId={plan.scope === 'organization' ? orgId : undefined}
-            className="w-full"
-          >
-            {ctaLabel}
-          </CheckoutButton>
-        ) : action === 'register' ? (
-          <Button className="w-full" variant={recommended ? 'default' : 'outline'} asChild>
-            <Link href="/register">{ctaLabel}</Link>
-          </Button>
-        ) : !paid && user ? (
-          // A different free plan is not a subscription the reader changes; the
-          // card keeps its link to the app.
-          <Button className="w-full" variant={recommended ? 'default' : 'outline'} asChild>
-            <Link href="/app">{ctaLabel}</Link>
-          </Button>
-        ) : null}
+        {action === 'none' ? (
+          !paid && user ? (
+            // A different free plan is not a subscription the reader changes; the
+            // card keeps its link to the app.
+            <CtaButton href="/app" tone="quiet" fullWidth>
+              {ctaLabel}
+            </CtaButton>
+          ) : null
+        ) : (
+          <PlanAction plan={plan} action={action} billingHref={billingHref} orgId={orgId} />
+        )}
       </CardContent>
     </Card>
   );

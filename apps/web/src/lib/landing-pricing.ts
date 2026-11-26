@@ -1,6 +1,10 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 
-/** The personal plan the landing page presents as "Plus" (the page's recommended tier). */
+/**
+ * The personal plan the landing teaser presents as "Plus". It is a named tier, not
+ * the pricing page's recommendation: that list is `RECOMMENDED_PLAN_KEYS` in
+ * `pricing-ladders.ts` and names Pro.
+ */
 const LANDING_PREMIUM_KEY = 'spark';
 
 export type LandingPricing = {
