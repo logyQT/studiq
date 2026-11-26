@@ -136,6 +136,7 @@ export function applyStackEnv(
     process.env.SUPABASE_MAIL_URL = env.mailUrl;
     process.env.MAILPIT_URL = env.mailUrl;
   }
+  if (env.mailSmtpPort) process.env.MAILPIT_SMTP_PORT = String(env.mailSmtpPort);
   if (env.studioUrl) process.env.SUPABASE_STUDIO_URL = env.studioUrl;
   if (extras.stackId) process.env.SUPABASE_STACK_ID = extras.stackId;
   process.env.NEXT_PUBLIC_SITE_URL ||= extras.appUrl;

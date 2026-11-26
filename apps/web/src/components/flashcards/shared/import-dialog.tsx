@@ -32,6 +32,7 @@ import {
   type CsvRecord,
   isCsvFile,
   parseCsv,
+  summarizeImport,
   toImportCards,
 } from '@/lib/csv-import';
 import { translateErrorCode } from '@/lib/error-messages';
@@ -67,6 +68,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   const [columns, setColumns] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<CsvImportResult | null>(null);
   const tooManyRows = parsedRows.length > CSV_IMPORT_MAX_ROWS;
+  const summary = importResult && summarizeImport(importResult);
   /** Every picker offers the same columns, and „—” to leave its field unmapped. */
   const columnOptions = [
     <option key="" value="">
@@ -208,7 +210,8 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
               </div>
               {tooManyRows && (
                 <p role="alert" className="flex items-center gap-1 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" /> {tError('ERROR_VALIDATION_FAILED')}
+                  <AlertCircle className="h-4 w-4 shrink-0" /> {tError('ERROR_VALIDATION_FAILED')} (
+                  {parsedRows.length} / {CSV_IMPORT_MAX_ROWS})
                 </p>
               )}
 
@@ -217,6 +220,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   <label className="font-medium">{t('csv_column_front')}</label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_front')}
                     value={columnMap.front}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, front: e.target.value }))}
                   >
@@ -227,6 +231,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   <label className="font-medium">{t('csv_column_back')}</label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_back')}
                     value={columnMap.back}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, back: e.target.value }))}
                   >
@@ -240,6 +245,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_topic')}
                     value={columnMap.topic ?? ''}
                     onChange={(e) =>
                       setColumnMap((prev) => ({ ...prev, topic: e.target.value || null }))
@@ -255,6 +261,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_deck')}
                     value={columnMap.deck ?? ''}
                     onChange={(e) =>
                       setColumnMap((prev) => ({ ...prev, deck: e.target.value || null }))
@@ -312,12 +319,16 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
             </div>
           )}
 
-          {step === 'done' && importResult && (
+          {step === 'done' && importResult && summary && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-4 rounded-lg bg-muted">
-                <CheckCircle2 className="h-6 w-6 text-green-500" />
+                {summary.failed ? (
+                  <AlertCircle className="h-6 w-6 text-destructive" />
+                ) : (
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                )}
                 <div>
-                  <p className="font-medium">{t('import_complete')}</p>
+                  <p className="font-medium">{t(summary.titleKey)}</p>
                   <p className="text-sm text-muted-foreground">
                     {t('import_summary', {
                       imported: importResult.imported,
@@ -330,7 +341,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                 <div className="space-y-2">
                   <p className="text-sm font-medium flex items-center gap-1 text-destructive">
                     <AlertCircle className="h-4 w-4" />{' '}
-                    {t('import_errors', { count: importResult.errors.length })}
+                    {t('import_errors', { count: summary.errorRows })}
                   </p>
                   <div className="max-h-40 overflow-y-auto border rounded-lg">
                     <Table>

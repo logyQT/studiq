@@ -72,8 +72,9 @@ Status: COMPLETE (helper built + all API-flow suites migrated; DB drift repaired
     (migration `20260710000001` corrected + new `20260717000002` corrective migration)
   - `handle_new_organization` trigger restored seat-pool seeding (`20260714000003` updated)
   - `bulk_create_flashcards` schema file updated to match migration `20260711000002`
-  - Plan config (`launch.max_groups`=3, `base` limits=-1) lives in `seeds/00_plans.sql`
-    (no standalone migration — plan system is seed-managed)
+  - Plan config (`launch.max_groups`=3, `base` limits=-1) lives in
+    `20261125170000_plan_catalog_owned_by_migrations.sql` since #1494 (the catalogue is
+    migration-owned; `supabase/seeds/00_plans.sql` seeds no plan data)
   - Test bodies updated: `bankId` in questions POST, `deckId` in flashcard bulk create,
     `question_options` in rpc-questions assertions
 

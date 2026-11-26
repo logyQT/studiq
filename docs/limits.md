@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-23 (phase 5d: `quiz.templates` / `stats.insights` renamed and enforced).
+> Last updated: 2026-11-25 (phase 7: atomic AI-token accounting, legacy role-feature surface removed).
 
 ## Summary
 
@@ -11,10 +11,8 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 `organizations.plan`); they never get a private copy of its limits.
 
 - **Features** resolve live: `organizations.plan` → `plan_entitlements` for the
-  org layer, and `org_roles.entitlement_profile` for the role layer.
-  `org_role_features` is revokes-only (D19): an `is_enabled = false` row
-  subtracts its key, and an enabled row is inert — ignored by both the resolver
-  and the RLS twin (phase 3c).
+  org layer, and `org_roles.entitlement_profile` for the role layer. There is no
+  per-role feature store (D27).
 - **Limits** are **never copied**. Every check reads the relevant plan's
   `plan_limits` row live.
 - There is **no** `org_limits` table (dropped in #229), no per-org limit
@@ -26,21 +24,20 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                                          |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                    |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                     |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                     |
-| `profiles.personal_plan_key`                                            | Personal plan (seed default `base`; managers default to the free `solo` tier — D2). An organization purchase never writes it (#228).             |
-| `organizations.plan`                                                    | Organization plan (seed default `launch`).                                                                                                       |
-| `org_role_features (org_role_id, feature_key, is_enabled)`              | Revokes-only since phase 3c (D19/D27): an explicit `is_enabled = false` subtracts one key from the role profile; an enabled row has no effect.   |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                               |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                        |
+| Table / column                                                          | Meaning                                                                                                                                             |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                       |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                        |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                        |
+| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; every persona, a manager included, starts there — #1193). An organization purchase never writes it (#228). |
+| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                     |
+| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence.    |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                  |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                           |
 
-The `base` / `launch` defaults come from the seed
-(`supabase/seeds/00_plans.sql` → `ALTER TABLE … SET DEFAULT`), not from the
-original table migrations.
+The `base` / `launch` defaults come from the plan-catalogue migration
+(`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` →
+`ALTER TABLE … SET DEFAULT`), not from the original table migrations.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -99,9 +96,9 @@ It creates **no seat pools** (pools are created on demand since Phase B.5).
    re-sync.
 
 Editing `plan_entitlements` therefore changes existing orgs on the next
-resolution, exactly as editing `plan_limits` does. A hand-inserted
-`org_role_features` row with `is_enabled = false` survives a plan change and
-keeps subtracting its key (D19).
+resolution, exactly as editing `plan_limits` does. The role layer is the
+`org_roles.entitlement_profile` value; a plan change does not rewrite it, and
+there is no other per-role feature state to reconcile.
 
 ## Feature resolution
 
@@ -115,12 +112,10 @@ request on the ctx). Resolution order:
 2. **Plan entitlement** (profile layer, ADR-0015 §5.3)
    - `org_roles.entitlement_profile`: `all` → the org plan ceiling, `learner` →
      `flashcards`, `quiz`, `ai.chat`, `branding` ∩ ceiling, `none` → nothing.
-   - `org_role_features` rows then apply their `is_enabled = false` revokes
-     only (D19) — an enabled row adds nothing, since 2b-7 removed the markers
-     that were the only row-granted keys.
    - Seated (`org_seat_assignments` via `getSeatPlanKey`): the seat plan's
      `plan_entitlements` are intersected with the ceiling (a seat adds only
-     keys the org plan carries).
+     keys the org plan carries). The role layer is therefore
+     `profile + seat ∩ ceiling`; there is no revoke subtraction (phase 7, D27).
 3. **Personal plan** — applied on top of the entitlement above:
    `profiles.personal_plan_key` → `plan_entitlements`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
@@ -178,13 +173,15 @@ inside an org — it is the legacy org-buyer mirror (#228, D34). A missing
 seat plan: a spoofed org id has no row and falls back to the personal plan
 (user keys) or `0` (org keys), ignoring any stale seat row.
 
-**Managers (#228, D2):** a manager has no paid personal plan — their
-`profiles.personal_plan_key` is the free `solo` tier. In a verified org an
-organization-scope personal plan is excluded, so limits come from
-`max(org, seat, personal)` with the personal layer inert when its plan is
-organization-scope (#228, D34); the free personal tier applies fully when there
-is no active org. A legacy org-scope plan left in `personal_plan_key` cannot
-widen any org's limits — the 2026-11-22 backfill moves managers onto `solo`.
+**Managers (#1193):** a manager uses the same one individual ladder as every
+other signed-in reader and may buy Plus, Pro or Max as a personal plan. A new
+manager starts on the free `base` plan, the one `handle_new_user()` mints for
+every persona. In a verified org an organization-scope personal plan is
+excluded, so limits come from `max(org, seat, personal)` with the personal
+layer inert when its plan is organization-scope (#228, D34); the free personal
+plan applies fully when there is no active org. A legacy org-scope plan left in
+`personal_plan_key` cannot widen any org's limits — the 2026-11-22 backfill
+moves managers off those plans.
 
 `checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
@@ -263,10 +260,47 @@ Enforcement points:
 | `max_ai_tokens_per_day`     | `/api/v1/ai/chat` via `getUsage` — the same surface also requires the `ai.chat` entitlement (ADR-0015 §7) |
 
 `getUsage(ctx, key)` returns `{ current, limit, plan, resetsAt }`; `current` is
-today's `user_daily_activity.ai_input_tokens + ai_output_tokens`, `plan` is the
-caller's `profiles.personal_plan_key` (for a manager the free `launch` tier
-unless a legacy purchase row is still present), and `resetsAt` is the next UTC
+today's `user_daily_activity.ai_input_tokens + ai_output_tokens`, `limit` is the
+resolved per-member value (below), `plan` is the resolution's effective primary
+(the verified org plan, else the personal plan), and `resetsAt` is the next UTC
 midnight.
+
+### AI token accounting (`max_ai_tokens_per_day`)
+
+`getEffectiveLimit` composes the per-member ceiling: `max(org, seat, personal)`
+with `-1` short-circuiting. A missing `plan_limits` row is `0`; a seat can only
+raise the org value, never lower it.
+
+After a stream finishes, `trackTokenUsage` calls
+`public.reserve_ai_tokens(p_day, p_input_tokens, p_output_tokens, p_limit)`
+(ADR-0015 R29). The function:
+
+- derives the actor from `auth.uid()` **inside** the function, so a caller can
+  only meter itself (raising `28000` when there is no actor);
+- is `security definer` with `set search_path = ''`, executable by
+  `authenticated` only, and `user_daily_activity` accepts **no client write**:
+  `INSERT`, `UPDATE` and `DELETE` are revoked from `authenticated` (and `anon`),
+  so a direct PostgREST write fails with `42501`. The two stats triggers are
+  `security definer` too, and together with this RPC they are the only
+  user-client writers of the table. `service_role` keeps its grants for test
+  cleanup. The counter is therefore metered by the RPC and cannot be reset by
+  writing the row;
+- records the increment in **one** statement — a single `insert … on conflict …
+do update` that always adds to the day's committed row. Two concurrent
+  reservations serialize on the row, so neither increment is lost (R29). The
+  write does **not** refuse past the ceiling: by then the stream has been
+  served, and a refused write would leave the stored total just below the limit,
+  so the pre-stream `getUsage` gate could never trip again. One stream may
+  overshoot the ceiling by its own token count — that is the quota's precision,
+  not a bug. `p_limit = -1` is unlimited;
+- returns `accepted`, `input_total`, `output_total`.
+
+`accepted` means "this write stayed within the ceiling" (`-1` reports `true`);
+it is informational. A `false` is typed state, logged and never an error: the
+stream has already been served, and the user-facing gate is the pre-stream
+`getUsage` check in `/api/v1/ai/chat`, which reads the same two columns — so the
+**next** request trips because the stored total is now truthful and `>= limit`.
+The service performs no read-modify-write and reads no activity row itself.
 
 Client caches can lag server enforcement: `useApiQuery` defaults to
 `staleTime: Infinity`, so the UI may keep showing an old count/quota until it
@@ -274,8 +308,10 @@ refetches. Resolution itself is immediate.
 
 ## Where to change plan data
 
-- **Templates** — `supabase/seeds/00_plans.sql`. `bun run env:reset-db --yes` rewrites
-  `plan_entitlements` / `plan_limits`, discarding runtime edits.
+- **Templates** — `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql`
+  (the catalogue's single home since #1494; the seed no longer writes plan rows).
+  `bun run env:reset-db --yes` re-applies the matrix from the migrations,
+  discarding runtime edits.
 - **Runtime** — admin app: `GET/POST /api/v1/plan-limits`,
   `PUT/DELETE /api/v1/plan-limits/[id]` (id, not plan key). For
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and
@@ -291,11 +327,16 @@ refetches. Resolution itself is immediate.
   `active_org_id` cookie does not grant org capacity, and the #233 precedence
   matrix (personal plan never raises org capacity).
 - `__tests__/integration/change-org-plan.test.ts` — the plan RPC moves only
-  `organizations.plan`, writes no feature rows, and preserves a revoke row.
+  `organizations.plan` and leaves the role-permission layer untouched.
 - `__tests__/integration/plan-limit-catalog.test.ts` — every active plan
   defines every required limit key (#233 fail-closed catalog guard).
 - `__tests__/integration/limit-count-scope.test.ts` — org-context content
   counts exclude personal-space content (#233).
 - `__tests__/integration/plan-limit-enforcement.test.ts` /
   `plan-limits.test.ts` — HTTP enforcement paths.
-- `__tests__/integration/org-features.test.ts` — seat/role feature resolution.
+- `__tests__/integration/org-features.test.ts` — role/seat resolution and the
+  phase-7 dropped-surface invariant.
+- `__tests__/integration/reserve-ai-tokens.test.ts` — the shipped
+  `reserve_ai_tokens` with a real signed-in session: a concurrent burst (both
+  increments stored, exactly one reports the ceiling), the single-call
+  overshoot, `-1` unlimited, the null-actor raise, and the DELETE revoke.

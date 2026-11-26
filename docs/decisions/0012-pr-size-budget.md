@@ -40,6 +40,10 @@ shell, YAML and SQL checks were only in CodeRabbit.
    `XS`/`S`/`M` boundaries are absolute (10/50/200), so `L` only appears when
    the limit is above 200.
 4. **`scripts/pr` applies the same size label at creation.**
+
+   > **Amended 2026-11-25 (#1386).** `scripts/pr` applies no label. The workflow
+   > in point 3 labels every pull request, so the second label step added nothing.
+
 5. **Advisory first.** Over-budget labels are informational until the repository
    variable `PR_SIZE_ENFORCE=true` is set; then the job fails unless the PR
    carries `size:exception`. The budget is the `PR_SIZE_LIMIT` repository

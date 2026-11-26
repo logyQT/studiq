@@ -46,9 +46,10 @@ the legacy accounts.
   the tenant teacher), so the draw pool is `organization_id = active org` and the assertion
   can never see another worker's questions. Nothing global is read or written: no admin
   setting, feature flag, plan, platform stat or singleton row.
-- The tenant seeder enrolls the teacher with the org `member` role; `assignment.*` resolves
-  to the educator default scope `own`, so the teacher owns the draft and the draw endpoint
-  accepts it without any extra promotion.
+- The tenant seeder gives the teacher the system `teacher` role: `assignment.read`
+  resolves to `group` and the writes (`create` / `update` / `delete`) to `own`
+  (ADR-0015 D29), so the teacher owns the draft and the draw endpoint accepts it
+  without any extra promotion.
 
 ## Walk notes (shared app, tenant `EDU-ASG-03#rmvtden4ddf4a`)
 

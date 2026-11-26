@@ -39,8 +39,9 @@ Expected:
 ## Expected result
 
 - Toasty „Rola utworzona”, „Rola zaktualizowana”; typ „Niestandardowa”.
-- Klucze `org.*` szablonu zaczną działać, gdy 2b zastąpi stare bramki funkcji
-  (`member.manage`, `org.manage` itd.); klucze treściowe działają już teraz.
+- Klucze `org.*` szablonu działają od fazy 2b: stare bramki funkcji
+  (`member.manage`, `org.manage` itd.) zostały zastąpione kluczami uprawnień
+  i usunięte; klucze treściowe działają tak samo.
 
 ## Seed (QA-suite tenant)
 

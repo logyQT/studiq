@@ -112,7 +112,6 @@ export interface ResolverTablesOpts {
   member?: boolean;
   orgPlan?: string | null;
   roleProfile?: string | null;
-  roleRows?: Array<{ feature_key: string; is_enabled?: boolean }>;
   seatPlanKey?: string | null;
   /** Tables whose read fails (timeout, pool exhaustion) instead of answering, with `data: null`. */
   readErrors?: Partial<Record<ResolverTable, ReadError>>;
@@ -145,7 +144,6 @@ export function mockResolverTables(mock: MockSupabaseClient, opts: ResolverTable
             ? null
             : {
                 entitlement_profile: opts.roleProfile,
-                org_role_features: opts.roleRows ?? [],
               },
       });
     }

@@ -84,6 +84,7 @@ export type QuizAttemptListItem = Omit<
     | 'started_at'
     | 'completed_at'
     | 'assignment_id'
+    | 'is_assignment_attempt'
     | 'graded_at'
   >,
   'score'
@@ -262,7 +263,7 @@ export class QuizAttemptService {
       // Drafts are per-question free text; the "Quiz w trakcie" banner never
       // needs them, so they are not part of the list payload (#349).
       .select(
-        'id, user_id, score, total_questions, total_points, config, started_at, completed_at, assignment_id, graded_at',
+        'id, user_id, score, total_questions, total_points, config, started_at, completed_at, assignment_id, is_assignment_attempt, graded_at',
       )
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
@@ -289,8 +290,12 @@ export class QuizAttemptService {
     }));
 
     // A direct API call must not bypass the teacher's „Pokaż wyniki” switch, even
-    // though the web UI filters assignment attempts out of this list (#374).
-    if (!withGradable.some((attempt) => attempt.assignment_id)) return success(withGradable);
+    // though the web UI filters assignment attempts out of this list (#374). The
+    // durable marker decides what is an assignment attempt: an attempt whose
+    // assignment was deleted (`assignment_id` null) has no `show_results` left to
+    // honour, so its score is withheld too (#1141).
+    if (!withGradable.some((attempt) => attempt.is_assignment_attempt))
+      return success(withGradable);
 
     const hidden = await hiddenResultAssignmentIds(
       supabase,
@@ -300,7 +305,8 @@ export class QuizAttemptService {
 
     return success(
       withGradable.map((attempt) =>
-        attempt.assignment_id && hidden.data.has(attempt.assignment_id)
+        attempt.is_assignment_attempt &&
+        (!attempt.assignment_id || hidden.data.has(attempt.assignment_id))
           ? { ...attempt, score: null }
           : attempt,
       ),

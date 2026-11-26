@@ -14,5 +14,5 @@ export default function AppUpgradePage() {
     enabled: !!user,
   });
 
-  return <UpgradePlans audience="student" currentPlanKey={currentPlan?.key} />;
+  return <UpgradePlans scope="personal" currentPlanKey={currentPlan?.key} />;
 }

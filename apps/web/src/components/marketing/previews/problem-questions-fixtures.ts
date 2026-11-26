@@ -11,6 +11,9 @@ import type { ProblematicQuestionStats } from '@studiq/server/models/stats.model
  */
 export type ProblemQuestionsLocale = 'pl' | 'en';
 
+/** No such bank: the preview renders its rows without links. */
+const PREVIEW_BANK_ID = 'preview';
+
 const RATES = [
   { id: 'atp', correctRate: 0.41, totalAnswers: 12 },
   { id: 'division', correctRate: 0.33, totalAnswers: 9 },
@@ -36,6 +39,7 @@ export const PROBLEM_QUESTION_FIXTURES: Record<ProblemQuestionsLocale, Problemat
       id,
       content: CONTENT.pl[id],
       type: 'mcq',
+      bankId: PREVIEW_BANK_ID,
       correctRate,
       totalAnswers,
     })),
@@ -43,6 +47,7 @@ export const PROBLEM_QUESTION_FIXTURES: Record<ProblemQuestionsLocale, Problemat
       id,
       content: CONTENT.en[id],
       type: 'mcq',
+      bankId: PREVIEW_BANK_ID,
       correctRate,
       totalAnswers,
     })),

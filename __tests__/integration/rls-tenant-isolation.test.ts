@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { invitationService } from '@studiq/server/services/invitation.service';
 import type { Database } from '@studiq/server/types/database';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -30,9 +31,11 @@ const PASSWORD = 'Rls191Test!';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // `entitlement_catalog` joined the public set in phase 4a: `PlanInfo.seatEligible`
-// embeds it from `plan_entitlements` on every plan read.
+// embeds it from `plan_entitlements` on every plan read. `entitlement_flags`
+// joined in #1484: the public plan list drops a kill-switched surface key.
 const PUBLIC_TABLES = [
   'entitlement_catalog',
+  'entitlement_flags',
   'plan_entitlements',
   'plan_limits',
   'subscription_plans',
@@ -63,6 +66,24 @@ async function signIn(email: string): Promise<SupabaseClient<Database>> {
   const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (error) throw new Error(`signIn failed for ${email}: ${error.message}`);
   return client;
+}
+
+/** Resolve one caller's effective entitlements through its own RLS-bound session. */
+async function entitlementsFor(
+  session: SupabaseClient<Database>,
+  ctx: Pick<RequestContext, 'userId' | 'activeOrgId' | 'orgRoleId'>,
+): Promise<string[]> {
+  const resolver = new EntitlementResolver(() => Promise.resolve(session));
+  const resolved = await resolver.resolveEntitlements({
+    ...ctx,
+    accountType: AccountType.STUDENT,
+    traceId: 'rls-tenant-isolation',
+    url: '',
+    method: 'GET',
+    groupIds: [],
+    permissionScopes: {},
+  });
+  return resolved.entitlements;
 }
 
 /** `seedOrganization()` result, whose rows are untyped in helpers.ts. */
@@ -1132,10 +1153,10 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the seat plan, not management authority (RLS mirrors FeatureResolver)', async () => {
-    // A custom role has ZERO org_role_features rows, so the org-plan fallback
-    // used to grant every plan capability. Since 2b-7 no plan carries a
-    // management marker, the seat adds seat-eligible surface keys only
-    // (review-1-r2 B1, retargeted from `group.manage` to `stats.insights`).
+    // A custom role is on the `none` profile, so the org-plan fallback used to
+    // grant every plan capability. The seat adds seat-eligible surface keys
+    // only (review-1-r2 B1, retargeted from `group.manage` to
+    // `stats.insights`).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
 
@@ -1151,12 +1172,6 @@ describe('RLS tenant isolation (#191)', () => {
       .select('id')
       .single();
     expect(customRoleError).toBeNull();
-
-    const { count: roleFeatureCount } = await service
-      .from('org_role_features')
-      .select('id', { count: 'exact', head: true })
-      .eq('org_role_id', customRole!.id);
-    expect(roleFeatureCount).toBe(0);
 
     const seatedCustomId = await createUser(seatedEmail, 'student', 'seated-custom');
     const unseatedCustomId = await createUser(unseatedEmail, 'student', 'unseated-custom');
@@ -1181,7 +1196,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'master', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1198,30 +1213,22 @@ describe('RLS tenant isolation (#191)', () => {
 
       // Control: a NON-seated custom role is on the `none` profile, so it holds
       // no plan entitlement at all (ADR-0015 §5.3, D6).
-      const { data: unseatedManager } = await unseatedSession.rpc('rls_caller_is_org_manager', {
-        p_organization_id: orgA.orgId,
+      const unseatedEntitlements = await entitlementsFor(unseatedSession, {
+        userId: unseatedCustomId,
+        activeOrgId: orgA.orgId,
+        orgRoleId: customRole!.id,
       });
-      expect(unseatedManager).toBe(false);
+      expect(unseatedEntitlements).toEqual([]);
 
-      const { data: unseatedStats } = await unseatedSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'stats.insights',
+      // A seat adds seat-eligible surface keys only, through
+      // `seat plan ∩ ceiling`; `stats.insights` is in both `hub` and `pro`.
+      const seatedEntitlements = await entitlementsFor(seatedSession, {
+        userId: seatedCustomId,
+        activeOrgId: orgA.orgId,
+        orgRoleId: customRole!.id,
       });
-      expect(unseatedStats).toBe(false);
-
-      // A seat must not add management authority the app withholds: no plan
-      // carries a marker any more, and the seat plan is additive for
-      // seat-eligible surface keys only — `stats.insights` arrives through it.
-      const { data: seatedManager } = await seatedSession.rpc('rls_caller_is_org_manager', {
-        p_organization_id: orgA.orgId,
-      });
-      expect(seatedManager).toBe(false);
-
-      const { data: seatedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'stats.insights',
-      });
-      expect(seatedStats).toBe(true);
+      expect(seatedEntitlements).toContain('stats.insights');
+      expect(seatedEntitlements).not.toContain('branding');
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
       const { data: promoted, error: promoteError } = await seatedSession
@@ -1258,12 +1265,6 @@ describe('RLS tenant isolation (#191)', () => {
         user_id: seatedCustomId,
       });
       expect(selfSeatError?.code).toBe('42501');
-
-      // The system admin role is untouched by the seat carve-out.
-      const { data: adminManager } = await adminSession.rpc('rls_caller_is_org_manager', {
-        p_organization_id: orgA.orgId,
-      });
-      expect(adminManager).toBe(true);
     } finally {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
@@ -1277,12 +1278,12 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
-    // Zero-`org_role_features` custom role in a `hub` org (branding in the org
-    // plan) with a `pro` seat (stats.insights, NO branding). FeatureResolver
-    // resolves a seated actor against the seat plan only, so RLS must agree;
-    // before the r4 fix the org-plan fallback still granted the org plan through
-    // PostgREST. (Retargeted in 2b-7: `group.manage` left the catalog, so the
-    // org-plan key probed here is the org-scoped `branding`.)
+    // A `none`-profile custom role in a `hub` org (branding in the org plan)
+    // with a `pro` seat (stats.insights, NO branding). The resolver must use
+    // the seat plan for the seated actor; before the r4 fix the org-plan
+    // fallback still granted the org plan through PostgREST. (Retargeted in
+    // 2b-7: `group.manage` left the catalog, so the org-plan key probed here is
+    // the org-scoped `branding`.)
     const seatedEmail = `rls191-seat-plan-${tag}@dev.local`;
     const controlEmail = `rls191-seat-plan-control-${tag}@dev.local`;
 
@@ -1348,22 +1349,19 @@ describe('RLS tenant isolation (#191)', () => {
       const seatedSession = await signIn(seatedEmail);
       const controlSession = await signIn(controlEmail);
 
-      // `hub` has branding, `pro` does not: RLS must follow the seat plan, so
-      // the org-plan key stays denied for the seated custom role.
-      const { data: seatedBranding } = await seatedSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'branding',
+      // `hub` has branding, `pro` does not: resolution must follow the seat
+      // plan, so the org-plan key stays denied for the seated custom role.
+      const seatedEntitlements = await entitlementsFor(seatedSession, {
+        userId: seatedId,
+        activeOrgId: orgA.orgId,
+        orgRoleId: customRole!.id,
       });
-      expect(seatedBranding).toBe(false);
+      expect(seatedEntitlements).not.toContain('branding');
 
       // ...and it must be reading the seat plan, not just denying everything:
       // the `none` profile grants nothing, so `stats.insights` can only arrive
       // through the seat branch.
-      const { data: seatedAdvancedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'stats.insights',
-      });
-      expect(seatedAdvancedStats).toBe(true);
+      expect(seatedEntitlements).toContain('stats.insights');
 
       // The app denies group creation for this user; PostgREST must too.
       const { error: groupInsertError } = await seatedSession
@@ -1389,17 +1387,12 @@ describe('RLS tenant isolation (#191)', () => {
       expect(readableGroups?.length ?? 0).toBeGreaterThan(0);
 
       // An unseated custom role is on the `none` profile and holds nothing.
-      const { data: controlBranding } = await controlSession.rpc('rls_caller_has_org_feature', {
-        p_organization_id: orgA.orgId,
-        p_feature: 'branding',
+      const controlEntitlements = await entitlementsFor(controlSession, {
+        userId: controlId,
+        activeOrgId: orgA.orgId,
+        orgRoleId: customRole!.id,
       });
-      expect(controlBranding).toBe(false);
-
-      const { data: controlAdvancedStats } = await controlSession.rpc(
-        'rls_caller_has_org_feature',
-        { p_organization_id: orgA.orgId, p_feature: 'stats.insights' },
-      );
-      expect(controlAdvancedStats).toBe(false);
+      expect(controlEntitlements).toEqual([]);
 
       // Losing the seat leaves the same user with nothing: the seat plan, not
       // the org plan, was the only entitlement source.
@@ -1410,11 +1403,12 @@ describe('RLS tenant isolation (#191)', () => {
         .eq('user_id', seatedId);
       expect(unassignError).toBeNull();
 
-      const { data: unseatedAdvancedStats } = await seatedSession.rpc(
-        'rls_caller_has_org_feature',
-        { p_organization_id: orgA.orgId, p_feature: 'stats.insights' },
-      );
-      expect(unseatedAdvancedStats).toBe(false);
+      const afterUnseat = await entitlementsFor(seatedSession, {
+        userId: seatedId,
+        activeOrgId: orgA.orgId,
+        orgRoleId: customRole!.id,
+      });
+      expect(afterUnseat).toEqual([]);
     } finally {
       await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
       await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
@@ -1530,49 +1524,17 @@ describe('RLS tenant isolation (#191)', () => {
     expect(memberError?.code).toBe('23514');
   });
 
-  it('internal role-authority RPCs are service-role only, RLS wrappers work (function ACL)', async () => {
-    for (const [fn, invoke] of [
-      [
-        'has_org_feature',
-        () =>
-          studentSession.rpc('has_org_feature', {
-            p_actor: studentId,
-            p_organization_id: orgA.orgId,
-            p_feature: 'stats.insights',
-          }),
-      ],
-      [
-        'is_org_manager',
-        () =>
-          studentSession.rpc('is_org_manager', {
-            p_actor: studentId,
-            p_organization_id: orgA.orgId,
-          }),
-      ],
-      [
-        'can_assign_org_role',
-        () =>
-          studentSession.rpc('can_assign_org_role', {
-            p_actor: studentId,
-            p_role_id: orgA.adminRoleId,
-          }),
-      ],
-    ] as const) {
-      const { data, error } = await invoke();
-      expect(error?.code, `${fn} must not be executable by authenticated`).toBe('42501');
-      expect(data).toBeNull();
-    }
+  it('internal role-authority RPCs are service-role only, the assign wrapper works (function ACL)', async () => {
+    // The actor-parameterized capability twins are internal: only the
+    // `rls_caller_*` wrapper may be executed by `authenticated`.
+    const { data: actorParam, error: actorParamError } = await studentSession.rpc(
+      'can_assign_org_role',
+      { p_actor: studentId, p_role_id: orgA.adminRoleId },
+    );
+    expect(actorParamError?.code).toBe('42501');
+    expect(actorParam).toBeNull();
 
-    // The wrappers ARE granted and reflect the caller's role.
-    const { data: studentManager } = await studentSession.rpc('rls_caller_is_org_manager', {
-      p_organization_id: orgA.orgId,
-    });
-    expect(studentManager).toBe(false);
-    const { data: adminManager } = await adminSession.rpc('rls_caller_is_org_manager', {
-      p_organization_id: orgA.orgId,
-    });
-    expect(adminManager).toBe(true);
-
+    // The wrapper IS granted and reflects the caller's role.
     const { data: studentCanAssign } = await studentSession.rpc('rls_caller_can_assign_org_role', {
       p_role_id: orgA.adminRoleId,
     });
@@ -1597,20 +1559,6 @@ describe('RLS tenant isolation (#191)', () => {
       { p_role_id: orgA.memberRoleId },
     );
     expect(adminCanAssignMember).toBe(true);
-
-    // The admin branch is the only special case left since 2b-7: the system
-    // Admin role holds every key, a member-role student holds none beyond its
-    // own rows.
-    const { data: adminStats } = await adminSession.rpc('rls_caller_has_org_feature', {
-      p_organization_id: orgA.orgId,
-      p_feature: 'stats.insights',
-    });
-    expect(adminStats).toBe(true);
-    const { data: studentStats } = await studentSession.rpc('rls_caller_has_org_feature', {
-      p_organization_id: orgA.orgId,
-      p_feature: 'stats.insights',
-    });
-    expect(studentStats).toBe(false);
   });
 
   it('a signed-in user with no organization can still use personal flashcards', async () => {

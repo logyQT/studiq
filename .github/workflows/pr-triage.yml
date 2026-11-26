@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Keep in step with verify.yml (the linter is canary-only).
-  BUN_VERSION: 1.4.4-canary.20261027.1
+  # Keep in step with verify.yml (stable 1.4.5 still has no `bun lint`).
+  BUN_VERSION: 1.4.5-canary.20261125.1
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:

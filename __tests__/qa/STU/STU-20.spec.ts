@@ -10,8 +10,9 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Acceptance points:
  * 1. A file mixing good rows with a missing back, a blank line and blank cells imports the
- *    good ones and lists the others as „N błędów” with „Wiersz / Błąd”, numbered as in the
- *    preview. The whole file is sent, not only what the preview shows.
+ *    good ones and lists the others with „Wiersz / Błąd”, numbered as in the preview. The
+ *    heading counts the rows that have errors. The whole file is sent, not only what the
+ *    preview shows. With no good row, the dialog reports a failure.
  * 2. Without a front or back mapping: „Proszę przypisać kolumny Przód i Tył”.
  * 3. A .txt or .png file, picked or dropped: „Nie udało się sparsować pliku CSV”.
  * 4. Over 500 rows the real count is shown and nothing can be sent.
@@ -125,7 +126,10 @@ test.describe('@case:STU-20 @area:STU @prio:P2 CSV import of bad data', () => {
     await expect(
       dialog.getByText(`Zaimportowano ${GOOD} z ${TOTAL} fiszek`, { exact: true }),
     ).toBeVisible();
-    await expect(dialog.getByText('6 błędów')).toBeVisible();
+    // Six problems, but only four rows have them.
+    await expect(dialog.getByText('4 wiersze z błędami', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Import zakończony', { exact: true })).toBeVisible();
+    await expect(dialog.locator('svg.text-green-500')).toHaveCount(1);
     await expect(dialog.locator('thead th')).toHaveText(['Wiersz', 'Błąd']);
     const rows = await dialog
       .locator('tbody tr')
@@ -161,7 +165,10 @@ test.describe('@case:STU-20 @area:STU @prio:P2 CSV import of bad data', () => {
     });
 
     await pick(dialog, csvFile('fiszki.csv', 'front,back\nq,a\n'));
-    const [front, back] = [dialog.locator('select').nth(0), dialog.locator('select').nth(1)];
+    const picker = (name: string) => dialog.getByRole('combobox', { name, exact: true });
+    const [front, back] = [picker('Kolumna przód'), picker('Kolumna tył')];
+    await expect(picker('Kolumna temat')).toHaveValue('');
+    await expect(picker('Kolumna talia')).toHaveValue('');
     await expect(front).toHaveValue('front');
     await expect(back).toHaveValue('back');
     const confirm = dialog.getByRole('button', { name: /^Importuj 1 fisz/ });
@@ -176,6 +183,21 @@ test.describe('@case:STU-20 @area:STU @prio:P2 CSV import of bad data', () => {
     await expect(page.getByText(COPY.limit, { exact: true })).toBeVisible();
     await expect(page.getByText('USAGE_LIMIT_EXCEEDED')).toHaveCount(0);
     expect(requests).toBe(1);
+  });
+
+  test('reports a failure and creates no deck when no row is good', async ({ page }) => {
+    const dialog = await openImportDialog(page);
+    const before = await deckIds(page);
+
+    await pick(dialog, csvFile('same_bledy.csv', 'front,back\nq,\n,a\n'));
+    await dialog.getByRole('button', { name: /^Importuj 2 fisz/ }).click();
+
+    await expect(dialog.getByText('Zaimportowano 0 z 2 fiszek', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Import nie powiódł się', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Import zakończony', { exact: true })).toHaveCount(0);
+    await expect(dialog.locator('svg.text-green-500')).toHaveCount(0);
+    await expect(dialog.getByText('2 wiersze z błędami', { exact: true })).toBeVisible();
+    expect(await deckIds(page)).toEqual(before);
   });
 
   const wrongFiles = [
@@ -213,7 +235,7 @@ test.describe('@case:STU-20 @area:STU @prio:P2 CSV import of bad data', () => {
     await pick(dialog, csvFile('duzy.csv', text));
 
     await expect(dialog.getByText('Znaleziono 501 wierszy', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('alert')).toHaveText(COPY.invalid);
+    await expect(dialog.getByRole('alert')).toHaveText(`${COPY.invalid} (501 / 500)`);
     await expect(dialog.getByRole('button', { name: /^Importuj 501 / })).toBeDisabled();
   });
 });

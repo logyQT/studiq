@@ -20,9 +20,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // `entitlement_catalog` is pricing metadata: `PlanInfo.seatEligible` embeds it
 // from `plan_entitlements` on every plan read, and the public catalogue is
-// anonymous (phase 4a).
+// anonymous (phase 4a). `entitlement_flags` is the kill switch the same public
+// read gates on (#1484); it carries no authority.
 const PRICING_TABLES = [
   'entitlement_catalog',
+  'entitlement_flags',
   'plan_entitlements',
   'plan_limits',
   'subscription_plans',

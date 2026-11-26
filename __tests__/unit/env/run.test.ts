@@ -50,6 +50,9 @@ const PRINT_CONTRACT = [
   '}))',
 ].join('\n');
 
+const PRINT_MAIL =
+  'console.log(JSON.stringify({ http: process.env.MAILPIT_URL, smtpPort: process.env.MAILPIT_SMTP_PORT }))';
+
 describe('env:run', () => {
   it('requires a command (exit 2) and prints the usage line', async () => {
     const harness = newHarness();
@@ -100,6 +103,49 @@ describe('env:run', () => {
       appEnv: 'development',
       appPort: '3456',
     });
+  });
+
+  it('exports the running stack’s Mailpit SMTP port next to its HTTP URL', async () => {
+    const harness = newHarness();
+    runningStack(harness);
+
+    const result = await harness.run(['run', '--', BUN, '-e', PRINT_MAIL]);
+
+    expect(result.status).toBe(0);
+    expect(parseJsonObject(result.stdout)).toEqual({
+      http: 'http://127.0.0.1:20503',
+      smtpPort: '20395',
+    });
+  });
+
+  it('leaves the SMTP port unset when the stack reports no SMTP endpoint', async () => {
+    const harness = newHarness();
+    harness.setStatusFixture({
+      ...stackStatusFixture({ apiUrl: STACK_URL, apiPort: API_PORT }),
+      endpoints: { 'rest.http': { port: API_PORT } },
+    });
+
+    const result = await harness.run(['run', '--', BUN, '-e', PRINT_MAIL]);
+
+    expect(result.status).toBe(0);
+    expect(parseJsonObject(result.stdout)).not.toHaveProperty('smtpPort');
+  });
+
+  // The owner of a shared stack publishes URLs only, so a consumer has no port to relay.
+  it('leaves the SMTP port unset for a shared stack', async () => {
+    const harness = newHarness();
+    runningStack(harness);
+
+    const result = await harness.run(['run', '--', BUN, '-e', PRINT_MAIL], {
+      SUPABASE_SHARED: '1',
+      SUPABASE_URL: 'http://127.0.0.1:54321',
+      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'shared-anon-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'shared-service-role-key',
+    });
+
+    expect(result.status).toBe(0);
+    expect(parseJsonObject(result.stdout)).not.toHaveProperty('smtpPort');
   });
 
   it('overrides a QA_APP_URL already pointing at the shared app', async () => {

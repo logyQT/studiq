@@ -126,7 +126,7 @@ describe(`Auth Integration`, () => {
         .eq('email', uniqueEmail)
         .single();
 
-      expect(profile?.personal_plan_key).toBe('lite');
+      expect(profile?.personal_plan_key).toBe('base');
     });
 
     // #300 / AUT-05: a duplicate must not surface as 500 INTERNAL_SERVER.

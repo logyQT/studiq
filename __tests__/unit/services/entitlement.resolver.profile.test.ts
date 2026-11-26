@@ -5,10 +5,10 @@ import { mockResolverTables } from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 // The resolver contract (ADR-0015 §5.3/§6.1, D18/D19), after 2b-7 removed the
-// four legacy management markers from the catalog:
+// four legacy management markers from the catalog and phase 7 dropped the
+// revoke store:
 //
 //   verified membership → profile (all | learner | none) ∩ plan ceiling
-//     → legacy rows (is_enabled=false revokes only — enabled rows add nothing)
 //     → seat plan ∩ ceiling
 //     → personal plan (personalPortable whitelist inside an org)
 //     → overrides → flags (fail closed) → quota-0 exclusion
@@ -36,7 +36,6 @@ type Scenario = {
   member?: boolean;
   orgRoleId: string | null;
   profile: string | null;
-  rows: Array<{ feature_key: string; is_enabled?: boolean }>;
   plan: keyof typeof PLANS;
   seatPlanKey?: string;
   expected: EntitlementKey[];
@@ -47,20 +46,13 @@ const CASES: Scenario[] = [
     name: 'admin/all on hub: the whole plan ceiling',
     orgRoleId: 'role-admin',
     profile: 'all',
-    rows: [],
     plan: 'hub',
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
   {
-    name: 'admin/all on launch: the launch ceiling, and an enabled role row adds nothing',
+    name: 'admin/all on launch: the launch ceiling',
     orgRoleId: 'role-admin',
     profile: 'all',
-    rows: [
-      { feature_key: 'flashcards', is_enabled: true },
-      // Not in the launch ceiling: the profile is authoritative, so this row
-      // must not grant it.
-      { feature_key: 'ai.chat', is_enabled: true },
-    ],
     plan: 'launch',
     expected: ['flashcards', 'quiz'],
   },
@@ -68,7 +60,6 @@ const CASES: Scenario[] = [
     name: 'teacher/all on hub: the ceiling, identical to admin',
     orgRoleId: 'role-teacher',
     profile: 'all',
-    rows: [],
     plan: 'hub',
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
@@ -76,10 +67,6 @@ const CASES: Scenario[] = [
     name: 'member/learner on hub: exactly the learner set',
     orgRoleId: 'role-member',
     profile: 'learner',
-    rows: [
-      { feature_key: 'flashcards', is_enabled: true },
-      { feature_key: 'ai.chat', is_enabled: true },
-    ],
     plan: 'hub',
     expected: ['ai.chat', 'flashcards', 'quiz', 'branding'],
   },
@@ -87,15 +74,13 @@ const CASES: Scenario[] = [
     name: 'member/learner on launch: learner set intersected with the plan',
     orgRoleId: 'role-member',
     profile: 'learner',
-    rows: [{ feature_key: 'flashcards', is_enabled: true }],
     plan: 'launch',
     expected: ['flashcards', 'quiz'],
   },
   {
-    name: 'custom role/none with zero rows on hub: nothing (no seat)',
+    name: 'custom role/none on hub: nothing (no seat)',
     orgRoleId: 'role-custom',
     profile: 'none',
-    rows: [],
     plan: 'hub',
     expected: [],
   },
@@ -103,7 +88,6 @@ const CASES: Scenario[] = [
     name: 'custom role/none with a seat on hub: the seat ∩ ceiling only',
     orgRoleId: 'role-custom',
     profile: 'none',
-    rows: [],
     plan: 'hub',
     seatPlanKey: 'seatHub',
     expected: ['ai.chat', 'quiz.templates', 'branding'],
@@ -115,7 +99,6 @@ const CASES: Scenario[] = [
     // A profile the resolver must never reach: the guard, not a `none` answer,
     // is what makes the missing role fail closed.
     profile: 'all',
-    rows: [],
     plan: 'hub',
     expected: [],
   },
@@ -125,15 +108,13 @@ const CASES: Scenario[] = [
     member: false,
     orgRoleId: 'role-admin',
     profile: 'all',
-    rows: [],
     plan: 'hub',
     expected: [],
   },
   {
-    name: 'custom role/all with zero rows on hub: the ceiling',
+    name: 'custom role/all on hub: the ceiling',
     orgRoleId: 'role-custom',
     profile: 'all',
-    rows: [],
     plan: 'hub',
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
@@ -141,7 +122,6 @@ const CASES: Scenario[] = [
     name: 'seated learner on launch: the seat plan is intersected with the ceiling (adds nothing beyond it)',
     orgRoleId: 'role-member',
     profile: 'learner',
-    rows: [],
     plan: 'launch',
     seatPlanKey: 'seat',
     expected: ['flashcards', 'quiz'],
@@ -150,7 +130,6 @@ const CASES: Scenario[] = [
     name: 'seated learner on hub: the seat ∩ ceiling adds the seat-only ceiling key',
     orgRoleId: 'role-member',
     profile: 'learner',
-    rows: [],
     plan: 'hub',
     seatPlanKey: 'seatHub',
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'branding'],
@@ -164,7 +143,6 @@ function buildClient(scenario: Scenario) {
     member: scenario.member,
     orgPlan: scenario.plan,
     roleProfile: scenario.profile,
-    roleRows: scenario.rows,
     seatPlanKey: scenario.seatPlanKey,
     personalPlanKey: null,
     planEntitlements: PLANS,
@@ -213,7 +191,6 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
     await resolver.resolveEntitlements(ctxFor(scenario));
 
     expect(mock.from).not.toHaveBeenCalledWith('org_roles');
-    expect(mock.from).not.toHaveBeenCalledWith('org_role_features');
     expect(mock.from).not.toHaveBeenCalledWith('organizations');
   });
 
@@ -234,7 +211,6 @@ describe('EntitlementResolver org entitlement profile (D18/D19)', () => {
       name: 'unknown profile',
       orgRoleId: 'role-custom',
       profile: 'teacher',
-      rows: [],
       plan: 'hub',
       expected: [],
     };

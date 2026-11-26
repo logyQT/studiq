@@ -3,18 +3,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
 
-// ADR-0015 phase 3c (D19/D27/D31): `change_org_plan` moves `organizations.plan`
-// and nothing else. The org layer is derived live — `plan_entitlements` /
-// `plan_limits` plus `org_roles.entitlement_profile` — so no grant snapshot is
-// written. `org_role_features` is revokes-only: a hand-inserted
-// `is_enabled = false` row survives a plan change and the old writer is gone.
-// Live limit/feature resolution itself is covered by limits-resolution.test.ts,
-// org-features.test.ts and entitlement-profile.test.ts.
+// ADR-0015 phase 3c/7 (D19/D27/D31): `change_org_plan` moves
+// `organizations.plan` and nothing else. The org layer is derived live —
+// `plan_entitlements` / `plan_limits` plus `org_roles.entitlement_profile` — so
+// there is no feature snapshot to write, and phase 7 dropped the legacy
+// per-role table the old cases used as a revoke fixture. Live limit/feature
+// resolution itself is covered by limits-resolution.test.ts and
+// org-features.test.ts.
 
 describe('change_org_plan()', () => {
   let service: SupabaseClient;
   let orgId: string;
-  let adminRoleId: string;
 
   async function plan(): Promise<string | undefined> {
     const { data } = await service
@@ -26,17 +25,28 @@ describe('change_org_plan()', () => {
     return data?.plan;
   }
 
-  async function roleFeatures(): Promise<{ feature_key: string; is_enabled: boolean }[]> {
+  /**
+   * The org's role-permission rows, as `role/name@key@scope`. A plan move must
+   * leave this derived layer untouched: permissions are authority, not plan
+   * data.
+   */
+  async function permissionFingerprint(): Promise<string[]> {
+    const { data: roles, error: roleError } = await service
+      .from('org_roles')
+      .select('id, name')
+      .eq('organization_id', orgId);
+    if (roleError) throw new Error(roleError.message);
+    const roleNames = new Map(dbRows(roles).map((role) => [role.id, role.name]));
+
     const { data, error } = await service
-      .from('org_role_features')
-      .select('feature_key, is_enabled, org_roles!inner(organization_id)')
-      .eq('org_roles.organization_id', orgId)
-      .overrideTypes<{ feature_key: string; is_enabled: boolean }[], { merge: false }>();
+      .from('org_role_permissions')
+      .select('org_role_id, permission_key, scope')
+      .in('org_role_id', [...roleNames.keys()]);
     if (error) throw new Error(error.message);
-    return dbRows(data).map((row) => ({
-      feature_key: row.feature_key,
-      is_enabled: row.is_enabled,
-    }));
+
+    return dbRows(data)
+      .map((row) => `${roleNames.get(row.org_role_id)}@${row.permission_key}@${row.scope}`)
+      .toSorted();
   }
 
   beforeAll(async () => {
@@ -49,79 +59,26 @@ describe('change_org_plan()', () => {
       .overrideTypes<{ id: string }, { merge: false }>();
     if (error) throw new Error(`org create failed: ${error.message}`);
     orgId = data.id;
-
-    const { data: adminRole, error: roleError } = await service
-      .from('org_roles')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('name', 'admin')
-      .single()
-      .overrideTypes<{ id: string }, { merge: false }>();
-    if (roleError) throw new Error(`admin role read failed: ${roleError.message}`);
-    adminRoleId = adminRole.id;
   });
 
   afterAll(async () => {
     if (orgId) await cleanupOrganizationDeep(orgId);
   });
 
-  it('moves the plan up and back down without writing a feature snapshot', async () => {
+  it('moves the plan up and back down without writing a derived snapshot', async () => {
     expect(await plan()).toBe('launch');
-    // A fresh org has no feature rows: the profile governs the role layer.
-    expect(await roleFeatures()).toEqual([]);
+    const before = await permissionFingerprint();
+    expect(before.length).toBeGreaterThan(0);
 
     const up = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'hub' });
     expect(up.error).toBeNull();
     expect(await plan()).toBe('hub');
-    expect(await roleFeatures()).toEqual([]);
+    expect(await permissionFingerprint()).toEqual(before);
 
     const down = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'launch' });
     expect(down.error).toBeNull();
     expect(await plan()).toBe('launch');
-    expect(await roleFeatures()).toEqual([]);
-  });
-
-  it('leaves a hand-inserted revoke row in place across a plan change', async () => {
-    const { error: insertError } = await service.from('org_role_features').insert({
-      org_role_id: adminRoleId,
-      feature_key: 'ai.chat',
-      is_enabled: false,
-    });
-    expect(insertError).toBeNull();
-
-    const { error } = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'hub' });
-    expect(error).toBeNull();
-
-    expect(await roleFeatures()).toEqual([{ feature_key: 'ai.chat', is_enabled: false }]);
-
-    // Leave the org as the other cases expect it.
-    await service.from('org_role_features').delete().eq('org_role_id', adminRoleId);
-    await service.from('organizations').update({ plan: 'launch' }).eq('id', orgId);
-  });
-
-  it('keeps a revoke row for a key the target plan does not carry', async () => {
-    // The removed writer deleted every feature row whose key was outside the
-    // new plan (`DELETE … WHERE feature_key NOT IN (new plan)`); `ai.chat` is
-    // in `hub`, so the case above would have survived it. `stats.insights` is
-    // not in `launch`: the move back down is exactly what the old ceiling diff
-    // would have wiped.
-    const { error: insertError } = await service.from('org_role_features').insert({
-      org_role_id: adminRoleId,
-      feature_key: 'stats.insights',
-      is_enabled: false,
-    });
-    expect(insertError).toBeNull();
-
-    const up = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'hub' });
-    expect(up.error).toBeNull();
-
-    const down = await service.rpc('change_org_plan', { p_org_id: orgId, p_plan: 'launch' });
-    expect(down.error).toBeNull();
-
-    expect(await plan()).toBe('launch');
-    expect(await roleFeatures()).toEqual([{ feature_key: 'stats.insights', is_enabled: false }]);
-
-    await service.from('org_role_features').delete().eq('org_role_id', adminRoleId);
+    expect(await permissionFingerprint()).toEqual(before);
   });
 
   it('rejects an unknown organization or plan', async () => {

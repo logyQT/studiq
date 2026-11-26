@@ -18,8 +18,9 @@ import { createNextRequest, createTypedServiceClient } from '#test/integration/t
 /**
  * ADR-0015 §4.1/§7.1, phase 5b row 8: org deletion authorizes on `org.admin` at
  * organization scope in the active org — `scopeCovers(ctx.permissionScopes
- * ['org.admin'], 'organization')` — not on the dead `rls_caller_is_org_manager`
- * marker RPC. `organizations` deliberately has no DELETE policy (verified over
+ * ['org.admin'], 'organization')` — not on a legacy manager-marker RPC (the
+ * phase-7 deletion removed the last of them). `organizations` deliberately has
+ * no DELETE policy (verified over
  * the live stack: only SELECT/UPDATE policies exist), so there is no RLS twin by
  * construction; the service is the whole gate (it runs the delete on the
  * service-role client).

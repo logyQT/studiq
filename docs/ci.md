@@ -18,6 +18,38 @@ The `main` ruleset requires five contexts:
 added to the ruleset. The check-run name is `pr-triage` because that is the job
 id; the workflow is also named `pr-triage`, so the two match on purpose.
 
+## Merging
+
+`main` also requires an up-to-date head (`strict_required_status_checks_policy`),
+so a merge moves the base and every other open PR is `BEHIND` again. Landing two
+PRs means: update → wait for the five contexts → merge → repeat.
+
+GitHub's native merge queue cannot do this here: it is available only on
+**organization-owned** repositories (public, or private on Enterprise Cloud), and
+this repository is user-owned. The ruleset API rejects a `merge_queue` rule on it
+(`data matches no possible input`) and GraphQL returns `mergeQueue: null`;
+`verify.yml` already handles a `merge_group` run, so moving the repository under
+an organization is the only missing piece.
+
+Until then, `scripts/merge-queue.sh` serializes the same loop locally:
+
+```bash
+bun run merge:queue status   # the queue file and the verdict for each PR
+bun run merge:queue once     # drain the queue, then exit (the CI/agent path)
+bun run merge:queue daemon   # keep draining as the file grows
+bun run merge:queue run 1234 # one PR now
+```
+
+The queue is `.dev/merge-queue.txt` (Git-ignored), one PR number per line in
+landing order; `#` holds an entry. For each PR it merges only when the branch
+rules' own required contexts are green — the list is read from the
+`rules/branches` API, not hardcoded — updating the branch first when it is
+`BEHIND`. It halts on the first conflict, failing check, draft or timeout rather
+than skipping ahead, because landing order can matter. `DRY_RUN=1` reports what
+it would do without merging.
+
+It never bypasses a gate (no `--admin`) and never merges two PRs concurrently.
+
 ## Workflows
 
 | File                               | Trigger                                                | Role                                                          |
@@ -206,6 +238,8 @@ with reviewers), and should be documented here. Never echo it.
 ## Pinned versions
 
 - Bun: `BUN_VERSION` in `verify.yml`, `cache-warm.yml` and `pr-triage.yml`.
+  It is a **canary** (`1.4.5-canary.*`): stable Bun 1.4.5 ships `bun fmt` and
+  `bun check` but not `bun lint`, which the repo's lint gate needs.
   Keeping these in step with the version pinned in `scripts/check-bun-version.ts`
   is **manual**: that script only enforces the local minimum and does not read
   workflow files.

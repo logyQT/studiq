@@ -279,8 +279,22 @@ describe('problem questions floor (#654 review)', () => {
       }),
       rpc: vi.fn().mockResolvedValue({
         data: [
-          { id: 'q1', content: 'one answer', type: 'mcq', correctRate: 0, totalAnswers: 1 },
-          { id: 'q2', content: 'three answers', type: 'mcq', correctRate: 0.2, totalAnswers: 3 },
+          {
+            id: 'q1',
+            bankId: 'bank-1',
+            content: 'one answer',
+            type: 'mcq',
+            correctRate: 0,
+            totalAnswers: 1,
+          },
+          {
+            id: 'q2',
+            bankId: 'bank-1',
+            content: 'three answers',
+            type: 'mcq',
+            correctRate: 0.2,
+            totalAnswers: 3,
+          },
         ],
         error: null,
       }),

@@ -101,7 +101,8 @@ punkty opisują to, co spec pinuje; przebieg 5/5 wykonuje koordynator programu.
 - Kolejne zapisy zastępują poprzedni zakres (Własne → Grupa → Organizacja) i od razu
   zmieniają to, co widzi użytkownik — uprawnienia nie są migawką z chwili zapisu.
 - Użytkownik roli niestandardowej ma `entitlement_profile = 'none'`, więc rola nie
-  wnosi żadnego uprawnienia organizacyjnego (nie ma też wierszy `org_role_features`);
+  wnosi żadnego uprawnienia organizacyjnego (nie istnieje już osobny magazyn
+  uprawnień per rola);
   powierzchnię `/app/*` utrzymuje jego własny plan `base`. Asercje przypadku dotyczą
   **uprawnień treściowych** roli (zakresy Własne / Grupa / Organizacja), nie jej
   uprawnień organizacyjnych. `GET /api/v1/organization/groups` zwraca mu 403 (brak

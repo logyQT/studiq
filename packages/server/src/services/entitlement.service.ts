@@ -10,8 +10,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /**
  * The identity half of `PaymentOwner` (#662 §6.6).
  *
- * Entitlements are keyed by `(kind, id)` only: the plan's scope/audience is a
- * property of the **catalog plan**, not of the write, so the webhook never has
+ * Entitlements are keyed by `(kind, id)` only: the plan's scope is a property
+ * of the **catalog plan**, not of the write, so the webhook never has
  * to look an auth user up just to apply a plan.
  */
 export type EntitlementOwner = { type: 'user'; userId: string } | { type: 'org'; orgId: string };
@@ -46,8 +46,8 @@ export interface EntitlementPlan {
  *
  * - organization → `rpc('change_org_plan')`, which moves `organizations.plan`
  *   and nothing else (service-role only). The org layer is derived live:
- *   `plan_entitlements`/`plan_limits` plus `org_roles.entitlement_profile`,
- *   with `org_role_features` read as revokes-only (ADR-0015 D19/D31);
+ *   `plan_entitlements`/`plan_limits` plus `org_roles.entitlement_profile`
+ *   (ADR-0015 D19/D31);
  * - user → `profiles.personal_plan_key`, write-locked for `authenticated`
  *   (migration 20261022000001), so it is written with the service-role client.
  *
@@ -123,14 +123,14 @@ export class EntitlementService {
   }
 
   /**
-   * Downgrade to the free plan of the previous plan's scope/audience (`base`
-   * for students, `lite` for educators, `solo` for managers, `launch` for
-   * organizations — D32/D34).
+   * Downgrade to the free plan of the previous plan's scope: `base` for every
+   * personal plan, `launch` for an organization (D34).
    *
-   * The scope/audience comes from the catalog row of the plan being left,
-   * never from the caller's claims: a `customer.subscription.deleted` payload
-   * does not carry an account type, and the catalog is the single source of
-   * truth.
+   * The scope comes from the catalog row of the plan being left, never from
+   * the caller's claims: a `customer.subscription.deleted` payload does not
+   * carry an account type, and the catalog is the single source of truth.
+   * Since #1193 a personal plan carries no audience, so the free match is one
+   * plan per scope.
    */
   async downgradeToFree(
     owner: EntitlementOwner,
@@ -195,27 +195,23 @@ export class EntitlementService {
     previousPlanKey: string | null,
   ): Promise<ServiceResult<EntitlementPlan>> {
     let scope: string | null = null;
-    let audience: string | null = null;
 
     if (previousPlanKey) {
       const previous = await this.getPlan(previousPlanKey);
       if (isFailure(previous)) return previous;
       scope = previous.data?.scope ?? null;
-      audience = previous.data?.audience ?? null;
     }
 
     // Fallback only when the previous plan row disappeared: an organization
-    // downgrades to the free organization plan; a user defaults to the free
-    // student plan.
+    // downgrades to the free organization plan; a user to the free personal
+    // plan.
     if (!scope) {
       scope = owner.type === 'org' ? 'organization' : 'personal';
-      audience = owner.type === 'org' ? null : 'student';
     }
 
     const admin = this.createAdminClient();
-    // The catalog has at most one active free plan per scope/audience pair,
-    // but filter in JS instead of `.eq('audience', null)` — Supabase would
-    // serialize a null filter as `= null` (the #148 footgun).
+    // One active free plan per scope since #1193. Read both and pick the
+    // scope in JS; the audience no longer partitions the personal ladder.
     const { data, error } = await admin
       .from('subscription_plans')
       .select('key, scope, audience, price_monthly, is_active, sort_order')
@@ -225,9 +221,9 @@ export class EntitlementService {
 
     if (error) return toDbFailure(error);
 
-    const freePlan = dbRows(data).find((row) => row.scope === scope && row.audience === audience);
+    const freePlan = dbRows(data).find((row) => row.scope === scope);
     if (!freePlan) {
-      logError('billing.free_plan_missing', { scope, audience, ownerType: owner.type });
+      logError('billing.free_plan_missing', { scope, ownerType: owner.type });
       return failure('NOT_FOUND');
     }
 

@@ -43,6 +43,8 @@ interface QuizAttempt {
   /** Questions that can be auto-graded (`type !== 'open'`) — the score denominator (#329). */
   gradable_questions: number;
   assignment_id: string | null;
+  /** Durable marker: stays true after the assignment is deleted and nulls `assignment_id`. */
+  is_assignment_attempt: boolean;
   config: {
     questionTypes?: string[];
     questionCount?: number;
@@ -95,9 +97,12 @@ export function QuizContent() {
   const inProgressAttempt = attempts?.find((a) => !a.completed_at) ?? null;
 
   // Practice attempts only: assignment attempts keep their own review entry point
-  // under /app/assignments and score in points, not correct answers.
+  // under /app/assignments and score in points, not correct answers. The durable
+  // marker is what classifies them — `assignment_id` is nulled when the
+  // assignment is deleted, so it alone would turn the orphan into a practice
+  // quiz (#1141, #657).
   const completedAttempts = (attempts ?? [])
-    .filter((a): a is CompletedQuizAttempt => a.completed_at !== null && a.assignment_id === null)
+    .filter((a): a is CompletedQuizAttempt => a.completed_at !== null && !a.is_assignment_attempt)
     .slice(0, 5);
 
   function toggleQuizType(type: string) {

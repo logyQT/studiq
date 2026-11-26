@@ -1,5 +1,5 @@
 {
-  "key": "STU-48:plan-material",
+  "key": "STU-48:material-content",
   "case": "STU-48",
   "match": { "hasTools": false, "systemContains": "educational content generator" },
   "turns": [

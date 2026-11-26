@@ -8,7 +8,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * Case: open the assistant, ask it to explain a concept, watch the streamed
  * answer, stop a long one midway, then start a new conversation and clear the
  * chat. The model is the fake inference server (`bun run mock:llm`), so the
- * answer, its thinking trace and its token usage are the fixtures' own:
+ * answer, its token usage and the reasoning it streams are the fixtures' own:
  *
  *   scripts/fake-llm/cases/STU-47.happy-path.json   reasoning + text, usage 120 + 40
  *   scripts/fake-llm/cases/STU-47.slow-stream.json  13 chunks, 400 ms apart
@@ -25,10 +25,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   it answers „Jakie pojęcie mam Ci wyjaśnić?” and sends nothing to the model.
  *   The model is only asked when the user types and sends the question, and by
  *   then that canned exchange is part of the history it receives.
- * - The thinking trace is a „Thought” toggle whose label is hardcoded English
- *   (`ThoughtMessage` in `chat-message.tsx`); the case expects „Pokaż myślenie”,
- *   the label `ThinkingBlock` would use. The spec accepts either, so it neither
- *   freezes the English label nor fails when the label is localized.
+ * - The model's reasoning stays server-side (#1210): the route never streams it
+ *   (`sendReasoning: false`), so the case's „Pokaż myślenie” toggle is gone.
+ *   The fixture still sends a reasoning trace. The route unit test pins the wire
+ *   flag; the toggle assertion here catches a client-side render regression.
  */
 
 const CASE = 'STU-47';
@@ -57,7 +57,7 @@ test.describe('@case:STU-47 @area:STU @prio:P2 AI chat basic conversation', () =
     await fakeLlm.reset();
   });
 
-  test('greets, streams an explanation with a thinking trace and meters the tokens', async ({
+  test('greets, streams an explanation, hides its reasoning and meters the tokens', async ({
     page,
   }) => {
     const tenant = loadTenant(CASE);
@@ -83,10 +83,9 @@ test.describe('@case:STU-47 @area:STU @prio:P2 AI chat basic conversation', () =
     await expect(page.getByText('w glukozę i tlen.')).toBeVisible();
     await expect(page.getByText('Fotosynteza to proces, w którym rośliny')).toBeVisible();
 
-    // The thinking trace is folded away until the user opens it.
-    await expect(page.getByText('Użytkownik pyta o fotosyntezę.')).toBeHidden();
-    await page.getByRole('button', { name: /^(Thought|Pokaż myślenie)$/ }).click();
-    await expect(page.getByText('Użytkownik pyta o fotosyntezę.')).toBeVisible();
+    // The fixture streams the reasoning; the chat must not show it or a toggle.
+    await expect(page.getByText('Użytkownik pyta o fotosyntezę.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Pokaż myślenie' })).toHaveCount(0);
 
     // Reported by the fixture's usage chunk and counted by the route, which then
     // refreshes the badge.

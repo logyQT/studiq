@@ -78,7 +78,9 @@ export function BillingPage({ accountType, upgradePath }: BillingPageProps) {
     style: 'currency',
     currency: plan.currency,
   });
-  const visibleLimits = shown ? getVisibleLimitKeys([shown], accountType) : [];
+  const visibleLimits = shown
+    ? getVisibleLimitKeys([shown], plan.scope === 'organization' ? 'organization' : 'personal')
+    : [];
   const historyPath = invoiceHistoryPath(accountType);
 
   return (

@@ -5,9 +5,10 @@ import { join } from 'node:path';
  * The QA pointer a consumer worktree reads (`qa/env.json`).
  *
  * The owning checkout writes it with `bun run env:share --write`; it carries
- * URLs only — the service-role key stays in each checkout's `.env.local`. Absent
- * or malformed is normal for a single-checkout run, so every reader degrades to
- * `process.env` and then to the documented local default.
+ * URLs only — the service-role key stays in each checkout's `.env.local`. Absent,
+ * malformed or not a JSON object reads as no pointer, so the caller decides what
+ * comes next: `QA_APP_URL` first, then this pointer (`resolveQaAppUrl`), and
+ * outside CI there is no default at all.
  */
 export interface QaPointerFile {
   appUrl?: string;
@@ -44,6 +45,15 @@ export function readQaPointer(root = process.cwd()): QaPointerFile | null {
 const SHARED_QA_APP_URL = 'http://localhost:3010';
 
 /**
+ * Many tools export `CI=false` or `CI=0` on a developer box, so presence is not a signal: only
+ * an affirmative value counts, and it is trimmed and compared case-insensitively.
+ */
+export function isCi(env: NodeJS.ProcessEnv): boolean {
+  const value = env.CI?.trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
+/**
  * The app a QA run was told to talk to, or `null` when nobody told it (#1286): an explicit
  * `QA_APP_URL`, then the pointer `env:share` wrote. CI exports `QA_APP_URL` and `CI` itself, so
  * there the shared app is the right default; anywhere else `:3010` is another checkout's app and
@@ -58,7 +68,7 @@ export function resolveQaAppUrl(
 ): string | null {
   const url = env.QA_APP_URL || readQaPointer(root)?.appUrl;
   if (url) return url;
-  return env.CI ? SHARED_QA_APP_URL : null;
+  return isCi(env) ? SHARED_QA_APP_URL : null;
 }
 
 /**

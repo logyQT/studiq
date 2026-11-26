@@ -6,5 +6,5 @@ import { useOrgs } from '@/hooks/use-orgs';
 export default function ManageUpgradePage() {
   const { activeOrg } = useOrgs();
 
-  return <UpgradePlans audience="manager" orgId={activeOrg?.id} />;
+  return <UpgradePlans scope="organization" orgId={activeOrg?.id} />;
 }

@@ -23,6 +23,8 @@ export const ProblematicQuestionStatsSchema = z.object({
   id: z.string(),
   content: z.string(),
   type: z.string(),
+  /** The question has no page of its own: a link to it opens this bank. */
+  bankId: z.string(),
   /** 0..1 fraction; the UI renders `Math.round(correctRate * 100)`. */
   correctRate: z.number(),
   /** Completed learner attempts that answered this question. */

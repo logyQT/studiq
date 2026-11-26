@@ -81,6 +81,17 @@ describe('qaAppUrl', () => {
   });
 });
 
+describe('the CI carve-out', () => {
+  it.each(['1', 'true', 'TRUE', ' 1 '])('treats CI=%j as CI', (CI) => {
+    expect(resolveQaAppUrl(root, { CI })).toBe(SHARED);
+  });
+
+  it.each(['false', '0', ''])('treats CI=%j as not CI', (CI) => {
+    expect(resolveQaAppUrl(root, { CI })).toBeNull();
+    expect(() => qaAppUrl(root, { CI })).toThrow(/QA_APP_URL is not set/);
+  });
+});
+
 describe('resolveQaAppUrl (the config half: it never throws)', () => {
   it('returns null outside CI when nobody told the run which app to hit', () => {
     expect(resolveQaAppUrl(root, {})).toBeNull();

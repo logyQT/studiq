@@ -19,8 +19,8 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
  * Branding precondition. The case asks for an organization on a plan with
  * branding. A non-marker entitlement key resolves from the role's
  * `entitlement_profile` (the manager's Admin role is `all`) intersected with
- * `plan_entitlements(organizations.plan)`; an `org_role_features` row no longer
- * grants one. So this spec reads the tenant's plan and, when its ceiling lacks
+ * `plan_entitlements(organizations.plan)`; there is no per-role feature store.
+ * So this spec reads the tenant's plan and, when its ceiling lacks
  * `branding`, calls the service-role `change_org_plan` RPC — the same RPC the
  * billing webhook calls — to put this tenant's own organization on `hub`. Only
  * that organization is written: the plan catalog, `plan_entitlements` and

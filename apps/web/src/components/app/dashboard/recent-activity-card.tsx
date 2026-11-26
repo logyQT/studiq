@@ -62,7 +62,7 @@ export function RecentActivityCard({
             {items.map((item, index) => {
               const Icon = ICONS[item.kind];
               const href = hrefFor(item);
-              const title = item.title ?? t('untitled_quiz');
+              const title = item.title ?? t('practice_quiz');
               const key = activityMessageKey(item);
               const text =
                 key === 'activity_flashcards_studied'

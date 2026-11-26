@@ -26,11 +26,12 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  *
  * gives `qa-edu-st-04-<suffix>` (`tenantKey('qa/cases/EDU-ST-04.md',
  * 'EDU-ST-04#<suffix>', 'qa-shared')` + `tenantId` for every org/user/group id).
- * The tenant's `teacher` is an educator and an org member, so it may create its own
- * bank, questions, quiz and assignment (`assignment.*` = `own`); the assignment is
- * scoped by `organization_id` and only targets `G1`, so the student is the only one
- * who can take it. Nothing global is written: bank, questions, quiz, assignment and
- * both attempts live inside this tenant and are created through the product API.
+ * The tenant's `teacher` is an educator on the system `teacher` role, so the content
+ * reads (`assignment.read`, `quiz.read`) resolve to `group` and the writes to `own`
+ * (ADR-0015 D29): it may create its own bank, questions, quiz and assignment; the
+ * assignment targets only `G1`, so the student is the only one who can take it.
+ * Nothing global is written: bank, questions, quiz, assignment and both attempts
+ * live inside this tenant and are created through the product API.
  *
  * Acceptance points (walked on the shared app before writing the test):
  * 1. `/edu/stats/quizzes` is headed „Statystyki testów” with the subtitle

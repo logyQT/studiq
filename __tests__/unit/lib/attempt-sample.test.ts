@@ -103,6 +103,8 @@ function seeded(seed: number): () => number {
 }
 
 const SEEDS = Array.from({ length: 200 }, (_, index) => index + 1);
+/** A class's worth of students: enough seeds for a minority type's rate to be measurable. */
+const CLASS_SEEDS = Array.from({ length: 500 }, (_, index) => index + 1);
 
 /** `count` items of each type, named `<type><n>`, so a test can read a draw's mix off the ids. */
 function poolOf(sizes: Record<string, number>): string[] {
@@ -221,6 +223,59 @@ describe('drawStratifiedSample (#1174 R7, #1295)', () => {
       for (const type of types) seen.add(type);
     }
     expect([...seen].toSorted(), 'no type is permanently left out').toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('serves a type that misses its floor to some students, never to none (#1295)', () => {
+    // 4 mcq + 1 open, count 2: mcq's share is 1.6 and open's 0.4, so the one leftover seat used to
+    // go to mcq for every student and the open item was unreachable. Both compositions must occur,
+    // and open must be as likely as a uniform slice made it (2/5 of the draws, i.e. 1/5 per seat).
+    const skewed = poolOf({ mcq: 4, open: 1 });
+    const compositions = new Set<string>();
+    let openDraws = 0;
+    for (const seed of CLASS_SEEDS) {
+      const mix = mixOf(drawStratifiedSample(skewed, 2, typeOfId, seeded(seed)));
+      expect(mix.open ?? 0, `seed ${seed}: the pool holds one open item`).toBeLessThanOrEqual(1);
+      compositions.add(`mcq${mix.mcq ?? 0}+open${mix.open ?? 0}`);
+      if ((mix.open ?? 0) === 1) openDraws += 1;
+    }
+    expect([...compositions].toSorted()).toEqual(['mcq1+open1', 'mcq2+open0']);
+    expect(openDraws / CLASS_SEEDS.length).toBeGreaterThan(0.3);
+    expect(openDraws / CLASS_SEEDS.length).toBeLessThan(0.5);
+  });
+
+  it('serves a graded minority item to some students in an open-heavy pool (#1295)', () => {
+    // 40 open + 2 mcq, count 10: open's floor is 9 and the leftover seat is a coin toss weighted by
+    // the remainders, so a student gets the graded item about half the time instead of never.
+    const skewed = poolOf({ open: 40, mcq: 2 });
+    const compositions = new Set<string>();
+    let gradedDraws = 0;
+    for (const seed of CLASS_SEEDS) {
+      const mix = mixOf(drawStratifiedSample(skewed, 10, typeOfId, seeded(seed)));
+      compositions.add(`open${mix.open ?? 0}+mcq${mix.mcq ?? 0}`);
+      if ((mix.mcq ?? 0) === 1) gradedDraws += 1;
+    }
+    expect([...compositions].toSorted()).toEqual(['open10+mcq0', 'open9+mcq1']);
+    expect(gradedDraws / CLASS_SEEDS.length).toBeGreaterThan(0.35);
+    expect(gradedDraws / CLASS_SEEDS.length).toBeLessThan(0.6);
+  });
+
+  it('keeps the class-average mix proportional to the pool (#1295)', () => {
+    // 20 items, 7 drawn: shares are 3.5 (mcq), 2.1 (tf) and 1.4 (open). Leftover seats are stochastic
+    // but their expectation is the fractional share, so the average a class receives stays on it.
+    const mixed = poolOf({ mcq: 10, tf: 6, open: 4 });
+    const total = { mcq: 0, tf: 0, open: 0 };
+    for (const seed of CLASS_SEEDS) {
+      const mix = mixOf(drawStratifiedSample(mixed, 7, typeOfId, seeded(seed)));
+      total.mcq += mix.mcq ?? 0;
+      total.tf += mix.tf ?? 0;
+      total.open += mix.open ?? 0;
+    }
+    expect(total.mcq / CLASS_SEEDS.length).toBeGreaterThan(3.3);
+    expect(total.mcq / CLASS_SEEDS.length).toBeLessThan(3.7);
+    expect(total.tf / CLASS_SEEDS.length).toBeGreaterThan(1.9);
+    expect(total.tf / CLASS_SEEDS.length).toBeLessThan(2.3);
+    expect(total.open / CLASS_SEEDS.length).toBeGreaterThan(1.2);
+    expect(total.open / CLASS_SEEDS.length).toBeLessThan(1.6);
   });
 
   it('shuffles the result so its order does not reveal the types', () => {

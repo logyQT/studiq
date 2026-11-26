@@ -18,8 +18,9 @@
 --      `member` (student) out of the family: `DEFAULT_ROLE_PERMISSIONS` declares no `assignment.*`
 --      for `member`, and an assessment write is staff-only.
 --
--- `09_perms.sql` carries the same grants for a fresh `db reset` (seeds run after migrations, so the
--- organizations it creates postdate the backfill in step 2).
+-- A fresh `db reset` needs no extra grant step: the seeds run after this migration, so the
+-- organizations `01_seed.sql` creates postdate the backfill in step 2 and `handle_new_organization`
+-- (step 3) gives each one the same rows.
 -- ==========================================
 
 -- ==========================================
@@ -65,7 +66,8 @@ WHERE orp.org_role_id = r.id
 -- ==========================================
 -- 3. handle_new_organization(): identical to the definition in
 --    20261024151122_drop_org_limits.sql except the member grant excludes
---    `assignment.%`. Keep the role/permission seeding in sync with `09_perms.sql`.
+--    `assignment.%`. Keep the role/permission seeding in sync with the system-role template in
+--    `packages/authz/src/lib/org-roles.ts`.
 -- ==========================================
 CREATE OR REPLACE FUNCTION public.handle_new_organization()
 RETURNS trigger

@@ -7,9 +7,12 @@ import { asJson } from '#test/helpers/json';
 // login. Only the public pricing data may be visible to an unauthenticated caller.
 
 // `entitlement_catalog` joined the public set in phase 4a: `PlanInfo.seatEligible`
-// embeds it from `plan_entitlements` on every plan read.
+// embeds it from `plan_entitlements` on every plan read. `entitlement_flags`
+// joined in #1484: the public plan list drops a kill-switched surface key, so the
+// anonymous read needs the flag truth.
 const PUBLIC_TABLES = [
   'entitlement_catalog',
+  'entitlement_flags',
   'plan_entitlements',
   'plan_limits',
   'subscription_plans',
@@ -47,6 +50,15 @@ describe('anon role grants (#191)', () => {
     expect((data ?? []).length, 'the anonymous catalog payload is not empty').toBeGreaterThan(0);
   });
 
+  // Same half-state as the catalog: without a policy the grant raises nothing
+  // but returns no rows, so the anonymous pricing list would fail closed on
+  // every surface key and silently stop selling them (#1484).
+  it('anon reads entitlement_flags rows, not just the privilege', async () => {
+    const { data, error } = await anon.from('entitlement_flags').select('key, is_enabled');
+    expect(error).toBeNull();
+    expect((data ?? []).length, 'the anonymous flag payload is not empty').toBeGreaterThan(0);
+  });
+
   it.each([
     'question_banks',
     'quizzes',
@@ -56,7 +68,6 @@ describe('anon role grants (#191)', () => {
     'org_roles',
     'org_role_permissions',
     'user_daily_activity',
-    'entitlement_flags',
     'profiles',
     'invitations',
     'payments',
@@ -151,21 +162,6 @@ describe('anon role grants (#191)', () => {
     // Role-authority helpers (#191 B1-B5) are internal; only the rls_caller_*
     // wrappers may be executed by `authenticated`.
     [
-      'has_org_feature',
-      {
-        p_actor: '00000000-0000-4000-8001-000000000009',
-        p_organization_id: '00000000-0000-4000-8000-00000000000e',
-        p_feature: 'stats.insights',
-      },
-    ],
-    [
-      'is_org_manager',
-      {
-        p_actor: '00000000-0000-4000-8001-000000000009',
-        p_organization_id: '00000000-0000-4000-8000-00000000000e',
-      },
-    ],
-    [
       'can_assign_org_role',
       {
         p_actor: '00000000-0000-4000-8001-000000000009',
@@ -190,7 +186,6 @@ describe('anon role grants (#191)', () => {
         p_permission: 'group.invite',
       },
     ],
-    ['rls_caller_is_org_manager', { p_organization_id: '00000000-0000-4000-8000-00000000000e' }],
   ])('anon cannot execute the %s RPC', async (fn, args) => {
     const response = await anon.rpc(fn, args);
     expect(response.error?.code).toBe('42501');

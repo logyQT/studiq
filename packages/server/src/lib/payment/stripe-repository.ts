@@ -20,7 +20,7 @@ export interface CatalogPlan {
   priceMonthly: number;
   currency: string;
   isActive: boolean;
-  /** Plan family (D32): `organization` plans carry a `null` audience. */
+  /** No plan carries an audience since #1193; the field mirrors the column. */
   scope: string;
   audience: string | null;
   sortOrder: number;

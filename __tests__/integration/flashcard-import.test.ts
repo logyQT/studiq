@@ -91,7 +91,7 @@ describe('POST /api/v1/flashcards/import/csv (#888)', () => {
         currency: 'PLN',
         sort_order: 999,
         scope: 'personal',
-        audience: 'student',
+        audience: null,
         is_active: false,
       });
       if (plan.error) throw new Error(`[import] plan create failed: ${plan.error.message}`);

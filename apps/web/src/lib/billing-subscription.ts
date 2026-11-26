@@ -45,11 +45,9 @@ export function alternativePlans(
   return (plans ?? [])
     .filter((plan) => {
       if (plan.priceMonthly <= 0 || plan.key === currentPlanKey) return false;
-      // Managers see the organization catalogue (D34); everyone else their own
-      // audience's personal plans.
-      return family === 'manager'
-        ? plan.scope === 'organization'
-        : plan.scope === 'personal' && plan.audience === family;
+      // Managers see the organization catalogue; everyone else the one
+      // individual ladder, which no longer has an audience (#1193).
+      return family === 'manager' ? plan.scope === 'organization' : plan.scope === 'personal';
     })
     .toSorted((a, b) => a.priceMonthly - b.priceMonthly);
 }

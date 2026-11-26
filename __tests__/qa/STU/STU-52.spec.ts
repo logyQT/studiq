@@ -24,7 +24,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * suffix means each independent run owns a student who has never bought anything.
  *
  * The purchase is the same call `BIL-03`'s checkout makes (the mock Stripe webhook
- * for `spark`, 9,99 zł/mies.), issued as this tenant's own student: it touches only
+ * for `spark`, 19,99 zł/mies.), issued as this tenant's own student: it touches only
  * that student's `profiles.personal_plan_key` and adds one `payments` row for the
  * same user. Nothing global is read or written — no admin setting, feature flag,
  * plan catalogue entry, platform stat, singleton row or foreign tenant.
@@ -41,7 +41,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *   the „Twoje zakończone płatności” subtitle, the „Brak płatności” message and no
  *   table; „Zarządzaj rozliczeniami” links to `/app/billing`.
  * - After the purchase the same page renders the „Plan / Kwota / Data” table with
- *   one row: „StudiQ Spark”, „9,99 zł”, the purchase date (`29 paź 2026` in the
+ *   one row: „StudiQ Plus”, „19,99 zł”, the purchase date (`29 paź 2026` in the
  *   walk) — and „Brak płatności” is gone. `GET /api/v1/me/payments` returns the
  *   same single row.
  * - An anonymous deep link is sent to `/login?next=%2Fapp%2Faccount%2Fpayments` and
@@ -68,8 +68,8 @@ const UI = {
 const PURCHASE = {
   planId: 'spark',
   planKey: 'spark',
-  planName: 'StudiQ Spark',
-  amount: 999,
+  planName: 'StudiQ Plus',
+  amount: 1999,
   currency: 'PLN',
 } as const;
 

@@ -22,8 +22,8 @@ type QueryBuilder = {
   upsert: Mock;
 } & Pick<Promise<QueryResult>, 'then'>;
 
-function chain(result: unknown): QueryBuilder {
-  const resolved: QueryResult = { data: result, error: null };
+function chain(result: unknown, error: unknown = null): QueryBuilder {
+  const resolved: QueryResult = { data: result, error };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const promise = Promise.resolve(resolved);
   const c: QueryBuilder = {
@@ -291,6 +291,20 @@ describe('OrganizationMemberService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
       // The seat cleanup never runs for a no-op: only the org_members delete ran.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
+    });
+
+    // #1369: a failed delete projects no rows either, so only the order of the two
+    // guards keeps it from being reported as NOT_FOUND.
+    it('returns INTERNAL_SERVER on a DB failure and keeps the seat', async () => {
+      mock.from.mockReturnValue(chain(null, { message: 'DB error' }));
+
+      const result = await service.removeMember(ctx, 'user-123');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      // Only the org_members delete ran: no seat is released for a member who stays.
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).toHaveBeenCalledWith('org_members');
     });

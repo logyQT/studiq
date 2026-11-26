@@ -10,8 +10,11 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
 const SHOWN = 5;
+const ROW_CLASS =
+  'flex items-center justify-between gap-3 rounded-lg border border-transparent p-3 hover:border-border/60 hover:bg-muted/60';
 
 import { CardError } from '@/components/edu/dashboard/card-error';
+import { ProblemQuestionLink } from '@/components/edu/problem-question-link';
 
 interface ProblemQuestionsCardProps {
   questions: ProblematicQuestionStats[] | undefined;
@@ -26,11 +29,11 @@ interface ProblemQuestionsCardProps {
    */
   headingLevel?: 2 | 3;
   /**
-   * The "all results" link points into the signed-in app. On a public page that
-   * link is a login wall, so the marketing preview drops it instead of promising
-   * a destination the visitor cannot reach.
+   * The row links and the "all results" link point into the signed-in app. On a
+   * public page they are a login wall, so the marketing preview drops them
+   * instead of promising destinations the visitor cannot reach.
    */
-  showResultsLink?: boolean;
+  linked?: boolean;
 }
 
 /** Shows up to five supplied questions with at least three answers, in their supplied order. */
@@ -40,7 +43,7 @@ export function ProblemQuestionsCard({
   isError,
   onRetry,
   headingLevel = 2,
-  showResultsLink = true,
+  linked = true,
 }: ProblemQuestionsCardProps) {
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const t = useTranslations('EduOverviewPage');
@@ -73,25 +76,35 @@ export function ProblemQuestionsCard({
           <p className="py-4 text-center text-sm text-muted-foreground">{t('problem_empty')}</p>
         ) : (
           <ul className="space-y-2">
-            {shown.map((question) => (
-              <li
-                key={question.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-transparent p-3 hover:border-border/60 hover:bg-muted/60"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{question.content}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('problem_answers', { count: question.totalAnswers })}
-                  </p>
-                </div>
-                <Badge variant="destructive" className="shrink-0 tabular-nums">
-                  {Math.round(question.correctRate * 100)}%
-                </Badge>
-              </li>
-            ))}
+            {shown.map((question) => {
+              const row = (
+                <>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{question.content}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('problem_answers', { count: question.totalAnswers })}
+                    </p>
+                  </div>
+                  <Badge variant="destructive" className="shrink-0 tabular-nums">
+                    {Math.round(question.correctRate * 100)}%
+                  </Badge>
+                </>
+              );
+              return (
+                <li key={question.id}>
+                  {linked ? (
+                    <ProblemQuestionLink question={question} className={ROW_CLASS}>
+                      {row}
+                    </ProblemQuestionLink>
+                  ) : (
+                    <div className={ROW_CLASS}>{row}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
-        {showResultsLink ? (
+        {linked ? (
           <Link
             href="/edu/stats/results"
             className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"

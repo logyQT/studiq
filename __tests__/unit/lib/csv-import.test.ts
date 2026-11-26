@@ -1,5 +1,14 @@
+import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
-import { autoMapColumns, isCsvFile, parseCsv, toImportCards } from '@/lib/csv-import';
+import en from '@/i18n/messages/en.json';
+import pl from '@/i18n/messages/pl.json';
+import {
+  autoMapColumns,
+  isCsvFile,
+  parseCsv,
+  summarizeImport,
+  toImportCards,
+} from '@/lib/csv-import';
 
 describe('isCsvFile (#888)', () => {
   it.each([
@@ -77,5 +86,58 @@ describe('column mapping', () => {
 
   it('leaves the back unmapped when the file has a single column', () => {
     expect(autoMapColumns(['front'])).toMatchObject({ front: 'front', back: '' });
+  });
+});
+
+const issue = (row: number, field: 'front' | 'back') => ({ row, field, error: 'REQUIRED' });
+
+describe('summarizeImport (#888)', () => {
+  it.each([
+    ['every row imported', 3, [], false, 'import_complete', 0],
+    ['some rows imported', 1, [issue(2, 'back')], false, 'import_complete', 1],
+    ['no row imported', 0, [issue(1, 'back'), issue(2, 'front')], true, 'import_failed', 2],
+    [
+      'two problems in one row',
+      1,
+      [issue(2, 'front'), issue(2, 'back'), issue(3, 'back')],
+      false,
+      'import_complete',
+      2,
+    ],
+  ] as const)('judges %s', (_label, imported, errors, failed, titleKey, errorRows) => {
+    expect(summarizeImport({ total: 3, imported, errors: [...errors] })).toEqual({
+      failed,
+      titleKey,
+      errorRows,
+    });
+  });
+});
+
+const IMPORT_NAMESPACES = [
+  'AppFlashcardDeckViewPage',
+  'AppFlashcardDecksPage',
+  'EduDeckViewPage',
+  'EduFlashcardDecksPage',
+] as const;
+
+describe.each(IMPORT_NAMESPACES)('%s.import_errors (#888)', (namespace) => {
+  it.each([
+    [1, '1 wiersz z błędem'],
+    [2, '2 wiersze z błędami'],
+    [5, '5 wierszy z błędami'],
+    [22, '22 wiersze z błędami'],
+  ])('counts %i rows in Polish', (count, expected) => {
+    const translate = createTranslator({ locale: 'pl', messages: pl, namespace });
+
+    expect(translate('import_errors', { count })).toBe(expected);
+  });
+
+  it.each([
+    [1, '1 row has errors'],
+    [2, '2 rows have errors'],
+  ])('counts %i rows in English', (count, expected) => {
+    const translate = createTranslator({ locale: 'en', messages: en, namespace });
+
+    expect(translate('import_errors', { count })).toBe(expected);
   });
 });

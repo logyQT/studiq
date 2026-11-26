@@ -30,10 +30,16 @@ vi.mock('@studiq/server/lib/rate-limiter', () => ({
 
 let capturedOnFinish: ((result: unknown) => Promise<void> | void) | undefined;
 let capturedStoreAtCallTime: unknown;
+let capturedStreamOptions: unknown;
 const streamTextMock = vi.fn((config: { onFinish?: (result: unknown) => Promise<void> | void }) => {
   capturedOnFinish = config.onFinish;
   capturedStoreAtCallTime = conversationStorage.getStore();
-  return { toUIMessageStreamResponse: () => new Response('stream', { status: 200 }) };
+  return {
+    toUIMessageStreamResponse: (options?: unknown) => {
+      capturedStreamOptions = options;
+      return new Response('stream', { status: 200 });
+    },
+  };
 });
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>();
@@ -81,6 +87,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     vi.clearAllMocks();
     capturedOnFinish = undefined;
     capturedStoreAtCallTime = undefined;
+    capturedStreamOptions = undefined;
     mockCtx = { userId: 'user-1', accountType: 'student', activeOrgId: null };
     requireEntitlementMock.mockResolvedValue(undefined);
     rateLimitCheckMock.mockReturnValue({ allowed: true });
@@ -180,6 +187,17 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
 
     expect(res.status).toBe(200);
     expect(streamTextMock).toHaveBeenCalledOnce();
+  });
+
+  it('never sends the model reasoning to the client', async () => {
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+
+    const res = await POST(
+      jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedStreamOptions).toEqual({ sendReasoning: false });
   });
 
   it('never checks usage against the model for unlimited plans (-1)', async () => {

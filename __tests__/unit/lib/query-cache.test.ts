@@ -18,10 +18,10 @@ function filtersOf(
 }
 
 describe('invalidateAuthority', () => {
-  // The five payloads resolve from the same layers (org plan, role profile,
-  // seat, personal plan, overrides, flags), so dropping four of them leaves the
-  // fifth quoting the pre-change answer (ADR-0015 §7.1, §13 batch 7).
-  it('invalidates the five authority prefixes in order', () => {
+  // The payloads resolve from the same layers (org plan, role profile, seat,
+  // personal plan, overrides, flags), so dropping some of them leaves the rest
+  // quoting the pre-change answer (ADR-0015 §7.1, §13 batch 7).
+  it('invalidates the six authority prefixes in order', () => {
     const queryClient = authorityStub();
 
     invalidateAuthority(queryClient);
@@ -30,6 +30,7 @@ describe('invalidateAuthority', () => {
       ['permissions'],
       ['entitlements'],
       ['me', 'plan'],
+      ['me', 'personal-plan'],
       ['ai'],
       ['question-reports'],
     ]);
@@ -48,6 +49,7 @@ describe('invalidateAuthority', () => {
     // The single-entry keys are not org-partitioned, so they pass no type and
     // keep the default `'active'` refetch (R45 only concerns the switch).
     expect(calls.slice(2).map((filters) => filters?.refetchType)).toEqual([
+      undefined,
       undefined,
       undefined,
       undefined,

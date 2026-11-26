@@ -1,4 +1,4 @@
-import type { QueryClient } from '@tanstack/react-query';
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import { aiKeys, entitlementKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 /**
@@ -34,10 +34,31 @@ export function invalidateAuthority(
     refetchType: partitionedRefetch,
   });
   // Single-entry, org-independent keys: the same entry is overwritten with the
-  // new org's answer, so a refetch is always correct (and required).
+  // new org's answer, so a refetch is always correct (and required). Both plan
+  // reads are dropped: `/me/plan` badges an organization ladder, and
+  // `/me/personal-plan` badges the individual one and a checkout.
   void queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+  void queryClient.invalidateQueries({ queryKey: ['me', 'personal-plan'] });
   void queryClient.invalidateQueries({ queryKey: aiKeys.all });
   void queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+}
+
+/**
+ * Invalidates what a write, successful or not, may have changed under `queryKey`.
+ *
+ * Invalidation restarts an in-flight fetch only when the query already has data. A first
+ * load is joined instead: its request may have read the rows before the write, and its
+ * answer then clears the invalidation, which under `staleTime: Infinity` keeps the old
+ * list until something else invalidates it (#699). So first loads are cancelled here.
+ *
+ * A cancelled `fetchQuery` with no data rejects. Do not pass a key that one is awaiting.
+ */
+export async function invalidateAfterWrite(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): Promise<void> {
+  await queryClient.cancelQueries({ queryKey, predicate: (q) => q.state.data === undefined });
+  await queryClient.invalidateQueries({ queryKey });
 }
 
 /**

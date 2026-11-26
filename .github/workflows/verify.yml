@@ -19,16 +19,24 @@ on:
   schedule:
     - cron: '0 3 * * *'
   pull_request:
+  # Native GitHub merge queue. The required contexts on `main` are these job
+  # names, and a queued entry reports them against the queue's synthetic merge
+  # commit, so this trigger has to run the same graph. It is inert until the
+  # `main` ruleset also enables the merge-queue rule; `base_ref` is empty on a
+  # merge-group run, so every base comparison below falls back to
+  # `merge_group.base_ref`/`base_sha`.
+  merge_group:
 
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
-# Pinned: `bun lint` is canary-only, and canaries are published to npm but not
-# as GitHub releases (setup-bun resolves releases and 404s on them). Keep in
-# step with scripts/check-bun-version.ts (>= 1.4.4).
+# Pinned: stable Bun 1.4.5 still has no `bun lint` (only `bun fmt`/`bun check`),
+# so the linter comes from a canary. Canaries are published to npm but not as
+# GitHub releases (setup-bun resolves releases and 404s on them). Keep in step
+# with scripts/check-bun-version.ts (>= 1.4.5).
 env:
-  BUN_VERSION: 1.4.4-canary.20261027.1
+  BUN_VERSION: 1.4.5-canary.20261125.1
   # `supabase/config.toml` reads every configurable value through `env()`; an
   # unset numeric variable makes the config fail to parse, so the whole job
   # graph shares one explicit CI stack identity. Each job owns its own native
@@ -96,14 +104,17 @@ jobs:
       - id: diff
         env:
           BASE_REF: ${{ github.base_ref }}
+          # Set only on a merge-queue run; `refs/heads/main` → `main` below.
+          MERGE_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: |
           set -euo pipefail
+          base="${BASE_REF:-${MERGE_BASE_REF#refs/heads/}}"
           echo "app=true" >> "$GITHUB_OUTPUT"
-          if [ -n "${BASE_REF:-}" ]; then
-            git fetch --no-tags origin "$BASE_REF"
+          if [ -n "$base" ]; then
+            git fetch --no-tags origin "$base"
             # --no-renames: a moved file must appear as a delete + add, so the
             # app/QA filters below never see only one side of a rename.
-            changed=$(git diff --no-renames --name-only "origin/$BASE_REF...HEAD")
+            changed=$(git diff --no-renames --name-only "origin/$base...HEAD")
             echo "changed files:"; echo "$changed"
             # Here-string, not `echo | grep -q`: under `pipefail`, grep exits on
             # the first match and the writer gets SIGPIPE (141), which flipped
@@ -115,7 +126,7 @@ jobs:
               echo "app=false" >> "$GITHUB_OUTPUT"
             fi
           fi
-          python3 - "${BASE_REF:-}" <<'PY' >> "$GITHUB_OUTPUT"
+          python3 - "$base" <<'PY' >> "$GITHUB_OUTPUT"
           import json, subprocess, sys
 
           # Balanced on measured per-area test time, sampled from the per-spec
@@ -334,12 +345,13 @@ jobs:
       # lockfile diff is checked here instead. `--depth=1` is enough: only the
       # base commit's tree is needed, not its history (contrast the `scope` job).
       - name: Lockfile release age
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           BASE_REF: ${{ github.base_ref }}
+          MERGE_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git fetch --no-tags --depth=1 origin "${BASE_REF:-${MERGE_BASE_REF#refs/heads/}}"
           bun run check:lockfile-age FETCH_HEAD
       - run: bun install --frozen-lockfile
       - name: Save bun install cache
@@ -376,14 +388,16 @@ jobs:
       # run instead recomputes the trend from git (`--history`), publishes a
       # dashboard and applies a whole-tree threshold ratchet. Config: .jscpd.json.
       - name: Duplication gate (new clones vs base)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           BASE_REF: ${{ github.base_ref }}
+          MERGE_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: |
           set -euo pipefail
+          base="${BASE_REF:-${MERGE_BASE_REF#refs/heads/}}"
           git fetch --no-tags --depth=1 origin \
-            "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-          bun scripts/dup-baseline.ts --ref "origin/$BASE_REF"
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          bun scripts/dup-baseline.ts --ref "origin/$base"
 
       # Nightly/dispatch only: the dashboard prints health, size, duplication,
       # complexity and dead code; `--history` adds the last 30 commits' trend,
@@ -391,12 +405,12 @@ jobs:
       # Reports are written before the threshold is checked, so a red run still
       # publishes the numbers that explain it.
       - name: Duplication dashboard + trend
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           bunx jscpd --dashboard --history --threshold 6.5 \
             --reporters console,json,markdown --output "$RUNNER_TEMP/jscpd"
       - name: Publish duplication report
-        if: github.event_name != 'pull_request' && !cancelled()
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
         run: |
           report="$RUNNER_TEMP/jscpd/jscpd-dashboard.md"
           if [ -f "$report" ]; then
@@ -407,7 +421,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload duplication report
-        if: github.event_name != 'pull_request' && !cancelled()
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: jscpd-dashboard
@@ -472,6 +486,13 @@ jobs:
           SERVICE_ROLE_KEY=$(jq -r .env.SERVICE_ROLE_KEY <<<"$status")
           DB_URL=$(jq -r .env.DB_URL <<<"$status")
           MAILPIT_URL=$(jq -r .env.MAILPIT_URL <<<"$status")
+          # The invitation-mail suites send to Mailpit over SMTP (#1032). The CLI
+          # reports that port only under `endpoints`; without it nothing is sent.
+          MAILPIT_SMTP_PORT=$(jq -r '.endpoints["mail.smtp"].port // empty' <<<"$status")
+          if [ -z "$MAILPIT_SMTP_PORT" ]; then
+            echo "::error::supabase stack status reports no mail.smtp port"
+            exit 1
+          fi
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -480,6 +501,7 @@ jobs:
             # default-group half of #1067; it is skipped without this URL.
             echo "SUPABASE_DB_URL=$DB_URL"
             echo "MAILPIT_URL=$MAILPIT_URL"
+            echo "MAILPIT_SMTP_PORT=$MAILPIT_SMTP_PORT"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
             echo "APP_ENV=test"
             echo "PAYMENT_DRIVER=mock"

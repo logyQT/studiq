@@ -436,7 +436,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 900,
         scope: 'personal',
-        audience: 'student',
+        audience: null,
       },
       {
         key: secondStudentPlanKey,
@@ -445,7 +445,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
         currency: 'PLN',
         sort_order: 901,
         scope: 'personal',
-        audience: 'student',
+        audience: null,
       },
       {
         key: orgPlanKey,
@@ -748,7 +748,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
     expect(fake.sessions.size).toBe(sessionsBefore);
   });
 
-  it('parity: a plan from the wrong family is forbidden for both drivers', async () => {
+  it('parity: an organization plan with no org to bill is forbidden for both drivers', async () => {
     const sessionsBefore = fake.sessions.size;
 
     await expect(
@@ -759,18 +759,7 @@ describe('mock ↔ Stripe downstream parity (#662 workstream A)', () => {
       stripeBilling.startCheckout(ctxFor(stripeStudent, AccountType.STUDENT), orgPlanKey),
     ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
 
-    await expect(
-      mockBilling.startCheckout(ctxFor(orgManager, AccountType.MANAGER, mockOrgId), studentPlanKey),
-    ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
-
-    await expect(
-      stripeBilling.startCheckout(
-        ctxFor(orgManager, AccountType.MANAGER, stripeOrgId),
-        studentPlanKey,
-      ),
-    ).resolves.toEqual({ success: false, error: 'FORBIDDEN' });
-
-    // The mock completion path shares the same family rule.
+    // The mock completion path shares the same owner rule.
     await expect(
       mockCompletion.handleWebhook(
         { type: 'checkout.session.completed', session_id: `wrong_${tag}`, plan_id: orgPlanKey },

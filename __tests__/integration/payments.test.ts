@@ -104,8 +104,8 @@ describe('payment history (#392)', () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).toMatchObject({
       planKey: 'spark',
-      planName: 'StudiQ Spark',
-      amount: 999,
+      planName: 'StudiQ Plus',
+      amount: 1999,
       currency: 'PLN',
     });
     const payment = requiredAt(body.data, 0, 'payment');

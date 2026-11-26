@@ -14,14 +14,14 @@ import { createTypedServiceClient, latestShippedFunction } from '#test/integrati
  * RLS parity for the `org.role.manage` gate (ADR-0015 §4.4, R4).
  *
  * The role write routes gate on the permission, so the table must too: before
- * this migration the policy asked `is_org_manager` (a `member.manage` feature),
- * which meant a custom role holding `org.role.manage` passed the API and was
- * refused by RLS — reachable through PostgREST, not only through a UI bug.
+ * this migration the policy asked a legacy manager marker, which meant a custom
+ * role holding `org.role.manage` passed the API and was refused by RLS —
+ * reachable through PostgREST, not only through a UI bug.
  *
  * Both directions are pinned with real signed-in sessions (the PostgREST path a
- * browser uses): the permission holder may write, and a role that holds only an
- * entitlement row (not the permission) may not. The control is what proves the
- * predicate moved rather than widened.
+ * browser uses): the permission holder may write, and a role that holds no
+ * permission may not. The control is what proves the predicate moved rather
+ * than widened.
  */
 
 const PASSWORD = 'RoleManageRls!';
@@ -213,17 +213,8 @@ describe('org.role.manage RLS predicate', () => {
     if (deckError) throw new Error(`deck.read grant failed: ${deckError.message}`);
     const managerFeatureRole = await customRole(orgId, `manager-feature-${tag}`, null);
 
-    // The control reads a permission, not an entitlement: a custom role with a
-    // hand-inserted `branding` grant row. Since phase 3c `org_role_features` is
-    // revokes-only and the row grants nothing, but no role-write policy asks
-    // for an entitlement any more either, so the role must lose the write.
-    const { error: featureError } = await service.from('org_role_features').insert({
-      org_role_id: managerFeatureRole,
-      feature_key: 'branding',
-      is_enabled: true,
-    });
-    if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
-
+    // The control reads a permission, not a legacy feature row: a custom role
+    // with no `org.role.manage` key must lose the write.
     await seedOrgMembership({
       organizationId: orgId,
       userId: roleHolderId,
@@ -322,16 +313,9 @@ describe('org.role.manage RLS predicate', () => {
     expect(deleteError, 'DELETE is allowed by the permission predicate').toBeNull();
   });
 
-  it('still refuses a role with a hand-inserted grant row, not the permission', async () => {
-    // Since phase 3c `org_role_features` is revokes-only: the row the fixture
-    // inserts above grants nothing. The 42501 below is therefore the moved
-    // permission predicate — a row cannot stand in for it.
-    const { data: legacyManager } = await managerFeatureHolder.rpc('rls_caller_has_org_feature', {
-      p_organization_id: orgId,
-      p_feature: 'branding',
-    });
-    expect(legacyManager, 'the grant row is inert (revokes-only table)').toBe(false);
-
+  it('still refuses a role with no permission key', async () => {
+    // The 42501 below is the moved permission predicate: a legacy feature row
+    // cannot stand in for it, and the store that held those rows is gone.
     const error = await orgRoleInsertError(
       managerFeatureHolder,
       orgId,

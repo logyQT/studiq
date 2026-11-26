@@ -31,6 +31,8 @@ interface QuizAttempt {
   /** Questions that can be auto-graded (`type !== 'open'`) — the practice denominator (#329). */
   gradable_questions: number;
   assignment_id: string | null;
+  /** Durable marker: stays true after the assignment is deleted and nulls `assignment_id`. */
+  is_assignment_attempt: boolean;
   started_at: string;
   completed_at: string | null;
 }

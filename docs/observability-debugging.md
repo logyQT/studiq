@@ -24,11 +24,14 @@ The Compose project name is fixed (`studiq-observability`) and the host ports ar
 fixed, so starting it from a worktree conflicts with or mutates the same stack.
 Check health and get the exact start command with `bun run env:doctor`.
 
-If `env:doctor` reports a partial stack (Grafana answers, Tempo/Loki/Prometheus
-do not), an older observability Compose project is probably holding the 7000-range
-host ports.
-Identify it with `docker compose ls`; if the name is ambiguous, inspect the
-container publishing the port (`docker ps --filter publish=7001`) and read its
+If `env:doctor` reports a stack that answers but serves nothing (every probe
+answers `503`, so the label is `down` while the 7000-range host ports are still
+held), an older observability Compose project is probably holding those ports.
+A `partial (n/5)` label is not this case: right after `docker compose up -d` the
+canonical stack answers `503` on Tempo and Loki for a few seconds while it
+boots. Identify the foreign project with `docker compose ls`; if the name is
+ambiguous, inspect the container publishing the port
+(`docker ps --filter publish=7001`) and read its
 `com.docker.compose.project` / `...project.working_dir` labels. Stop that
 project **from its own directory**, before starting the canonical stack from the
 primary checkout. `compose down` keeps named volumes unless you pass `-v`; do

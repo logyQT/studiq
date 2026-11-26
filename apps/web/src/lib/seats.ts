@@ -17,18 +17,3 @@ export function purchasableSeatPlans<
 >(plans: readonly T[]): T[] {
   return plans.filter((plan) => plan.isActive && plan.scope === 'personal' && plan.seatEligible);
 }
-
-/**
- * The pools a member may be offered in the assign dialog (D14/D33): the pool
- * plan's `audience` must equal the member's `accountType`. A pool whose plan is
- * missing from the catalogue resolves to no audience and is not offered —
- * fail closed — and an organization plan (`audience: null`) never matches.
- */
-export function poolsForPersona<T extends { planKey: string }>(
-  pools: readonly T[],
-  plans: readonly { key: string; audience: string | null }[],
-  accountType: string,
-): T[] {
-  const audienceByPlanKey = new Map(plans.map((plan) => [plan.key, plan.audience]));
-  return pools.filter((pool) => audienceByPlanKey.get(pool.planKey) === accountType);
-}

@@ -1,3 +1,5 @@
+import type { CsvImportResult } from '@studiq/server/models/flashcard-import.model';
+
 export type CsvRecord = Record<string, string | undefined>;
 
 export interface CsvColumnMap {
@@ -50,4 +52,14 @@ export function toImportCards(rows: CsvRecord[], map: CsvColumnMap) {
     topic: (map.topic ? row[map.topic] : undefined) || undefined,
     deck: (map.deck ? row[map.deck] : undefined) || undefined,
   }));
+}
+
+/** The verdict of a finished import, and the number of rows (not problems) that have errors. */
+export function summarizeImport({ imported, errors }: CsvImportResult) {
+  const failed = imported === 0;
+  return {
+    failed,
+    titleKey: failed ? 'import_failed' : 'import_complete',
+    errorRows: new Set(errors.map((error) => error.row)).size,
+  } as const;
 }

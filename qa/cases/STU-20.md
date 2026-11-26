@@ -19,7 +19,7 @@ Pliki fiszki_bledne.csv oraz plik tekstowy nie-CSV.
 
 ## Expected result
 
-- Błędy w podsumowaniu: „N błędów” z numerem wiersza i opisem („Wiersz / Błąd”); poprawne wiersze zostają zaimportowane.
+- Błędy w podsumowaniu: „N wierszy z błędami” z numerem wiersza i opisem („Wiersz / Błąd”); poprawne wiersze zostają zaimportowane.
 - Bez mapowania: „Proszę przypisać kolumny Przód i Tył”.
 - Zły typ pliku: „Nie udało się sparsować pliku CSV” (bez awarii).
 
@@ -27,13 +27,15 @@ Pliki fiszki_bledne.csv oraz plik tekstowy nie-CSV.
 
 - Spec: `__tests__/qa/STU/STU-20.spec.ts`; tenant profile `content`
   (`__tests__/qa/profiles/STU-20.json`), signed in as the student.
-- Good rows are imported; every other row is listed under „N błędów” with „Wiersz”
-  and „Błąd” (the column's name and the reason). „Wiersz” is the „#” of the preview:
+- Good rows are imported. The heading „N wierszy z błędami” counts each bad row one time.
+  The list shows each problem with „Wiersz” and „Błąd” (the column's name and the reason).
+  With no good row, the title is „Import nie powiódł się”, not „Import zakończony”. „Wiersz” is the „#” of the preview:
   the header is not counted, and a blank line between rows is a row of its own.
 - „Bez mapowania”: the front and back pickers have a „—” option.
 - A non-CSV file is refused the same way when picked and when dropped. The check is
   the `.csv` extension or the `text/csv` type; the content is not sniffed.
 - One import takes at most 500 rows. A longer file shows its real row count and the
-  general validation message, and cannot be sent.
+  general validation message with the count and the limit (for example „501 / 500”), and
+  cannot be sent.
 - The import counts its valid rows against the plan's `max_flashcards` and is
   refused as a whole past it.

@@ -1,6 +1,7 @@
 import type { QueryKey, UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
+import { invalidateAfterWrite } from '@/lib/query-cache';
 
 export interface OptimisticUpdate<TData, TVars> {
   queryKey: QueryKey;
@@ -75,7 +76,7 @@ export function useApiMutation<TData, TVars, TContext = unknown>(opts: {
       snapshot = undefined;
       if (opts.invalidateKeys?.length) {
         for (const key of opts.invalidateKeys) {
-          void queryClient.invalidateQueries({ queryKey: key });
+          void invalidateAfterWrite(queryClient, key);
         }
       }
       opts.onSettled?.();

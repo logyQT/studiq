@@ -1,28 +1,9 @@
 {
-  "key": "STU-48:plan-path",
+  "key": "STU-48:material-path",
   "case": "STU-48",
   "match": { "lastUserContains": "Przygotuj fiszki o fotosyntezie z materiału", "hasTools": true },
   "turns": [
     {
-      "toolCalls": [
-        {
-          "id": "call_plan",
-          "name": "create_plan",
-          "arguments": {
-            "steps": [
-              { "action": "fetch_material", "rationale": "Potrzebuję materiału o fotosyntezie." },
-              { "action": "extract_concepts", "rationale": "Wybiorę kluczowe pojęcia." },
-              { "action": "generate_flashcards", "rationale": "Zamienię pojęcia na fiszki." }
-            ],
-            "estimatedComplexity": "moderate",
-            "needsClarification": false
-          }
-        }
-      ],
-      "usage": { "input": 150, "output": 50 }
-    },
-    {
-      "match": { "hasToolResult": true },
       "toolCalls": [
         {
           "id": "call_material",

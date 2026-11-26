@@ -235,7 +235,6 @@ export async function cleanupOrganizationDeep(orgId: string) {
     );
   await supabase.from('groups').delete().eq('organization_id', orgId);
   if (roleIds.length > 0) {
-    await supabase.from('org_role_features').delete().in('org_role_id', roleIds);
     await supabase.from('org_role_permissions').delete().in('org_role_id', roleIds);
   }
   await supabase.from('org_roles').delete().eq('organization_id', orgId);

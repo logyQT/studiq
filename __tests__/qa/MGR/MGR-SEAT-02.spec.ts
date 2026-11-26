@@ -27,33 +27,33 @@ import {
  * **raise** the member's entitlements (ADR-0015 §5.4: seat ∩ ceiling) and the
  * user-scope AI-token limit (`max(org, seat, personal)`, D4/D30).
  *
- * The spec provisions the pools through the product API — one per audience so
- * the persona filter is observable: Ace ×3 (student), Pro ×2 (student),
- * Creator ×3 (educator), Solo ×1 (manager) — clears any assignment a previous
- * run left behind, and assigns the **`pro`** seat to `student` through the UI.
+ * The spec provisions the pools through the product API — one per individual plan
+ * so the unfiltered picker is observable: Free ×1, Plus ×3, Pro ×3, Max ×2 —
+ * clears any assignment a previous run left behind, and assigns the **`pro`**
+ * seat to `student` through the UI.
  * Nothing global is written — no settings, feature flags, plans or platform
  * rows — and no other case's tenant is touched.
  *
  * Acceptance points:
  * 1. „Przydziel miejsce” opens a dialog whose seat-plan picker stays disabled until
- *    a member is chosen. After a member is picked it offers **exactly** the pools
- *    whose plan `audience` equals that member's `accountType` (student → Ace, Pro;
- *    teacher → Creator; admin → Solo), so an incompatible pool cannot be selected.
+ *    a member is chosen. After a member is picked it offers **every** pool of the
+ *    org: a personal plan has no audience since #1193, so persona no longer
+ *    filters the picker.
  * 2. „Przydziel” shows the toast „Miejsce przydzielone pomyślnie”, a new row in
  *    „Przydziały” for that member with the seat plan, and the pool moves from
  *    2/0/2 to 2/1/1 (assigned +1, available −1); the other pools are untouched.
  * 3. After the seat the member's `/api/v1/me/entitlements` differs from before by
- *    **exactly `stats.insights`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the
- *    seat plan `pro` with `max_ai_tokens_per_day === -1`, and
- *    `/api/v1/ai/usage` reports `limit: -1` with `plan: 'hub'` (the effective
+ *    **exactly the hub ceiling's non-learner keys, `quiz.templates` and
+ *    `stats.insights`** (seat ∩ hub ceiling); `/api/v1/me/plan` is the seat plan
+ *    `pro` with `max_ai_tokens_per_day === 500000`, and
+ *    `/api/v1/ai/usage` reports `limit: 500000` with `plan: 'hub'` (the effective
  *    primary stays the org plan, D30) — the seat raises the AI limit from hub's
  *    200000. `student2` (no seat) keeps 200000 and no `stats.insights`: the seat
  *    is per-member, not org-wide.
  * 4. Adjacent regression: the guards behind the pickers hold server-side — a
- *    second seat for the same member is rejected (429 `USAGE_LIMIT_EXCEEDED`) and a
- *    manager-audience (`solo`) pool for the student is rejected (400
- *    `BAD_REQUEST`), with the pool counters left unchanged. The member drops out
- *    of the picker once seated.
+ *    second seat for the same member is rejected (429 `USAGE_LIMIT_EXCEEDED`) and
+ *    a different member accepts any pool, including one whose plan used to name
+ *    another persona (201). The member drops out of the picker once seated.
  */
 
 declare global {
@@ -78,15 +78,15 @@ const NAMES = {
 } as const;
 
 /**
- * One pool per plan audience, so the picker's filter is provable rather than a
- * sample of one: student accounts get `ace`/`pro`, educator `creator`, manager
- * `solo` (the plan `audience` the server checks in `seat.service.ts`).
+ * One pool per individual plan, so the picker's unfiltered list is provable
+ * rather than a sample of one. Since #1193 a personal plan carries no audience,
+ * so every pool is offerable to any member.
  */
 const POOLS = [
+  { planKey: 'base', quantity: 1 },
+  { planKey: 'spark', quantity: 3 },
   { planKey: 'ace', quantity: 3 },
   { planKey: 'pro', quantity: 2 },
-  { planKey: 'creator', quantity: 3 },
-  { planKey: 'solo', quantity: 1 },
 ] as const;
 
 /** The seat assigned to `student` in step 1: a non-learner key it adds is `stats.insights`. */
@@ -303,7 +303,7 @@ async function memberOptions(page: Page, dialog: Locator): Promise<string[]> {
 }
 
 test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member', () => {
-  test('a manager assigns an audience-matched seat and the seat raises exactly the non-learner key within the org ceiling', async ({
+  test('a manager assigns a seat and the seat raises exactly the non-learner keys within the org ceiling', async ({
     page,
     request,
   }) => {
@@ -330,16 +330,17 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       return found;
     };
     const hub = plan('hub');
+    const base = plan('base');
+    const spark = plan('spark');
     const ace = plan('ace');
     const pro = plan(SEAT_PLAN_KEY);
-    const creator = plan('creator');
-    const solo = plan('solo');
     // Catalog facts the story leans on: hub carries the learner keys plus the
-    // non-learner `stats.insights`; the seat plan carries `stats.insights` too and
-    // declares an unlimited AI token budget (-1).
+    // non-learner `quiz.templates` and `stats.insights`; the seat plan carries
+    // both too and raises the AI token budget above hub's.
     expect(hub.features, 'catalog: Hub must carry stats.insights').toContain('stats.insights');
-    expect(pro.features, 'catalog: Pro must carry stats.insights').toContain('stats.insights');
-    expect(pro.limits.max_ai_tokens_per_day, 'catalog: Pro has an unlimited AI budget').toBe(-1);
+    expect(pro.features, 'catalog: Max must carry stats.insights').toContain('stats.insights');
+    expect(pro.features, 'catalog: Max must carry quiz.templates').toContain('quiz.templates');
+    expect(pro.limits.max_ai_tokens_per_day, 'catalog: Max raises the AI budget').toBe(500_000);
     expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub caps AI tokens at 200000').toBe(200_000);
     // The unseated member's feature set is the learner profile ∩ the hub ceiling.
     const learnerOnHub = hub.features.filter(
@@ -442,29 +443,19 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(dialog.getByText(COPY.selectMemberFirst)).toBeVisible();
     await expect(dialog.getByRole('button', { name: COPY.assign, exact: true })).toBeDisabled();
 
-    // Only the pools whose plan audience equals the picked member's persona are
-    // offered: the student sees exactly the student-audience pools (ace, pro).
-    await pickMember(page, dialog, NAMES.student);
-    await expect(planPicker).toBeEnabled();
-    expect(
-      (await planOptions(page, dialog)).toSorted(),
-      'student account sees exactly the student-audience pools',
-    ).toEqual(
-      [
-        `${ace.name} (0/${pools.get('ace')!.total})`,
-        `${pro.name} (0/${pools.get('pro')!.total})`,
-      ].toSorted(),
-    );
-
-    await pickMember(page, dialog, NAMES.teacher);
-    expect(await planOptions(page, dialog), 'teacher sees only the educator pool').toEqual([
-      `${creator.name} (0/${pools.get('creator')!.total})`,
-    ]);
-
-    await pickMember(page, dialog, NAMES.manager);
-    expect(await planOptions(page, dialog), 'admin sees only the manager-audience pool').toEqual([
-      `${solo.name} (0/${pools.get('solo')!.total})`,
-    ]);
+    // Every pool of the org is offerable to any member: a personal plan has no
+    // audience since #1193, so the picker does not filter by persona.
+    const expectedPools = POOLS.map(
+      (entry) => `${plan(entry.planKey).name} (0/${pools.get(entry.planKey)!.total})`,
+    ).toSorted();
+    for (const member of [NAMES.student, NAMES.teacher, NAMES.manager]) {
+      await pickMember(page, dialog, member);
+      await expect(planPicker).toBeEnabled();
+      expect(
+        (await planOptions(page, dialog)).toSorted(),
+        `${member} sees every pool of the org`,
+      ).toEqual(expectedPools);
+    }
 
     // Pick the member the case assigns a seat to, then the matching plan.
     await pickMember(page, dialog, NAMES.student);
@@ -490,19 +481,19 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       page,
       ace.name,
       [ace.name, String(pools.get('ace')!.total), '0', String(pools.get('ace')!.total)],
-      'the other student pool is untouched',
+      'the other pool is untouched',
     );
     await expectPoolRow(
       page,
-      creator.name,
-      [creator.name, String(pools.get('creator')!.total), '0', String(pools.get('creator')!.total)],
-      'the educator pool is untouched',
+      spark.name,
+      [spark.name, String(pools.get('spark')!.total), '0', String(pools.get('spark')!.total)],
+      'the Plus pool is untouched',
     );
     await expectPoolRow(
       page,
-      solo.name,
-      [solo.name, String(pools.get('solo')!.total), '0', String(pools.get('solo')!.total)],
-      'the manager-audience pool is untouched',
+      base.name,
+      [base.name, String(pools.get('base')!.total), '0', String(pools.get('base')!.total)],
+      'the Free pool is untouched',
     );
 
     // 2c. A new row in „Przydziały” for that member with the seat plan.
@@ -546,7 +537,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await reopen.getByRole('button', { name: COPY.cancel }).click();
     await expect(reopen).toBeHidden();
 
-    // 4. Server-side guards behind the pickers: one seat per member, audience must match.
+    // 4. Server-side guards behind the pickers: one seat per member; a pool
+    //    accepts any member because the plan has no audience.
     const duplicate = await page.request.post('/api/v1/organization/seats/assignments', {
       data: { userId: userId(tenant, 'student'), poolId: pools.get('pro')!.id },
     });
@@ -556,21 +548,20 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       error: 'USAGE_LIMIT_EXCEEDED',
     });
 
-    const wrongAudience = await page.request.post('/api/v1/organization/seats/assignments', {
-      data: { userId: userId(tenant, 'student'), poolId: pools.get('solo')!.id },
+    const crossPersona = await page.request.post('/api/v1/organization/seats/assignments', {
+      data: { userId: userId(tenant, 'teacher'), poolId: pools.get('base')!.id },
     });
-    expect(wrongAudience.status(), 'manager-audience seat for a student account').toBe(400);
-    expect(await wrongAudience.json()).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+    expect(crossPersona.status(), 'an educator accepts a personal-plan pool').toBe(201);
 
     const poolsAfterGuards = (
       await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
     ).data;
     expect(poolsAfterGuards.map((pool) => [pool.planKey, pool.assigned]).toSorted()).toEqual(
       [
+        ['base', 1],
+        ['spark', 0],
         ['ace', 0],
-        ['creator', 0],
         ['pro', 1],
-        ['solo', 0],
       ].toSorted(),
     );
     expect(
@@ -579,16 +570,16 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
           await page.request.get('/api/v1/organization/seats/assignments'),
         )
       ).data,
-      'the rejected requests created no assignment',
-    ).toHaveLength(1);
+      'the seed plus the cross-persona assignment only',
+    ).toHaveLength(2);
 
     // ── Step 2: the seated member's entitlements and limits ──────────────────
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
     // ADR-0015 §5.4: seat entitlements are intersected with the org ceiling, so
-    // on the hub org the pro seat adds exactly `stats.insights` — a non-learner
-    // key the hub ceiling carries — and no other key.
+    // on the hub org the pro seat adds the non-learner keys the hub ceiling
+    // carries — `quiz.templates` and `stats.insights` — and no other key.
     const afterEntitlements = (
       await readEnvelope<{ entitlements: string[] }>(
         await page.request.get('/api/v1/me/entitlements'),
@@ -596,29 +587,32 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     ).data.entitlements;
     expect(
       afterEntitlements.toSorted(),
-      'the seat ∩ hub ceiling adds exactly stats.insights, nothing else',
-    ).toEqual([...learnerOnHub, 'stats.insights'].toSorted());
+      "the seat ∩ hub ceiling adds the hub ceiling's non-learner keys, nothing else",
+    ).toEqual([...learnerOnHub, 'quiz.templates', 'stats.insights'].toSorted());
     expect(afterEntitlements).toContain('stats.insights');
     expect(afterEntitlements).toContain('ai.chat');
 
     // The seat is the member's effective plan (D28/D34): /me/plan resolves `pro`
-    // with the seat plan's own unlimited AI budget and the raised feature set.
+    // with the seat plan's own AI budget and the raised feature set.
     const memberPlan = (await readEnvelope<PlanInfo>(await page.request.get('/api/v1/me/plan')))
       .data;
     expect(memberPlan.key).toBe(SEAT_PLAN_KEY);
-    expect(memberPlan.limits.max_ai_tokens_per_day, 'max(org, seat, personal): -1 wins').toBe(-1);
+    expect(memberPlan.limits.max_ai_tokens_per_day, 'max(org, seat, personal): 500000 wins').toBe(
+      500_000,
+    );
     expect(memberPlan.features, 'the effective plan carries the seat-added key').toContain(
       'stats.insights',
     );
 
     // The AI usage view reports the raised limit with the org plan as the
-    // effective primary (D30): the seat raised the budget from hub's 200000 to -1.
+    // effective primary (D30): the seat raised the budget from hub's 200000 to
+    // Max's 500000.
     const afterUsage = (
       await readEnvelope<{ limit: number; plan: string }>(
         await page.request.get('/api/v1/ai/usage'),
       )
     ).data;
-    expect(afterUsage.limit, 'the seat raises the AI limit above hub’s 200000').toBe(-1);
+    expect(afterUsage.limit, 'the seat raises the AI limit above hub’s 200000').toBe(500_000);
     expect(afterUsage.plan, 'the effective primary stays the org plan').toBe('hub');
 
     // ── The control member: the seat is per-member, not org-wide ─────────────

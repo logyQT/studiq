@@ -18,14 +18,13 @@ Zalogowany student1, następnie teacher1.
 
 ## Expected result
 
-- Student widzi plany typu student (Base, Spark, Ace, Pro); nauczyciel – edukatora (Lite, Guide, Creator, Master).
+- Student i nauczyciel widzą tę samą, jedną drabinkę indywidualną: Free, Plus, Pro, Max.
 - Aktualny plan oznaczony jako „Twój plan”, pozostałe z przyciskami zakupu/wyboru.
 
-> Kontrakt (2026-11-24, ADR-0015 §7.1): trasa planów nie jest bramką persony — oba
-> adresy otwierają się dla każdego zalogowanego konta i adres pozostaje bez zmian.
-> Publiczność planu pilnuje katalog renderowany przez stronę i checkout: zakup planu
-> osobistego o innej publiczności kończy się **403 `FORBIDDEN`**, a strona pozostaje
-> na miejscu z komunikatem o nieudanej płatności.
+> Kontrakt (2026-11-24, ADR-0015 §7.1; zaktualizowany #1193): trasa planów nie jest
+> bramką persony — oba adresy otwierają się dla każdego zalogowanego konta i adres
+> pozostaje bez zmian. Persona nie filtruje też zakupu planu osobistego: jedna
+> drabinka obsługuje studenta i edukatora.
 
 ## Seed (reconciled with the tenant seeder)
 
@@ -48,11 +47,11 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
 - **Plans the two legs start on**: the student is an org member without a seat
   assignment, so `/api/v1/me/personal-plan` resolves their personal plan
   (`profiles.personal_plan_key`, default `base`). The teacher has no seat assignment
-  either, so `/api/v1/me/plan` falls back to the same personal plan — `lite`, written by
-  the `handle_new_user` trigger for `account_type = educator`. `--plan` is not needed.
+  either, so `/api/v1/me/plan` falls back to the same personal plan — `base`, written by
+  the `handle_new_user` trigger for every account type since #1193. `--plan` is not needed.
 - **Read-only shared data**: the plan catalogue (`subscription_plans`, `plan_limits`) is
   global. The case can only exist against it, so the spec reads it through
-  `/api/v1/subscription-plans?for=<accountType>` and asserts the page renders it; nothing
+  `/api/v1/subscription-plans?scope=personal` and asserts the page renders it; nothing
   global is written. The only write is the mock checkout session the purchase button
   creates for this tenant's own student.
 
@@ -60,24 +59,16 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
 
 - Both pages share one shell: heading „Rozwiń swój plan” and subtitle „Wybierz plan
   odpowiedni dla Twoich potrzeb”, followed by a four-column grid of plan cards.
-- `/app/upgrade` (student) shows exactly the student catalogue in catalogue order:
-  StudiQ Base (0 zł, features Fiszki/Testy, „Zacznij za darmo”), StudiQ Spark
-  (9,99 zł/miesiąc, „Wybierz Spark”), StudiQ Ace (19,99 zł/miesiąc,
-  „Zalecany”, „Wybierz Ace”), StudiQ Pro (39,99 zł/miesiąc, „Wybierz Pro”).
-  The Base card carries the „Twój plan” badge.
-- `/edu/upgrade` (educator) shows exactly the educator catalogue: StudiQ Lite (0 zł,
-  „Zacznij za darmo”), StudiQ Guide (19,99 zł/miesiąc, „Wybierz Guide”), StudiQ Creator
-  (39,99 zł/miesiąc, „Zalecany”, „Wybierz Creator”), StudiQ Master
-  (79,99 zł/miesiąc, „Wybierz Master”). The Lite card carries the „Twój plan” badge.
-- Each page shows only its own account type's plans; no student plan appears on the
-  educator page and vice versa.
-- The purchase buttons are live: „Wybierz Spark” creates a mock checkout session and
+- `/app/upgrade` (student) and `/edu/upgrade` (educator) show the same individual
+  catalogue in catalogue order: StudiQ Free (0 zł, features Fiszki/Testy, „Zacznij za
+  darmo”), StudiQ Plus (19,99 zł/miesiąc, „Wybierz Plus”, „Zalecany”), StudiQ Pro
+  (39,99 zł/miesiąc, „Wybierz Pro”), StudiQ Max (79,99 zł/miesiąc, „Wybierz Maks”).
+  The Free card carries the „Twój plan” badge on both pages.
+- The purchase buttons are live: „Wybierz Plus” creates a mock checkout session and
   opens `/checkout?session_id=…&plan_id=spark` („Podsumowanie zamówienia”, „StudiQ
-  Spark”).
-- Account-type gating is the plan audience, not the route: a signed-in student
-  opening `/edu/upgrade` keeps the URL and sees the educator catalogue, and an
-  educator opening `/app/upgrade` sees the student catalogue. `/app` and `/edu`
-  require only a session (ADR-0015 §7.1), so neither page redirects; the checkout
-  refuses the other audience's personal plan with **403 `FORBIDDEN`** and the
-  purchase control shows the failure without navigating.
+  Plus”).
+- Persona no longer filters the ladder or the purchase: a signed-in student opening
+  `/edu/upgrade` keeps the URL and sees the same individual plans, and can start a
+  personal checkout from there. `/app` and `/edu` require only a session
+  (ADR-0015 §7.1), so neither page redirects.
 - The behavior matches the case exactly; no defect to report.

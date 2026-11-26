@@ -3,8 +3,8 @@ import type { LimitKey } from './limits';
 /**
  * Canonical entitlement catalog — the single source of truth for product access
  * (ADR-0015 §5.1). `entitlement_catalog`, `plan_entitlements`,
- * `entitlement_flags`, `org_role_features` and `user_feature_overrides` all store
- * these exact keys; the DB rows are pinned to this object by
+ * `entitlement_flags` and `user_feature_overrides` all store these exact keys;
+ * the DB rows are pinned to this object by
  * `__tests__/integration/catalog-invariants.test.ts`.
  *
  * Entitlements are product access, never authority. `Permission` owns
@@ -143,8 +143,6 @@ export interface ResolvedEntitlements {
     overrides: EntitlementKey[];
     /** Keys an active user override removed. */
     revokedOverrides: EntitlementKey[];
-    /** `org_role_features` `is_enabled=false` rows (D19, readable until phase 7). */
-    revokedRoleRows: EntitlementKey[];
     /** Surface keys removed by a kill-switched or missing flag row (fails closed). */
     flagsOff: EntitlementKey[];
   };

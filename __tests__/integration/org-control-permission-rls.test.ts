@@ -14,10 +14,10 @@ import { createTypedServiceClient } from '#test/integration/test-utils';
  * RLS parity for the org-control permission sweep (ADR-0015 §4.1, §7; R4).
  *
  * The settings, roster, seat and invitation routes gate on `org.*` permissions,
- * so the tables must too. Before this migration every policy asked
- * `is_org_manager`, which meant a custom role holding the new key passed the API
+ * so the tables must too. Before this migration every policy asked a legacy
+ * manager marker, which meant a custom role holding the new key passed the API
  * and was refused by RLS (FP-01 through PostgREST). Both directions are pinned
- * with real signed-in sessions, and the entitlement-row control role proves the
+ * with real signed-in sessions, and the permissionless control role proves the
  * predicate moved rather than widened.
  */
 
@@ -221,8 +221,7 @@ describe('org-control permission RLS', () => {
       'org.seat.manage',
       'org.invitation.manage',
     ]);
-    // The control: a hand-inserted code-row grant (inert since phase 3c — the
-    // table is revokes-only), with no permission key. It must lose every
+    // The control: a custom role with no permission key. It must lose every
     // predicate this slice moved.
     legacyRoleId = await customRole(orgId, `org-control-legacy-${tag}`, []);
 
@@ -232,13 +231,6 @@ describe('org-control permission RLS', () => {
     invitationManagerRoleId = await customRole(orgId, `org-control-inviter-${tag}`, [
       'org.invitation.manage',
     ]);
-
-    const { error: featureError } = await service.from('org_role_features').insert({
-      org_role_id: legacyRoleId,
-      feature_key: 'branding',
-      is_enabled: true,
-    });
-    if (featureError) throw new Error(`feature grant failed: ${featureError.message}`);
 
     holderId = await createUser(`org-control-holder-${tag}@dev.local`, 'holder', 'manager');
     legacyId = await createUser(`org-control-legacy-${tag}@dev.local`, 'legacy', 'manager');
@@ -706,7 +698,7 @@ describe('org-control permission RLS', () => {
 
     it('lets the holder UPDATE an assignment and refuses everyone else without touching it', async () => {
       const poolId = await ensurePool(orgId, 'spark', 2);
-      const otherPoolId = await ensurePool(orgId, 'guide', 2);
+      const otherPoolId = await ensurePool(orgId, 'ace', 2);
       const assignmentId = await insertAssignment(orgId, poolId, legacyId);
 
       const holderUpdate = await holder
@@ -744,7 +736,7 @@ describe('org-control permission RLS', () => {
 
   describe('org_seat_assignments read — the manager branch moved with the list route', () => {
     it('lets the holder read an assignment it does not own', async () => {
-      const poolId = await ensurePool(orgId, 'lite', 2);
+      const poolId = await ensurePool(orgId, 'pro', 2);
       const assignmentId = await insertAssignment(orgId, poolId, teacherId);
 
       const { data, error } = await holder
@@ -758,7 +750,7 @@ describe('org-control permission RLS', () => {
     });
 
     it('refuses the legacy manager marker and a plain member (only their own row)', async () => {
-      const poolId = await ensurePool(orgId, 'master', 2);
+      const poolId = await ensurePool(orgId, 'base', 2);
       const assignmentId = await insertAssignment(orgId, poolId, invitationManagerId);
 
       const legacyRead = await legacy

@@ -1,14 +1,11 @@
 'use client';
 
-import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
-import { memo, useState } from 'react';
+import { AlertCircle, FileText } from 'lucide-react';
+import { memo } from 'react';
 import type { FlashcardData } from '@/components/ai/generated-cards';
 import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
-import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
-import { ThinkingBlock } from '@/components/ai/thinking-block';
 import { ToolCallBlock } from '@/components/ai/tool-call-block';
-import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 import { cn } from '@/lib/utils';
@@ -35,32 +32,11 @@ function toFlashcardData(value: unknown): FlashcardData[] {
 export const ChatMessage = memo(
   function ChatMessageContent({ message, onAnswer, deckTarget }: ChatMessageProps) {
     const isUser = message.role === 'user';
-    const isThought = message.role === 'thought';
     const isToolCall = message.role === 'tool_call';
-    const isPlan = message.role === 'plan';
-
-    if (isThought) {
-      return <ThoughtMessage message={message} />;
-    }
-
-    if (isPlan) {
-      return (
-        <div className="flex justify-start">
-          <div className="max-w-[80%] w-full">
-            <PlanBlock
-              steps={message.plan || []}
-              isComplete={message.planCompleted ?? false}
-              completedSteps={message.completedSteps}
-            />
-          </div>
-        </div>
-      );
-    }
 
     if (
       isToolCall &&
-      (message.toolName === 'create_plan' ||
-        message.toolName === 'finish' ||
+      (message.toolName === 'finish' ||
         message.toolName === 'ask_user' ||
         message.toolName === 'generate_flashcards')
     ) {
@@ -77,7 +53,6 @@ export const ChatMessage = memo(
               status={message.status === 'running' ? 'running' : 'complete'}
               args={message.args}
               result={message.toolResult}
-              durationMs={message.durationMs}
             />
           </div>
         </div>
@@ -86,10 +61,7 @@ export const ChatMessage = memo(
 
     const isStreaming = message.status === 'streaming';
     const isError = message.status === 'error';
-    const isSending = message.status === 'sending';
-    const isThinking = message.status === 'thinking';
 
-    const hasThinkingTraces = message.thinkingTraces.length > 0;
     const isFlashcardResult = message.result?.type === 'flashcards';
     const result = message.result;
     const flashcardCards = toFlashcardData(result?.data);
@@ -112,12 +84,7 @@ export const ChatMessage = memo(
             </div>
           )}
 
-          {isSending && !message.content ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span className="text-xs italic">Thinking...</span>
-            </div>
-          ) : isUser ? (
+          {isUser ? (
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           ) : isStreaming ? (
             <div className="whitespace-pre-wrap break-words">
@@ -126,10 +93,6 @@ export const ChatMessage = memo(
             </div>
           ) : (
             <MarkdownRenderer content={message.content} />
-          )}
-
-          {(isThinking || hasThinkingTraces) && (
-            <ThinkingBlock traces={message.thinkingTraces} isComplete={isComplete || isError} />
           )}
 
           {isFlashcardResult &&
@@ -187,52 +150,9 @@ export const ChatMessage = memo(
       a.toolName === b.toolName &&
       a.label === b.label &&
       a.error === b.error &&
-      a.thinkingTraces.length === b.thinkingTraces.length
+      a.question?.id === b.question?.id &&
+      a.question?.question === b.question?.question &&
+      a.question?.answered === b.question?.answered
     );
   },
 );
-
-function ThoughtMessage({ message }: { message: ChatMessageType }) {
-  const [open, setOpen] = useState(false);
-  const isThinking = message.status === 'thinking';
-
-  if (!message.content && !isThinking) return null;
-
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%] rounded-md border border-border/50 bg-muted/10 text-xs">
-        <CollapsibleToggle
-          compact
-          open={open}
-          onToggle={() => setOpen(!open)}
-          icon={<Sparkles className="h-3 w-3 shrink-0" />}
-          label={isThinking ? 'Thinking...' : 'Thought'}
-          badge={
-            isThinking ? (
-              <span className="flex gap-0.5">
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '0ms' }}
-                />
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '150ms' }}
-                />
-                <span
-                  className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-                  style={{ animationDelay: '300ms' }}
-                />
-              </span>
-            ) : undefined
-          }
-        />
-        {open && message.content && (
-          <div className="whitespace-pre-wrap px-3 pb-2 text-muted-foreground/80">
-            {message.content}
-            {isThinking && <span className="animate-pulse">▌</span>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
