@@ -30,7 +30,6 @@ type PlanColumn = {
   added: string[];
   cta: string;
   href: string;
-  recommended?: boolean;
 };
 
 export function Pricing() {
@@ -83,7 +82,6 @@ export function Pricing() {
       added: [t('ai_generate_questions'), t('ai_generate_flashcards')],
       cta: t('pricing_premium_cta'),
       href: '/register',
-      recommended: true,
     },
     {
       name: t('pricing_university_name'),
@@ -147,8 +145,8 @@ export function Pricing() {
          * From md the columns share their rows (`subgrid`): name, description, price,
          * rows, action. The section's premise is reading three columns across, which
          * only survives if the row lists start on one line — and each of the first
-         * three rows is a different height per column, because a longer name wraps the
-         * recommended mark, a longer description takes a third line and a wide figure
+         * three rows is a different height per column, because a longer description
+         * takes a third line and a wide figure
          * pushes its period onto the next line. Shared rows take the tallest of the
          * three, so the alignment follows the copy in either locale instead of a
          * reserved height that has to be re-measured when it changes.
@@ -165,22 +163,8 @@ export function Pricing() {
                 index === lastIndex && 'md:pl-8',
               )}
             >
-              {plan.recommended ? (
-                // The accent marks the recommended column. A phone has no columns, so the
-                // label alone carries the recommendation there and the bar stays at md.
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-x-0 -top-px hidden h-0.5 bg-signal md:block"
-                />
-              ) : null}
-
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:row-start-1 md:justify-between">
                 <h3 className="text-h3 font-semibold">{plan.name}</h3>
-                {plan.recommended ? (
-                  <span className="font-mono text-xs uppercase tracking-[0.08em] text-primary">
-                    {t('pricing_recommended')}
-                  </span>
-                ) : null}
               </div>
               <p className="mt-2 text-sm text-muted-foreground text-pretty md:row-start-2">
                 {plan.desc}
@@ -235,39 +219,10 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <div className="mt-auto flex flex-col pt-6 md:row-start-5 md:block md:pt-8">
-                {/*
-                 * One primary action in the section: the recommended plan's fill. Free and
-                 * Organizations are links in the page's link language, because three lime
-                 * buttons would be no primary at all. At md the three buttons are the peers
-                 * of the ledger's columns, so the quiet outline stays as it is.
-                 */}
-                <div className="md:hidden">
-                  {plan.recommended ? (
-                    <CtaButton href={plan.href} tone="signal">
-                      {plan.cta}
-                    </CtaButton>
-                  ) : (
-                    <Link
-                      href={plan.href}
-                      className={cn(
-                        'group inline-flex min-h-11 items-center gap-2 rounded-control text-sm font-semibold text-primary transition-colors hover:underline',
-                        FOCUS_RING,
-                      )}
-                    >
-                      {plan.cta}
-                      <ArrowRight
-                        aria-hidden="true"
-                        className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5"
-                      />
-                    </Link>
-                  )}
-                </div>
-                <div className="hidden md:block">
-                  <CtaButton href={plan.href} tone="quiet">
-                    {plan.cta}
-                  </CtaButton>
-                </div>
+              <div className="mt-auto pt-6 md:row-start-5 md:pt-8">
+                <CtaButton href={plan.href} tone="quiet">
+                  {plan.cta}
+                </CtaButton>
               </div>
             </li>
           ))}

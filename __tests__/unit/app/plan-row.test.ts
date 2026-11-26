@@ -81,6 +81,7 @@ function toneTokens(classes: string): string[] {
 describe('PlanRow action', () => {
   it('prints a disabled current-plan action and no checkout on the plan the reader owns', () => {
     const markup = render({ isCurrent: true, hasActivePlan: true });
+    const classes = actionClasses(markup);
 
     // The badge names the plan's state; the button names the action, so the two
     // no longer carry the same phrase.
@@ -88,6 +89,10 @@ describe('PlanRow action', () => {
     expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
     expect(markup).not.toContain(t('cta_spark'));
     expect(markup).not.toContain('href="/app/billing"');
+    // A disabled control answers no pointer, so the quiet tone's hover fill has no
+    // element to tint.
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('disabled:pointer-events-none');
   });
 
   it('sends an existing subscriber to the billing change-plan page', () => {

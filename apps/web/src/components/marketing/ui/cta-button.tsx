@@ -88,6 +88,8 @@ export function CtaButton(props: CtaButtonProps) {
   const { children, tone = 'signal', size = 'md', fullWidth = false, className: extra } = props;
   const className = cn(
     'inline-flex items-center justify-center gap-2 rounded-control px-6 font-semibold transition-colors',
+    // A disabled element still matches `:hover`, so suppress the pointer instead.
+    'disabled:pointer-events-none',
     SIZE[size],
     fullWidth && 'w-full',
     TONE[tone],

@@ -46,8 +46,6 @@ export function PlanRow({
   const { description, note } = planCopy(t, plan);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
-  // The ladder has one signal fill; the plan the reader already owns never takes it.
-  const primary = recommended && !isCurrent;
   const action = pricingPlanAction({ signedIn, isCurrent, isFree, contactOnly, hasActivePlan });
 
   return (
@@ -91,7 +89,6 @@ export function PlanRow({
         <PlanAction
           plan={plan}
           action={action}
-          tone={primary ? 'signal' : 'quiet'}
           billingHref={billingHref}
           orgId={orgId}
           registerLabel={isFree ? t('cta_free') : t('cta_register')}

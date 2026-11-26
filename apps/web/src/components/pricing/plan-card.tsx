@@ -37,8 +37,6 @@ export function PlanCard({
   const ctaLabel = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
   const recommended = isRecommendedPlan(plan.key);
   const paid = plan.priceMonthly > 0;
-  // The grid has one signal fill, and the card the reader already owns never takes it.
-  const primary = recommended && !isCurrentPlan;
   const action = pricingPlanAction({
     signedIn: Boolean(user),
     isCurrent: isCurrentPlan,
@@ -97,18 +95,12 @@ export function PlanCard({
           !paid && user ? (
             // A different free plan is not a subscription the reader changes; the
             // card keeps its link to the app.
-            <CtaButton href="/app" tone={primary ? 'signal' : 'quiet'} fullWidth>
+            <CtaButton href="/app" tone="quiet" fullWidth>
               {ctaLabel}
             </CtaButton>
           ) : null
         ) : (
-          <PlanAction
-            plan={plan}
-            action={action}
-            tone={primary ? 'signal' : 'quiet'}
-            billingHref={billingHref}
-            orgId={orgId}
-          />
+          <PlanAction plan={plan} action={action} billingHref={billingHref} orgId={orgId} />
         )}
       </CardContent>
     </Card>

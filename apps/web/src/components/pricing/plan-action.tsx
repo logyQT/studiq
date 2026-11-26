@@ -4,18 +4,12 @@ import type { PlanInfo } from '@studiq/server/services/subscription-plan.service
 import { useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
-import { ctaMessageKey } from '@/lib/pricing-ladders';
+import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
 import type { PlanAction as PlanActionKind } from '@/lib/pricing-plan-action';
 
 interface PlanActionProps {
   plan: PlanInfo;
   action: PlanActionKind;
-  /**
-   * The page's rule, passed in rather than derived here: the recommended plan
-   * carries the one `signal` fill, and the plan the reader already owns never
-   * takes it.
-   */
-  tone: 'signal' | 'quiet';
   /** Where a subscriber changes plan: their own billing page or the org's. */
   billingHref: string;
   /** Active organization; organization plans are bought for it. */
@@ -41,7 +35,6 @@ interface PlanActionProps {
 export function PlanAction({
   plan,
   action,
-  tone,
   billingHref,
   orgId,
   registerLabel,
@@ -50,6 +43,8 @@ export function PlanAction({
   const t = useTranslations('PricingPage');
   const ctaKey = ctaMessageKey(plan);
   const label = t.has(ctaKey) ? t(ctaKey) : t('cta_generic');
+  // One `signal` fill per surface, never on the plan the reader already owns.
+  const tone = isRecommendedPlan(plan.key) && action !== 'current' ? 'signal' : 'quiet';
 
   if (action === 'contact') {
     // Campus is a 699 zł conversation, not a self-serve checkout: the label says
@@ -63,7 +58,7 @@ export function PlanAction({
 
   if (action === 'current') {
     return (
-      <CtaButton action="button" tone="quiet" disabled fullWidth className={className}>
+      <CtaButton action="button" tone={tone} disabled fullWidth className={className}>
         {t('cta_current')}
       </CtaButton>
     );

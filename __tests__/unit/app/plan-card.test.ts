@@ -90,11 +90,16 @@ describe('PlanCard action', () => {
 
   it('prints a disabled current-plan action on the plan the reader owns', () => {
     const markup = render({ isCurrentPlan: true, hasActivePlan: true });
+    const classes = actionClasses(markup);
 
     expect(markup.split(t('current_plan_badge')).length - 1).toBe(1);
     expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
     expect(markup).not.toContain('href="/app/billing"');
     expect(markup).not.toContain(t('cta_ace'));
+    // A disabled control answers no pointer, so the quiet tone's hover fill has no
+    // element to tint.
+    expect(classes).toHaveLength(1);
+    expect(toneTokens(classes[0])).toContain('disabled:pointer-events-none');
   });
 
   it('starts a checkout for a signed-in reader without a subscription', () => {
