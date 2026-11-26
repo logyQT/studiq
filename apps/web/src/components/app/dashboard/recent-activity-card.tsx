@@ -6,7 +6,7 @@ import { ClipboardCheck, FileCheck2, History, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { CardError } from '@/components/app/dashboard/card-error';
-import { activityMessageKey } from '@/lib/recent-activity';
+import { activityHref, activityMessageKey } from '@/lib/recent-activity';
 import { formatRelativeTime } from '@/lib/relative-time';
 
 interface RecentActivityCardProps {
@@ -21,14 +21,6 @@ const ICONS = {
   quiz_completed: ClipboardCheck,
   assignment_submitted: FileCheck2,
 } as const;
-
-/** Where a line leads: the review of a finished quiz; submitted assignments keep their own page. */
-function hrefFor(item: StudentActivityItem): string | null {
-  if (item.kind === 'quiz_completed' && item.attemptId) {
-    return `/app/study/session/quiz/${item.attemptId}/review`;
-  }
-  return null;
-}
 
 export function RecentActivityCard({
   items,
@@ -61,7 +53,7 @@ export function RecentActivityCard({
           <ul className="space-y-1">
             {items.map((item, index) => {
               const Icon = ICONS[item.kind];
-              const href = hrefFor(item);
+              const href = activityHref(item);
               const title = item.title ?? t('practice_quiz');
               const key = activityMessageKey(item);
               const text =
