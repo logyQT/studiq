@@ -1,6 +1,11 @@
 'use client';
 
 import {
+  CSV_IMPORT_MAX_ROWS,
+  type CsvImportResult,
+  type CsvImportRowError,
+} from '@studiq/server/models/flashcard-import.model';
+import {
   Button,
   Dialog,
   DialogContent,
@@ -17,19 +22,29 @@ import {
 } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, FileText, Loader2, Upload } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ApiError, apiPost } from '@/lib/api';
+import { ApiError, apiPost, isNetworkError } from '@/lib/api';
+import {
+  autoMapColumns,
+  type CsvColumnMap,
+  type CsvRecord,
+  isCsvFile,
+  parseCsv,
+  summarizeImport,
+  toImportCards,
+} from '@/lib/csv-import';
+import { translateErrorCode } from '@/lib/error-messages';
 import { flashcardKeys } from '@/lib/query-keys';
 
-type CsvPreviewRow = Record<string, string>;
-
-interface ImportResult {
-  total: number;
-  imported: number;
-  errors: Array<{ row: number; error: string }>;
-}
+/** The dialog's own name for the column a row error is about. */
+const FIELD_LABELS: Record<CsvImportRowError['field'], string> = {
+  front: 'front_label',
+  back: 'back_label',
+  topic: 'topics_label',
+  deck: 'deck_name_label',
+};
 
 interface ImportDialogProps {
   open: boolean;
@@ -40,22 +55,31 @@ interface ImportDialogProps {
 
 export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProps) {
   const queryClient = useQueryClient();
+  const tError = useTranslations('Errors');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
-  const [parsedRows, setParsedRows] = useState<CsvPreviewRow[]>([]);
-  const [columnMap, setColumnMap] = useState<{
-    front: string;
-    back: string;
-    topic: string | null;
-    deck: string | null;
-  }>({
+  const [parsedRows, setParsedRows] = useState<CsvRecord[]>([]);
+  const [columnMap, setColumnMap] = useState<CsvColumnMap>({
     front: '',
     back: '',
     topic: null,
     deck: null,
   });
   const [columns, setColumns] = useState<string[]>([]);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importResult, setImportResult] = useState<CsvImportResult | null>(null);
+  const tooManyRows = parsedRows.length > CSV_IMPORT_MAX_ROWS;
+  const summary = importResult && summarizeImport(importResult);
+  /** Every picker offers the same columns, and „—” to leave its field unmapped. */
+  const columnOptions = [
+    <option key="" value="">
+      —
+    </option>,
+    ...columns.map((c) => (
+      <option key={c} value={c}>
+        {c}
+      </option>
+    )),
+  ];
 
   const reset = useCallback(() => {
     setStep('upload');
@@ -65,43 +89,19 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
     setImportResult(null);
   }, []);
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      const text = await file.text();
-      const Papa = (await import('papaparse')).default;
-      const result = Papa.parse<CsvPreviewRow>(text, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (h) => h.trim(),
-      });
-
-      if (result.errors.length > 0 && result.data.length === 0) {
+  /** The one way a file gets in, whether it was picked or dropped. */
+  const openFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      const parsed = isCsvFile(file) ? await parseCsv(await file.text()) : null;
+      if (!parsed) {
         toast.error(t('csv_parse_error'));
         return;
       }
 
-      const cols = result.meta.fields ?? [];
-      setColumns(cols);
-      setParsedRows(result.data.slice(0, 50));
-
-      const lower = cols.map((c) => c.toLowerCase());
-      const autoMap = {
-        front:
-          cols[lower.findIndex((c) => c === 'front' || c === 'question' || c === 'q')] ??
-          cols[0] ??
-          '',
-        back:
-          cols[lower.findIndex((c) => c === 'back' || c === 'answer' || c === 'a')] ??
-          cols[1] ??
-          '',
-        topic:
-          cols[
-            lower.findIndex((c) => c === 'topic' || c === 'topics' || c === 'tag' || c === 'tags')
-          ] ?? null,
-        deck:
-          cols[lower.findIndex((c) => c === 'deck' || c === 'decks' || c === 'deck_name')] ?? null,
-      };
-      setColumnMap(autoMap);
+      setColumns(parsed.columns);
+      setParsedRows(parsed.rows);
+      setColumnMap(autoMapColumns(parsed.columns));
       setStep('preview');
     },
     [t],
@@ -110,22 +110,18 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file && (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv')) {
-        void handleFile(file);
-      } else if (file) {
-        toast.error(t('csv_parse_error'));
-      }
+      void openFile(e.dataTransfer.files[0]);
     },
-    [handleFile, t],
+    [openFile],
   );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) void handleFile(file);
+      void openFile(e.target.files?.[0]);
+      // Picking the same file again after a refusal must fire another change.
+      e.target.value = '';
     },
-    [handleFile],
+    [openFile],
   );
 
   const handleImport = useCallback(async () => {
@@ -136,12 +132,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
 
     setStep('importing');
 
-    const cards = parsedRows.map((row) => ({
-      front: row[columnMap.front] ?? '',
-      back: row[columnMap.back] ?? '',
-      topic: columnMap.topic ? row[columnMap.topic] || undefined : undefined,
-      deck: columnMap.deck ? row[columnMap.deck] || undefined : undefined,
-    }));
+    const cards = toImportCards(parsedRows, columnMap);
 
     try {
       const body: Record<string, unknown> = { cards };
@@ -150,7 +141,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       } else {
         body.defaultDeckName = t('imported_deck_default_name');
       }
-      const result = await apiPost<ImportResult>('/api/v1/flashcards/import/csv', body);
+      const result = await apiPost<CsvImportResult>('/api/v1/flashcards/import/csv', body);
 
       setImportResult(result);
       setStep('done');
@@ -160,10 +151,14 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       }
       void queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t('import_failed'));
+      toast.error(
+        error instanceof ApiError && !isNetworkError(error)
+          ? translateErrorCode(tError, error.code)
+          : t('import_failed'),
+      );
       setStep('preview');
     }
-  }, [columnMap, parsedRows, deckId, t, queryClient]);
+  }, [columnMap, parsedRows, deckId, t, tError, queryClient]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -213,34 +208,34 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                 <FileText className="h-4 w-4" />
                 <span>{t('n_rows_found', { count: parsedRows.length })}</span>
               </div>
+              {tooManyRows && (
+                <p role="alert" className="flex items-center gap-1 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 shrink-0" /> {tError('ERROR_VALIDATION_FAILED')} (
+                  {parsedRows.length} / {CSV_IMPORT_MAX_ROWS})
+                </p>
+              )}
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <label className="font-medium">{t('csv_column_front')}</label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_front')}
                     value={columnMap.front}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, front: e.target.value }))}
                   >
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
+                    {columnOptions}
                   </select>
                 </div>
                 <div>
                   <label className="font-medium">{t('csv_column_back')}</label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_back')}
                     value={columnMap.back}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, back: e.target.value }))}
                   >
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
+                    {columnOptions}
                   </select>
                 </div>
                 <div>
@@ -250,17 +245,13 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_topic')}
                     value={columnMap.topic ?? ''}
                     onChange={(e) =>
                       setColumnMap((prev) => ({ ...prev, topic: e.target.value || null }))
                     }
                   >
-                    <option value="">—</option>
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
+                    {columnOptions}
                   </select>
                 </div>
                 <div>
@@ -270,17 +261,13 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                   </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
+                    aria-label={t('csv_column_deck')}
                     value={columnMap.deck ?? ''}
                     onChange={(e) =>
                       setColumnMap((prev) => ({ ...prev, deck: e.target.value || null }))
                     }
                   >
-                    <option value="">—</option>
-                    {columns.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
+                    {columnOptions}
                   </select>
                 </div>
               </div>
@@ -332,12 +319,16 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
             </div>
           )}
 
-          {step === 'done' && importResult && (
+          {step === 'done' && importResult && summary && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-4 rounded-lg bg-muted">
-                <CheckCircle2 className="h-6 w-6 text-green-500" />
+                {summary.failed ? (
+                  <AlertCircle className="h-6 w-6 text-destructive" />
+                ) : (
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                )}
                 <div>
-                  <p className="font-medium">{t('import_complete')}</p>
+                  <p className="font-medium">{t(summary.titleKey)}</p>
                   <p className="text-sm text-muted-foreground">
                     {t('import_summary', {
                       imported: importResult.imported,
@@ -350,7 +341,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                 <div className="space-y-2">
                   <p className="text-sm font-medium flex items-center gap-1 text-destructive">
                     <AlertCircle className="h-4 w-4" />{' '}
-                    {t('import_errors', { count: importResult.errors.length })}
+                    {t('import_errors', { count: summary.errorRows })}
                   </p>
                   <div className="max-h-40 overflow-y-auto border rounded-lg">
                     <Table>
@@ -364,7 +355,9 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                         {importResult.errors.map((err, i) => (
                           <TableRow key={i}>
                             <TableCell>{err.row}</TableCell>
-                            <TableCell className="text-destructive">{err.error}</TableCell>
+                            <TableCell className="text-destructive">
+                              {t(FIELD_LABELS[err.field])}: {translateErrorCode(tError, err.error)}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -393,7 +386,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
               >
                 {t('back')}
               </Button>
-              <Button onClick={handleImport}>
+              <Button onClick={handleImport} disabled={tooManyRows}>
                 {t('import_confirm', { count: parsedRows.length })}
               </Button>
             </>

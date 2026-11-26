@@ -1,12 +1,19 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
 import type { ServiceResult } from '@studiq/server/lib/service-result';
+import { AppError } from '@studiq/server/lib/errors';
 import { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
+import { flashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
   Permission: { DECK_UPDATE: 'deck.update' },
+}));
+
+// The count and the plan lookup have their own tables; here only the question asked matters.
+vi.mock('@studiq/server/services/flashcard.service', () => ({
+  flashcardService: { checkCapacity: vi.fn() },
 }));
 
 type ChainMock = ReturnType<typeof vi.fn>;
@@ -188,6 +195,46 @@ describe('FlashcardImportService', () => {
       );
 
       expect(result.success).toBe(true);
+    });
+
+    it.each([
+      ['into a new deck', undefined],
+      ['into an existing deck', 'deck-1'],
+    ])('writes nothing when no row is valid, %s (#888)', async (_label, deckId) => {
+      const lookup = qb({ id: 'deck-1' });
+      mock.from.mockReturnValue(lookup);
+
+      const result = await service.importCsv({ deckId, cards: [] }, ctx);
+
+      expect(expectSuccess(result)).toEqual({ imported: 0 });
+      expect(lookup.insert).not.toHaveBeenCalled();
+      expect(flashcardService.checkCapacity).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing, not even a deck or a topic, past the plan limit (#888)', async () => {
+      vi.mocked(flashcardService.checkCapacity).mockRejectedValueOnce(
+        new AppError('USAGE_LIMIT_EXCEEDED'),
+      );
+      const table = qb({ id: 'deck-new' });
+      mock.from.mockReturnValue(table);
+
+      await expect(
+        service.importCsv({ cards: [{ front: 'a', back: 'b', topic: 'New' }] }, ctx),
+      ).rejects.toThrow('USAGE_LIMIT_EXCEEDED');
+
+      expect(table.insert).not.toHaveBeenCalled();
+    });
+
+    it('asks the limit for every card of a long file and inserts them all (#888)', async () => {
+      const cards = Array.from({ length: 120 }, (_, i) => ({ front: `q${i}`, back: `a${i}` }));
+      const insert = qb(cards.map((_, i) => ({ id: `fc-${i}` })));
+      mock.from.mockReturnValueOnce(qb({ id: 'deck-new' })).mockReturnValueOnce(insert);
+
+      const result = await service.importCsv({ cards }, ctx);
+
+      expect(expectSuccess(result)).toEqual({ imported: 120 });
+      expect(flashcardService.checkCapacity).toHaveBeenCalledWith(mock, ctx, 120);
+      expect(insert.insert.mock.calls[0]?.[0]).toHaveLength(120);
     });
 
     it('returns error on flashcard insert failure', async () => {
