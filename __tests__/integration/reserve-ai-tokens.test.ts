@@ -423,7 +423,7 @@ describe('reserve_ai_tokens', () => {
       expect(rows.map((row) => row.proname)).toEqual(['increment_quizzes', 'increment_reviews']);
       for (const row of rows) {
         expect(row.prosecdef, `${row.proname} must be security definer`).toBe(true);
-        expect(row.proconfig, `${row.proname} must pin an empty search_path`).toContain(
+        expect(row.proconfig ?? [], `${row.proname} must pin an empty search_path`).toContain(
           'search_path=""',
         );
       }

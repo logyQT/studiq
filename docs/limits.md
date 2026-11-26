@@ -276,13 +276,12 @@ After a stream finishes, `trackTokenUsage` calls
 - derives the actor from `auth.uid()` **inside** the function, so a caller can
   only meter itself (raising `28000` when there is no actor);
 - is `security definer` with `set search_path = ''`, executable by
-  `authenticated` only, and `authenticated` may not `DELETE` from
-  `user_daily_activity` (a client-side delete would zero the counter without
-  touching the RPC or the gate). The counter is **not tamper-evident**:
-  `authenticated` keeps `INSERT`/`UPDATE` on its own row for the review/quiz
-  stats triggers, so a user can reset their own meter by writing that row
-  directly (owner: the follow-up that moves those triggers behind a definer
-  function);
+  `authenticated` only, and `user_daily_activity` accepts **no client write**:
+  `INSERT`, `UPDATE` and `DELETE` are revoked from `authenticated` (and `anon`),
+  so a direct PostgREST write fails with `42501`. The two stats triggers are
+  `security definer` too, and together with this RPC they are the only writers
+  of the table. `service_role` keeps its grants for test cleanup. The counter is
+  therefore metered by the RPC and cannot be reset by writing the row;
 - records the increment in **one** statement — a single `insert … on conflict …
 do update` that always adds to the day's committed row. Two concurrent
   reservations serialize on the row, so neither increment is lost (R29). The

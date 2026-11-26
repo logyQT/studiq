@@ -40,12 +40,11 @@ call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
 **Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
-#1502 (#1503) and #1484 (#1506) have merged; next are #1482, #1478 and #1492, then the plans,
+#1502 (#1503) and #1484 (#1506) have merged, and #1482 is implemented on branch
+`fix/1482-daily-activity-definer` (PR pending); next are #1478 and #1492, then the plans,
 then the shell, then the `/app` decision, then onboarding.
 **Open follow-ups (owned):** **#1483** notify org admins when a new
-entitlement is grantable; **#1482** move the daily-stats triggers behind a
-definer function and revoke user writes to `user_daily_activity` (the phase-7
-accepted residual); **#1478** the merge queue cannot land a docs-only PR;
+entitlement is grantable; **#1478** the merge queue cannot land a docs-only PR;
 row 14 (per-user personal default permission set) still defers. A
 default-outside-any-plan layer is **proposed** as D37 and needs an ADR-0015
 amendment before anyone builds it.
@@ -5824,15 +5823,19 @@ Landed in this slice:
   moved enforcement back to that gate and kept the atomic accounting: the write
   is truthful, the next request trips on `current >= limit`, and one stream may
   overshoot by its own token count.
-  **Accepted risk** (owner: #1482 — move the stats triggers behind a definer
-  function): `authenticated` keeps `INSERT`/`UPDATE` on its own
-  `user_daily_activity` row because the review/quiz triggers run as the invoking
-  user, so a determined user can **reset** their own counter — a direct `UPDATE`,
-  or a PostgREST upsert of the day's row (negative counts on the RPC used to
-  subtract as well, and are now clamped to zero). The exposure is a reset of
-  one's own meter, not a grant over anyone else's: premarket, self-only, no
-  privilege escalation and no cross-user metering — recorded and deferred, not
-  fixed in phase 7.
+  **Residual closed by #1482** (branch `fix/1482-daily-activity-definer`, PR
+  pending review): phase 7 left `authenticated` with `INSERT`/`UPDATE` on its
+  own `user_daily_activity` row because the review/quiz triggers ran as the
+  invoking user, so a determined user could **reset** their own counter with a
+  direct `UPDATE`, or a PostgREST upsert of the day's row (negative counts on
+  the RPC used to subtract as well, and are now clamped to zero). #1482 makes
+  `increment_reviews` `security definer` with an empty `search_path` — the shape
+  `increment_quizzes` already had — and revokes `INSERT`, `UPDATE` and `DELETE`
+  from `authenticated` and `anon`; only the two trigger functions and
+  `reserve_ai_tokens` write the table now. The exposure was a reset of one's own
+  meter, not a grant over anyone else's: no privilege escalation and no
+  cross-user metering. It was recorded and deferred in phase 7, and is now
+  closed.
 - **Fixtures/tests:** the per-role table RLS suite was recast as
   `__tests__/integration/entitlement-org-resolution-rls.test.ts` (live resolver
   cases kept, table cases deleted); `org-features` and `catalog-invariants`
