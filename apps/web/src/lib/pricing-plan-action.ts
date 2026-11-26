@@ -7,9 +7,10 @@ export type PlanAction = 'none' | 'register' | 'current' | 'checkout' | 'change-
  * A reader with an active subscription cannot start a second checkout — the
  * server refuses one subscription per owner — so their upgrade, downgrade and
  * proration belong to the billing page. The current plan's own row carries a
- * disabled "your plan" action: the badge says the same, and an empty action
- * cell reads as a broken row. `isCurrent` comes before `isFree`, so a reader on
- * the free plan gets that disabled action too.
+ * disabled "current plan" action: an empty action cell reads as a broken row,
+ * and the label names the state without repeating the badge beside it.
+ * `isCurrent` comes before `isFree`, so a reader on the free plan gets that
+ * disabled action too.
  *
  * `hasActivePlan` is tri-state: `null` means the plan read is still pending or
  * failed. A failed read must not claim the reader has no subscription, so the

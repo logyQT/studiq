@@ -514,21 +514,21 @@ describe('BillingService.getSubscription', () => {
       scope: 'organization',
       audience: null,
     });
-    const personalPlan = planInfo({ key: 'spark', name: 'StudiQ Spark', priceMonthly: 999 });
+    const personalPlan = planInfo({ key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 });
     plans = createPlans(success(orgPlan), success(personalPlan));
     reads = createReads({
       findSubscription: vi.fn().mockResolvedValue(success(subscriptionRow())),
     });
     service = new BillingService(gateway, repository, reads, plans);
 
-    // The live repro: a manager holding org.billing.manage with a paid personal
-    // plan must see that plan on `/app/billing`, never the organization's.
+    // A manager holding org.billing.manage with a paid personal plan must see
+    // that plan on `/app/billing`, never the organization's.
     await expect(service.getSubscription(managerCtx, true)).resolves.toMatchObject({
       success: true,
       data: {
         planKey: 'spark',
-        planName: 'StudiQ Spark',
-        priceMonthly: 999,
+        planName: 'StudiQ Plus',
+        priceMonthly: 1999,
         status: 'active',
       },
     });

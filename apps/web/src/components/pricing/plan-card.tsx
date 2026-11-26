@@ -102,7 +102,7 @@ export function PlanCard({
           </Button>
         ) : action === 'current' ? (
           <Button variant="outline" disabled className="w-full rounded-control">
-            {t('current_plan_badge')}
+            {t('cta_current')}
           </Button>
         ) : action === 'change-plan' ? (
           <CtaButton href={billingHref} tone={recommended ? 'signal' : 'quiet'} fullWidth>

@@ -2140,6 +2140,7 @@
     "cta_register": "Create account",
     "cta_contact": "Let's talk",
     "cta_change_plan": "Change plan",
+    "cta_current": "Current plan",
     "close_individual_line": "The first plan is free. Turn on the next one when you need it.",
     "close_org_line": "An implementation starts with a conversation about seats and roles.",
     "close_org_cta": "Let's talk rollout",

@@ -116,7 +116,7 @@ export function PlanRow({
             disabled
             className="h-11 w-full rounded-control px-6 text-sm font-semibold whitespace-nowrap"
           >
-            {t('current_plan_badge')}
+            {t('cta_current')}
           </Button>
         ) : action === 'change-plan' ? (
           /*

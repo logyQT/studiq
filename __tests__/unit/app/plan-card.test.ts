@@ -66,8 +66,8 @@ describe('PlanCard action', () => {
   it('prints a disabled current-plan action on the plan the reader owns', () => {
     const markup = render({ isCurrentPlan: true, hasActivePlan: true });
 
-    expect(markup).toContain(t('current_plan_badge'));
-    expect(markup).toMatch(/<button[^>]*disabled/);
+    expect(markup.split(t('current_plan_badge')).length - 1).toBe(1);
+    expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
     expect(markup).not.toContain('href="/app/billing"');
     expect(markup).not.toContain(t('cta_ace'));
   });

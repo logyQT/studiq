@@ -80,11 +80,13 @@ export function BillingPage({ accountType, upgradePath, personal = false }: Bill
   }
 
   // The header names one plan, so its lists must be that plan's catalogue row.
-  // The plan read carries an effective composition for programmatic use: its
-  // org-scope limits are 0 outside a verified org and its feature list is the
-  // union of every layer — neither belongs under a single plan's name and price.
-  // While the catalogue is unavailable the lists stay empty: falling back to
-  // `plan` would put that union back under the one plan's name.
+  // `/me/plan` composes an effective view for programmatic use: its org-scope
+  // limits are 0 outside a verified org and its feature list is the union of
+  // every layer — neither belongs under a single plan's name and price. The
+  // personal surface reads `/me/personal-plan`, which is the stored plan's own
+  // view, so these lists come from the catalogue row either way.
+  // While the catalogue is unavailable the lists stay empty: the plan read is
+  // not the catalogue's own view of that plan.
   const shown = plans?.find((candidate) => candidate.key === plan.key);
 
   const hasPrice = plan.priceMonthly > 0;
