@@ -12,7 +12,7 @@ const base = {
   cardsStudied: null,
   attemptId: 'a-1',
   assignmentId: null,
-  resultsWithheld: false,
+  reviewUnlocked: false,
 } as const;
 
 function item(
@@ -69,20 +69,18 @@ describe('activityHref', () => {
     expect(href('quiz_completed')).toBe('/app/study/session/quiz/a-1/review');
   });
 
-  it('leads a submitted assignment with visible results to the review of that attempt', () => {
-    expect(href('assignment_submitted', { assignmentId: 'as-1' })).toBe(
+  it('leads a submitted assignment with an unlocked review to the review of that attempt', () => {
+    expect(href('assignment_submitted', { assignmentId: 'as-1', reviewUnlocked: true })).toBe(
       '/app/assignments/as-1/review?attemptId=a-1',
     );
   });
 
-  it('leads a submitted assignment with withheld results to the assignment page', () => {
-    expect(href('assignment_submitted', { assignmentId: 'as-1', resultsWithheld: true })).toBe(
-      '/app/assignments/as-1',
-    );
+  it('leads a submitted assignment without an unlocked review to the assignment page', () => {
+    expect(href('assignment_submitted', { assignmentId: 'as-1' })).toBe('/app/assignments/as-1');
   });
 
-  it('leads nowhere once the assignment is deleted', () => {
-    expect(href('assignment_submitted', { assignmentId: null, resultsWithheld: true })).toBeNull();
+  it('leads nowhere when the student cannot open the assignment', () => {
+    expect(href('assignment_submitted', { assignmentId: null })).toBeNull();
   });
 
   it('leads a flashcard session nowhere', () => {

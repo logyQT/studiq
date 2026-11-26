@@ -11,9 +11,9 @@ export type ActivityMessageKey =
   | 'activity_assignment_submitted_untitled_no_score';
 
 /**
- * Where a line leads, if anywhere. A finished quiz opens its review. A submitted assignment opens
- * the review of that attempt, or its own page when the teacher withholds the results (the review
- * page has nothing to show then, #1142). A deleted assignment has no page left.
+ * Returns the link of a line, or `null`. A completed quiz opens its review. A submitted assignment
+ * opens the review of that attempt only when the review is unlocked. If not, it opens the
+ * assignment page (#1142). A line without an `assignmentId` has no page that the student can open.
  */
 export function activityHref(item: StudentActivityItem): string | null {
   if (!item.attemptId) return null;
@@ -21,7 +21,7 @@ export function activityHref(item: StudentActivityItem): string | null {
   if (item.kind !== 'assignment_submitted' || !item.assignmentId) return null;
 
   const assignment = `/app/assignments/${item.assignmentId}`;
-  return item.resultsWithheld ? assignment : `${assignment}/review?attemptId=${item.attemptId}`;
+  return item.reviewUnlocked ? `${assignment}/review?attemptId=${item.attemptId}` : assignment;
 }
 
 /**

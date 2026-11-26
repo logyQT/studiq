@@ -26,7 +26,7 @@ const base: StudentActivityItem = {
   scorePct: 80,
   attemptId: null,
   assignmentId: null,
-  resultsWithheld: false,
+  reviewUnlocked: false,
 };
 
 const linkOf = (html: string) => /<a [^>]*href="([^"]*)"/.exec(html)?.[1]?.replaceAll('&amp;', '&');
@@ -58,23 +58,22 @@ describe('RecentActivityCard', () => {
 
   it.each([
     ['a completed quiz', { ...base, attemptId: 'att-1' }, '/app/study/session/quiz/att-1/review'],
-    ['visible results', submitted, '/app/assignments/as-1/review?attemptId=att-1'],
     [
-      'withheld results',
-      { ...submitted, scorePct: null, resultsWithheld: true },
-      '/app/assignments/as-1',
+      'an unlocked review',
+      { ...submitted, reviewUnlocked: true },
+      '/app/assignments/as-1/review?attemptId=att-1',
     ],
+    ['an assignment without an unlocked review', submitted, '/app/assignments/as-1'],
   ])('links the line of %s', (_label, item, expected) => {
     expect(linkOf(render(item))).toBe(expected);
   });
 
-  it('does not link the line of a deleted assignment', () => {
+  it('does not link the line of an assignment that the student cannot open', () => {
     const html = render({
       ...submitted,
       title: null,
       scorePct: null,
       assignmentId: null,
-      resultsWithheld: true,
     });
 
     expect(html).toContain(en.AppDashboard.activity_assignment_submitted_untitled_no_score);

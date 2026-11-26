@@ -28,10 +28,13 @@ export interface StudentActivityItem {
   scorePct: number | null;
   /** The finished quiz or assignment attempt behind the line. */
   attemptId: string | null;
-  /** The assignment of a submitted attempt; `null` for anything else and once it is deleted. */
+  /**
+   * The assignment of a submitted attempt, only while its status is `published`. The value is
+   * `null` for a cancelled, draft or deleted assignment, and for each other kind of line.
+   */
   assignmentId: string | null;
-  /** The teacher shows no results for this assignment, so its review has nothing to offer. */
-  resultsWithheld: boolean;
+  /** `true` when the student can open the review of this assignment now. */
+  reviewUnlocked: boolean;
 }
 
 /** Answer of `GET /api/v1/stats/student/overview` (the personalised part of the /app dashboard). */
