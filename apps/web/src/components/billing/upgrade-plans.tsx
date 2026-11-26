@@ -12,12 +12,22 @@ interface UpgradePlansProps {
   scope: 'personal' | 'organization';
   /** Key of the plan the account is already on, if the caller resolved one. */
   currentPlanKey?: string;
+  /** The reader owns a paid subscription; `null` while that read is pending or failed. */
+  hasActivePlan: boolean | null;
+  /** Where a subscriber changes plan: their own billing page or the org's. */
+  billingHref: string;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
 }
 
 /** Plan grid behind every dashboard's "upgrade" route. */
-export function UpgradePlans({ scope, currentPlanKey, orgId }: UpgradePlansProps) {
+export function UpgradePlans({
+  scope,
+  currentPlanKey,
+  hasActivePlan,
+  billingHref,
+  orgId,
+}: UpgradePlansProps) {
   const ut = useTranslations('UpgradePage');
   const pt = useTranslations('PricingPage');
   const { user } = useAuth();
@@ -49,6 +59,8 @@ export function UpgradePlans({ scope, currentPlanKey, orgId }: UpgradePlansProps
               isCurrentPlan={plan.key === currentPlanKey}
               user={user}
               t={pt}
+              hasActivePlan={hasActivePlan}
+              billingHref={billingHref}
               orgId={orgId}
             />
           ))}

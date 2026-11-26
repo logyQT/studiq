@@ -8,11 +8,19 @@ import { useApiQuery } from '@/hooks/use-api';
 export default function AppUpgradePage() {
   const { user } = useAuth();
 
-  const { data: currentPlan } = useApiQuery<PlanInfo>({
+  const { data: currentPlan, isSuccess: planLoaded } = useApiQuery<PlanInfo>({
     queryKey: ['me', 'personal-plan'],
     url: '/api/v1/me/personal-plan',
     enabled: !!user,
   });
+  const hasActivePlan = planLoaded ? currentPlan.priceMonthly > 0 : null;
 
-  return <UpgradePlans scope="personal" currentPlanKey={currentPlan?.key} />;
+  return (
+    <UpgradePlans
+      scope="personal"
+      currentPlanKey={currentPlan?.key}
+      hasActivePlan={hasActivePlan}
+      billingHref="/app/billing"
+    />
+  );
 }

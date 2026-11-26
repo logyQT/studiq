@@ -1,6 +1,7 @@
 'use client';
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
+import { Button } from '@studiq/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
@@ -109,6 +110,14 @@ export function PlanRow({
           >
             {isFree ? t('cta_free') : t('cta_register')}
           </CtaButton>
+        ) : action === 'current' ? (
+          <Button
+            variant="outline"
+            disabled
+            className="h-11 w-full rounded-control px-6 text-sm font-semibold whitespace-nowrap"
+          >
+            {t('current_plan_badge')}
+          </Button>
         ) : action === 'change-plan' ? (
           /*
            * A second subscription is refused by the server, so the subscriber's

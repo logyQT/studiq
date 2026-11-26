@@ -35,8 +35,14 @@ describe('pricingPlanAction', () => {
     expect(action({ signedIn: true, isFree: true, hasActivePlan: true })).toBe('none');
   });
 
-  it('prints no action on the row of the plan the reader owns', () => {
-    expect(action({ signedIn: true, isCurrent: true, hasActivePlan: true })).toBe('none');
+  it('marks the paid plan the reader owns as current', () => {
+    expect(action({ signedIn: true, isCurrent: true, hasActivePlan: true })).toBe('current');
+  });
+
+  it('marks the free plan the reader owns as current', () => {
+    // `isCurrent` sits above `isFree`: the free plan's own row gets the same
+    // disabled action, while a different free row stays `none`.
+    expect(action({ signedIn: true, isCurrent: true, isFree: true })).toBe('current');
   });
 
   it('sends an existing subscriber to the billing change-plan page', () => {
