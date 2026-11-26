@@ -156,14 +156,14 @@ export function Pricing() {
             <li
               key={`${plan.href}-${plan.name}`}
               className={cn(
-                'relative flex flex-col border-b border-border py-6 md:row-span-5 md:grid md:grid-rows-subgrid md:border-b-0 md:py-10',
+                'flex flex-col border-b border-border py-6 md:row-span-5 md:grid md:grid-rows-subgrid md:border-b-0 md:py-10',
                 index === 0 && 'md:pr-8',
                 index > 0 && 'md:border-l md:border-border',
                 index > 0 && index < lastIndex && 'md:px-8',
                 index === lastIndex && 'md:pl-8',
               )}
             >
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:row-start-1 md:justify-between">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 md:row-start-1">
                 <h3 className="text-h3 font-semibold">{plan.name}</h3>
               </div>
               <p className="mt-2 text-sm text-muted-foreground text-pretty md:row-start-2">

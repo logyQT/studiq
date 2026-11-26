@@ -50,7 +50,7 @@ export function PlanAction({
     // Campus is a 699 zł conversation, not a self-serve checkout: the label says
     // contact sales, so the action under it must too.
     return (
-      <CtaButton href="/contact" tone="quiet" fullWidth className={className}>
+      <CtaButton href="/contact" fullWidth className={className}>
         {label}
       </CtaButton>
     );
