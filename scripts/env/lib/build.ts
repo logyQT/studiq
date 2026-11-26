@@ -350,6 +350,13 @@ export interface ProductionBuildDeps {
 
 const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild };
 
+/** Test seams of `spawnBuild`; production uses the defaults. */
+export interface SpawnBuildSeams {
+  command?: BuildCommand;
+  killGroup?: (pgid: number) => Promise<boolean>;
+  timeoutMs?: number;
+}
+
 /**
  * Spawn the build as its own process group and enforce the build budget.
  *
@@ -360,12 +367,22 @@ const defaultProductionBuildDeps: ProductionBuildDeps = { readWebPid, spawnBuild
  * grace, then SIGKILLs before the slot is released. Without a slot
  * (`--no-slot`/`--no-lock`) the group is still killed on every exit path; there
  * is just no record for another process to reclaim.
+ *
+ * If the cleanup fails, the promise rejects with the cleanup error, so the build
+ * always ends.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
  */
-function spawnBuild(
+export function spawnBuild(
   slot: BuildSlotHandle | null,
   options: ProductionBuildOptions,
+  seams: SpawnBuildSeams = {},
 ): Promise<SpawnOutcome> {
-  const command = buildCommand(options.app);
+  const {
+    command = buildCommand(options.app),
+    killGroup = killProcessGroup,
+    timeoutMs = BUILD_TIMEOUT_MS,
+  } = seams;
   if (!command.oomAdjusted) {
     appendEnvLog('build: oom_score_adj is not available on this platform; skipped');
   }
@@ -393,13 +410,21 @@ function spawnBuild(
     child.stderr?.on('data', collect);
 
     let timedOut = false;
+    /** The cleanup of a build that ran too long failed: end without the child. */
+    const abandon = (error: unknown): void => {
+      clearInterval(progress);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      child.unref();
+      reject(error);
+    };
     const timer = setTimeout(() => {
       timedOut = true;
       writeStderrLine(
         `build: exceeded ${Math.round(BUILD_TIMEOUT_MS / 60_000)} minutes; killing the build's process group`,
       );
-      void killProcessGroup(pgid ?? 0);
-    }, BUILD_TIMEOUT_MS);
+      killGroup(pgid ?? 0).catch(abandon);
+    }, timeoutMs);
     const progress = setInterval(() => {
       slot?.heartbeat();
       const elapsed = formatDuration(Date.now() - startedAt);
@@ -413,7 +438,7 @@ function spawnBuild(
     const finish = (status: number | null, signal: NodeJS.Signals | null): void => {
       clearTimeout(timer);
       clearInterval(progress);
-      void killProcessGroup(pgid ?? 0).then(() => {
+      killGroup(pgid ?? 0).then(() => {
         resolve({
           status,
           signal,
@@ -421,7 +446,7 @@ function spawnBuild(
           output: truncated ? `${output}\n[build output truncated]` : output,
           durationMs: Date.now() - startedAt,
         });
-      });
+      }, reject);
     };
     child.on('error', (error) => {
       clearTimeout(timer);

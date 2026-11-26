@@ -481,6 +481,8 @@ const SLOT_BACKOFF_MAX_MS = 10_000;
 const SLOT_NO_OWNER_GRACE_MS = 5_000;
 /** SIGTERM → SIGKILL grace before a process group is declared dead. */
 const KILL_GRACE_MS = 10_000;
+/** The time that the system gets to remove a group after SIGKILL. */
+const REAP_GRACE_MS = 1_000;
 const SLOTS_DIR = 'build-slots';
 
 /**
@@ -527,30 +529,73 @@ function groupAlive(pgid: number): boolean {
 }
 
 /**
- * SIGTERM the group, wait out the grace, then SIGKILL.
+ * Cleanup cannot confirm that a process group ended. Its build slot must stay in use.
  *
- * `false` means there was no group to signal. Callers release a slot only after
- * this returns, so a new build is never admitted over an orphan still writing
- * `.next`.
+ * @public Exercised by the unit tests, which load this module by computed URL.
  */
-export async function killProcessGroup(pgid: number, graceMs = KILL_GRACE_MS): Promise<boolean> {
-  if (!Number.isInteger(pgid) || pgid <= 1) return false;
-  try {
-    process.kill(-pgid, 'SIGTERM');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
-    throw error;
+export class UnconfirmedGroupError extends EnvFailure {
+  constructor(pgid: number) {
+    super(
+      EXIT_CONFLICT,
+      `cannot confirm that process group ${pgid} ended: the system still answers EPERM after SIGKILL. A build process can still write to .next.`,
+    );
   }
+}
+
+function groupDenied(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** Waits until the system answers ESRCH for the group, for at most `graceMs`. */
+async function groupGone(pgid: number, graceMs: number): Promise<boolean> {
   const deadline = Date.now() + graceMs;
   while (Date.now() < deadline) {
     if (!groupAlive(pgid)) return true;
     await sleep(100);
   }
+  return !groupAlive(pgid);
+}
+
+/**
+ * SIGTERM the group, wait out the grace, then SIGKILL.
+ *
+ * `false` means there was no group to signal. Callers release a slot only after
+ * this returns, so a new build is never admitted over an orphan still writing
+ * `.next`.
+ *
+ * EPERM does not show that the group ended. macOS answers EPERM, not ESRCH, for a
+ * group that has only processes that ended and that no parent collected yet. Thus
+ * this function waits for ESRCH. If the answer is still EPERM after SIGKILL, it
+ * throws `UnconfirmedGroupError`.
+ *
+ * @public Exercised by the unit tests, which load this module by computed URL.
+ */
+export async function killProcessGroup(
+  pgid: number,
+  graceMs = KILL_GRACE_MS,
+  reapMs = REAP_GRACE_MS,
+): Promise<boolean> {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
+  try {
+    process.kill(-pgid, 'SIGTERM');
+  } catch (error) {
+    const { code } = error as NodeJS.ErrnoException;
+    if (code === 'ESRCH') return false;
+    if (code !== 'EPERM') throw error;
+  }
+  if (await groupGone(pgid, graceMs)) return true;
   try {
     process.kill(-pgid, 'SIGKILL');
   } catch {
-    /* the group exited between the check and the kill */
+    /* the group exited, or the check below reports that it did not */
   }
+  if (await groupGone(pgid, reapMs)) return true;
+  if (groupDenied(pgid)) throw new UnconfirmedGroupError(pgid);
   return true;
 }
 
@@ -1409,10 +1454,16 @@ export async function withBuildSlots<T>(
     const held = await acquireSlot(context);
     // Admitted: the slot record replaces the waiter, so status stops counting it.
     rmSync(waiter, { recursive: true, force: true });
+    let keepSlot = false;
     try {
       return await fn(handleFor(held, context));
+    } catch (error) {
+      keepSlot = error instanceof UnconfirmedGroupError;
+      throw error;
     } finally {
-      releaseDirMutex(held.path, held.token);
+      // A kept slot becomes stale when this process ends. The next admission must then
+      // stop the recorded group before it can take the slot (`reclaimSlot`).
+      if (!keepSlot) releaseDirMutex(held.path, held.token);
     }
   } finally {
     rmSync(waiter, { recursive: true, force: true });
