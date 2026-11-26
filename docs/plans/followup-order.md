@@ -12,22 +12,21 @@ Fix open defects before new features. The order below follows that rule.
 
 ## A. Close the open defects
 
-| Step | Issue     | What it fixes                                                                                       | Exit criterion                                                                         | Depends on |
-| ---- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------- |
-| A5   | **#1478** | The merge queue does not merge a docs-only PR.                                                      | A docs-only PR merges through `bun run merge:queue`.                                   | —          |
-| A6   | **#1492** | `bun run mutate --name` treats the test title as a regex. A title with parentheses reports `ERROR`. | A title with parentheses reports `KILLED`. The help and the skill state the semantics. | —          |
-
-A2 closed the seed half of A1's rule. A3 merged the public pricing filter, so B1
-and B2 are unblocked on it.
+| Step                                                                             | Issue | What it fixes | Exit criterion | Depends on |
+| -------------------------------------------------------------------------------- | ----- | ------------- | -------------- | ---------- |
+| A2 closed the seed half of A1's rule. A3 merged the public pricing filter, so B1 |
+| and B2 are unblocked on it. A6 closes the last A-step: the defect list is empty. |
 
 ## Done
 
-| Step | Issue     | PR    | Result                                                                                              |
-| ---- | --------- | ----- | --------------------------------------------------------------------------------------------------- |
-| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                    |
-| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                     |
-| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                               |
-| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it. |
+| Step | Issue     | PR    | Result                                                                                                 |
+| ---- | --------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                       |
+| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                        |
+| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                                  |
+| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it.    |
+| A5   | **#1478** | #1474 | The queue waits for settled checks and merges on `mergeStateStatus == CLEAN`, so a docs-only PR lands. |
+| A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                     |
 
 A4 moved the two stats triggers behind definer functions, so no user client writes the
 table. A fresh local review and served QA ran before the PR opened.

@@ -18,12 +18,25 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = fileURLToPath(new URL('../../../scripts/mutate.ts', import.meta.url));
+const TITLE_FILTER = fileURLToPath(
+  new URL('../../../scripts/lib/test-title-filter.ts', import.meta.url),
+);
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const TMP = join(REPO, '.tmp');
+
+interface TitleFilterModule {
+  exactTitleFilter: (title: string) => string;
+}
+
+/** `scripts/**` has no alias and `__tests__` may not use relative specifiers. */
+function loadTitleFilter(): Promise<TitleFilterModule> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic module boundary; `scripts/**` has no alias, as in __tests__/unit/scripts/dup-baseline.test.ts
+  return import(pathToFileURL(TITLE_FILTER).href) as Promise<TitleFilterModule>;
+}
 
 const GUARD = `export function clamp(value: number): number {
   if (value < 0) return 0;
@@ -42,6 +55,27 @@ describe('clamp', () => {
 
   it('rejects a value above the maximum', () => {
     expect(() => clamp(101)).toThrow(RangeError);
+  });
+
+  it('clamps a negative value to zero (exactly)', () => {
+    expect(clamp(-5)).toBe(0);
+  });
+});
+`;
+
+/** The same title in two suites: a bare title cannot name one of them. */
+const DUPLICATE = `import { describe, expect, it } from 'vitest';
+import { clamp } from '@fixture/guard';
+
+describe('clamp lower bound', () => {
+  it('clamps a negative value to zero', () => {
+    expect(clamp(-5)).toBe(0);
+  });
+});
+
+describe('clamp upper bound', () => {
+  it('clamps a negative value to zero', () => {
+    expect(clamp(-5)).toBe(0);
   });
 });
 `;
@@ -167,7 +201,7 @@ function commit(root: string, message = 'fixture'): void {
   git(root, 'commit', '-qm', message);
 }
 
-function fixture(): string {
+function fixture(file = 'src/guard.test.ts', source = TEST): string {
   mkdirSync(TMP, { recursive: true });
   const root = mkdtempSync(join(TMP, 'mutate-'));
   dirs.push(root);
@@ -175,7 +209,7 @@ function fixture(): string {
   // Vite writes its dependency cache into the fixture's node_modules.
   write(root, '.gitignore', 'node_modules/\n');
   write(root, 'src/guard.ts', GUARD);
-  write(root, 'src/guard.test.ts', TEST);
+  write(root, file, source);
   git(root, 'init', '-q');
   commit(root);
   return root;
@@ -235,6 +269,21 @@ function gitStatus(root: string): string {
 }
 
 describe('scripts/mutate.ts', () => {
+  it('turns an exact title into a literal, anchored filter', async () => {
+    const { exactTitleFilter } = await loadTitleFilter();
+
+    const filter = exactTitleFilter('clamps (a) [b]. c+d? …');
+
+    expect(filter).toBe('^(?:.* > )?clamps \\(a\\) \\[b\\]\\. c\\+d\\? …$');
+    const pattern = new RegExp(filter);
+    // vitest filters on the full name, so a suite path may precede the title.
+    expect(pattern.test('suite > clamps (a) [b]. c+d? …')).toBe(true);
+    expect(pattern.test('clamps (a) [b]. c+d? …')).toBe(true);
+    // The anchor is what the old bare `-t` string did not have.
+    expect(pattern.test('suite > clamps (a) [b]. c+d? … twice')).toBe(false);
+    expect(pattern.test('suite > clamps a b. c+d? …')).toBe(false);
+  });
+
   it('prints usage for --help without touching the tree', () => {
     const root = fixture();
 
@@ -296,6 +345,106 @@ describe('scripts/mutate.ts', () => {
     expect(line?.outcome).toBe('ERROR');
     expect(line?.executed).toBe(0);
     expect(line?.detail).toMatch(/no test matched/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('does not let --name match a real title that merely contains it', () => {
+    // The old unanchored -t string matched this prefix, so the kill could be
+    // attributed to a test the author did not name. The same string still
+    // matches when it is offered as a pattern, below.
+    const root = fixture();
+    const args = [...KILL];
+    args[args.indexOf('--name') + 1] = 'clamps a negative value';
+
+    const result = mutate(root, [...args, '--json']);
+
+    expect(result.status).not.toBe(0);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('ERROR');
+    expect(line?.executed).toBe(0);
+    expect(line?.detail).toMatch(/no test matched/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('reports a title that matches two suites as ERROR with both tests executed', () => {
+    // `--name` matches the trailing segment of the full name, so one title in
+    // two suites names two tests. A kill credited to two tests is not proof,
+    // and the caller disambiguates with the full name.
+    const root = fixture('src/duplicate.test.ts', DUPLICATE);
+
+    const result = mutate(root, [
+      '--file',
+      'src/guard.ts',
+      '--find',
+      'if (value < 0) return 0;',
+      '--replace',
+      'if (value < -10) return 0;',
+      '--test',
+      'src/duplicate.test.ts',
+      '--name',
+      'clamps a negative value to zero',
+      '--json',
+    ]);
+
+    expect(result.status).toBe(1);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('ERROR');
+    expect(line?.executed).toBe(2);
+    expect(line?.detail).toMatch(/matched 2 tests .*pass the exact full title/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('treats regex metacharacters in --name as literals', () => {
+    // The reported defect: `(exactly)` is a regex group, so the old -t string
+    // matched nothing and a valid proof read as ERROR.
+    const root = fixture();
+    const args = [...KILL];
+    args[args.indexOf('--name') + 1] = 'clamps a negative value to zero (exactly)';
+
+    const result = mutate(root, [...args, '--json']);
+
+    expect(result.status).toBe(0);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('KILLED');
+    expect(line?.executed).toBe(1);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('passes --name-regex through as a pattern', () => {
+    const root = fixture();
+    const args = [...KILL];
+    args.splice(args.indexOf('--name'), 2, '--name-regex', 'clamps a negative value to z.ro$');
+
+    const result = mutate(root, [...args, '--json']);
+
+    expect(result.status).toBe(0);
+    const [line] = lines(result.out);
+    expect(line?.outcome).toBe('KILLED');
+    expect(line?.executed).toBe(1);
+    // The pattern, not an escaped literal: `z.ro` matched `zero`.
+    expect(line?.title).toBe('clamps a negative value to z.ro$');
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('rejects --name together with --name-regex', () => {
+    const root = fixture();
+
+    const result = mutate(root, [...KILL, '--name-regex', 'clamps']);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/--name and --name-regex are mutually exclusive/);
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
+
+  it('rejects a mutation with neither --name nor --name-regex', () => {
+    const root = fixture();
+    const args = [...KILL];
+    args.splice(args.indexOf('--name'), 2);
+
+    const result = mutate(root, args);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/pass --name/);
     expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
   }, 60_000);
 
@@ -380,6 +529,13 @@ describe('scripts/mutate.ts', () => {
           test: 'src/guard.test.ts',
           name: 'rejects a value above the maximum',
         },
+        {
+          file: 'src/guard.ts',
+          find: 'if (value < 0) return 0;',
+          replace: 'if (value < -10) return 0;',
+          test: 'src/guard.test.ts',
+          nameRegex: 'clamps a negative value to z.ro$',
+        },
       ]),
     );
 
@@ -388,9 +544,43 @@ describe('scripts/mutate.ts', () => {
     // A table's value is the whole table: the bad first row does not hide the
     // other two. The ERROR still decides the exit code.
     expect(result.status).toBe(1);
-    expect(lines(result.out).map((line) => line.outcome)).toEqual(['ERROR', 'KILLED', 'SURVIVED']);
+    expect(lines(result.out).map((line) => line.outcome)).toEqual([
+      'ERROR',
+      'KILLED',
+      'SURVIVED',
+      'KILLED',
+    ]);
     expect(gitStatus(root)).toBe('');
-  }, 90_000);
+  }, 120_000);
+
+  it('rejects a --spec row that names its test twice', () => {
+    // A row with both keys has no silent winner: exact and pattern selectors
+    // disagree, so the table is wrong and the whole spec is refused.
+    const root = fixture();
+    const specDir = mkdtempSync(join(TMP, 'mutate-spec-'));
+    dirs.push(specDir);
+    const spec = join(specDir, 'mutations.json');
+    writeFileSync(
+      spec,
+      JSON.stringify([
+        {
+          file: 'src/guard.ts',
+          find: 'if (value < 0) return 0;',
+          replace: 'if (value < -10) return 0;',
+          test: 'src/guard.test.ts',
+          name: 'clamps a negative value to zero',
+          nameRegex: 'clamps a negative value to z.ro$',
+        },
+      ]),
+    );
+
+    const result = mutate(root, ['--spec', spec, '--json']);
+
+    expect(result.status).toBe(2);
+    expect(result.err).toMatch(/spec\[0\]: name and nameRegex are mutually exclusive/);
+    expect(result.out).toBe('');
+    expect(readFileSync(join(root, 'src/guard.ts'), 'utf8')).toBe(GUARD);
+  }, 60_000);
 
   it('refuses to mutate a test file', () => {
     const root = fixture();
