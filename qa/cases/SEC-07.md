@@ -24,10 +24,10 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
   `__tests__/qa/profiles/SEC-07.json`, bo `content` jest domyślnym profilem seedera (tak jak
   np. `MGR-01`). Daje on organizację `qa-sec-07-<suffix>` (plan `launch`) z domyślną grupą
   `G1` oraz trzy konta, których wymaga przypadek:
-  - `manager` (typ konta `manager`, plan osobisty `free`) — podmiot przypadku, odpowiednik
+  - `manager` (typ konta `manager`, brak planu osobistego) — podmiot przypadku, odpowiednik
     `manager@dev.local`;
   - `teacher` (typ `educator`, plan osobisty `free`) — kontrola negatywna „to nie reguła dla
-    managera”: ten sam tenant, ten sam plan osobisty bez `ai.chat`, więc ten sam 403;
+    managera”: ta sama organizacja i ten sam brak `ai.chat`, więc ten sam 403;
   - `student` (typ `student`, plan osobisty `free`) — kontrola pozytywna **przez plan, nie
     przez rolę**: spec przestawia `profiles.personal_plan_key` studenta na płatny plan `pro`
     klientem service-role (ten sam wzorzec co `LIM-03.spec.ts` / `STU-52.spec.ts`) i przywraca
@@ -35,7 +35,7 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
     czysto.
 - Plan `launch` nie niesie entitlementu `ai.chat` (a jego `max_ai_tokens_per_day = 0`), więc
   resolver nie czyni tego klucza efektywnym dla nikogo, kto opiera się na warstwie
-  organizacji — w tym managera (`free` też go nie niesie) i nauczyciela (`free` też nie).
+  organizacji — w tym managera (brak planu osobistego) i nauczyciela (`free` też nie).
   Klucz `ai.chat` jest jednak `personalPortable`, więc płatny plan osobisty `pro` **niesie się
   wewnątrz organizacji** (D3): student na `pro` w tej samej organizacji `launch` ma
   `ai.chat` mimo że plan organizacji go nie przyznaje. To właśnie robi granicę planową, a nie
@@ -62,7 +62,7 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 ## Expected result
 
 - 403 FORBIDDEN dla managera — API AI wymaga entitlementu `ai.chat` (ADR-0015 §7); plan
-  `launch` tego tenanta go nie niesie (a plan osobisty managera `free` również), a bramka
+  `launch` tego tenanta go nie niesie (a manager nie ma planu osobistego), a bramka
   wykonuje się przed odczytem ciała żądania (puste i uszkodzone ciało też dostają 403, nigdy
   400). `GET /api/v1/me/entitlements` managera nie zawiera `ai.chat` — to dowód, że 403 pochodzi
   z entitlementu, a nie z typu konta. `GET /api/v1/ai/usage` managera → 403, wywołanie bez

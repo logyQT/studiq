@@ -120,9 +120,9 @@ on conflict (key) do update set
   updated_at = now();
 
 -- ==========================================================
--- 3. Re-point `base` and `spark` to `free` and `plus`. The new rows exist
---    after step 2, so the foreign keys accept the move; the old rows are then
---    unreferenced and can go.
+-- 3. Re-point `base` and `spark` to `free` and `plus`, and an organization on a
+--    retired plan to `launch`. The new rows exist after step 2, so the foreign
+--    keys accept the move; the old rows are then unreferenced and can go.
 -- ==========================================================
 update public.profiles p
 set personal_plan_key = case p.personal_plan_key
@@ -166,6 +166,45 @@ set pending_plan_key = case bs.pending_plan_key
 end
 where bs.pending_plan_key in ('base', 'spark');
 
+update public.billing_subscriptions bs
+set entitlement_applied_plan_key = case bs.entitlement_applied_plan_key
+  when 'base' then 'free'
+  when 'spark' then 'plus'
+end
+where bs.entitlement_applied_plan_key in ('base', 'spark');
+
+-- An organization on a plan the catalogue is about to drop moves to `launch`
+-- first. `organizations.plan` has a foreign key into `subscription_plans`, so a
+-- delete before this re-point would abort with a raw `23503` instead of the
+-- notice below.
+do $$
+declare
+  v_rows int;
+  v_keys text;
+begin
+  select string_agg(distinct o.plan, ', ' order by o.plan)
+    into v_keys
+  from public.organizations o
+  where not exists (
+    select 1 from plan_catalog_plans m
+    where m.plan_key = o.plan and m.scope = 'organization'
+  );
+
+  update public.organizations o
+  set plan = 'launch'
+  where not exists (
+    select 1 from plan_catalog_plans m
+    where m.plan_key = o.plan and m.scope = 'organization'
+  );
+  get diagnostics v_rows = row_count;
+
+  if v_rows > 0 then
+    raise notice
+      'plan catalogue: re-pointed % organization(s) from retired plan(s) [%] to launch — check their limits',
+      v_rows, v_keys;
+  end if;
+end $$;
+
 delete from public.subscription_plans
 where key in ('base', 'spark');
 
@@ -196,6 +235,7 @@ begin
   update public.stripe_prices set plan_key = 'max' where plan_key = 'pro';
   update public.billing_subscriptions set plan_key = 'max' where plan_key = 'pro';
   update public.billing_subscriptions set pending_plan_key = 'max' where pending_plan_key = 'pro';
+  update public.billing_subscriptions set entitlement_applied_plan_key = 'max' where entitlement_applied_plan_key = 'pro';
 
   delete from public.subscription_plans where key = 'pro';
 end $$;
@@ -241,53 +281,27 @@ update public.billing_subscriptions bs
 set pending_plan_key = 'pro'
 where bs.pending_plan_key = 'ace';
 
+update public.billing_subscriptions bs
+set entitlement_applied_plan_key = 'pro'
+where bs.entitlement_applied_plan_key = 'ace';
+
 delete from public.subscription_plans where key = 'ace';
 
 -- ==========================================================
 -- 6. Every plan outside the matrix is retired. This keeps the file declarative:
 --    `db reset` and `db push` end at the same seven rows, and a catalogue row
 --    added by hand cannot survive a replay. A profile on a retired plan moves
---    to `free` (a manager to NULL, since they own no personal plan); an
---    organization moves to `launch`; a seat pool is a paid licence, so it
---    aborts with a readable message instead of being silently deleted.
+--    to `free`; a manager loses it in step 9, when the column is nullable; a
+--    seat pool is a paid licence, so it aborts with a readable message instead
+--    of being silently deleted.
 -- ==========================================================
 update public.profiles p
-set personal_plan_key = case
-  when p.account_type = 'manager' then null
-  else 'free'
-end
-where not exists (
-  select 1 from plan_catalog_plans m
-  where m.plan_key = p.personal_plan_key and m.scope = 'personal'
-);
-
-do $$
-declare
-  v_rows int;
-  v_keys text;
-begin
-  select string_agg(distinct o.plan, ', ' order by o.plan)
-    into v_keys
-  from public.organizations o
-  where not exists (
+set personal_plan_key = 'free'
+where p.personal_plan_key is not null
+  and not exists (
     select 1 from plan_catalog_plans m
-    where m.plan_key = o.plan and m.scope = 'organization'
+    where m.plan_key = p.personal_plan_key and m.scope = 'personal'
   );
-
-  update public.organizations o
-  set plan = 'launch'
-  where not exists (
-    select 1 from plan_catalog_plans m
-    where m.plan_key = o.plan and m.scope = 'organization'
-  );
-  get diagnostics v_rows = row_count;
-
-  if v_rows > 0 then
-    raise notice
-      'plan catalogue: re-pointed % organization(s) from retired plan(s) [%] to launch — check their limits',
-      v_rows, v_keys;
-  end if;
-end $$;
 
 do $$
 declare
@@ -467,6 +481,7 @@ begin
     union all select plan_key from public.stripe_prices
     union all select plan_key from public.billing_subscriptions
     union all select pending_plan_key from public.billing_subscriptions
+    union all select entitlement_applied_plan_key from public.billing_subscriptions
   ) refs(key)
   where key in ('base', 'spark', 'ace');
   if v_bad <> 0 then

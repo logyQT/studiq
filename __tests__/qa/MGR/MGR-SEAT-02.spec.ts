@@ -20,8 +20,10 @@ import {
  *
  * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
  * on the `hub` plan with an explicit roster (manager `admin`, teacher, `student`
- * and `student2`, both `member`) and `personalPlan: "plus"`, so every member
- * carries `ai.chat` and `quiz.templates` into the org (`personalPortable`):
+ * and `student2`, both `member`) and `personalPlan: "plus"`, so every non-manager
+ * member carries `ai.chat` and `quiz.templates` into the org (`personalPortable`).
+ * A manager holds no personal plan (ADR-0007), so the seeder leaves the manager
+ * out of that write:
  *
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *

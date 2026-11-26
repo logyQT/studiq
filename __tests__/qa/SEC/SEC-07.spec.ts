@@ -191,8 +191,8 @@ test.describe('@case:SEC-07 @area:SEC @prio:P2 manager has no AI chat API', () =
 
     // --- Precondition: the entitlement, not the persona, is the reason ------
     // The tenant org is on `launch`, which carries no `ai.chat` (and
-    // `max_ai_tokens_per_day = 0`), and the manager's personal `free` plan
-    // carries none either, so the resolver never makes the key effective:
+    // `max_ai_tokens_per_day = 0`), and a manager holds no personal plan
+    // (ADR-0007), so the resolver never makes the key effective:
     // `/me/entitlements` does not list it. This is what makes the 403 below the
     // entitlement gate and not an account-type rule.
     const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');

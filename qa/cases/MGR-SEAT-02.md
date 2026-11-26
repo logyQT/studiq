@@ -14,7 +14,8 @@ hides the purchase, assign and release controls. The API routes stay as the data
 so this case drives the assignment through them. Because the organization ceiling is baseline
 only, a seat raises the member's effective plan and user-scope **limits** but adds no paid
 entitlement; the portable surfaces come from the member's personal Plus plan
-(`personalPlan: "plus"`).
+(`personalPlan: "plus"`). A manager holds no personal plan (ADR-0007), so the
+seeder applies Plus to every non-manager member only.
 
 ## Prerequisite (verbatim)
 
@@ -44,8 +45,8 @@ seeded tenant instead:
   `tenantId(key, entity)`; the e-mails are `qa+<shorthash>+<role>@test.local`.
 - **Profile**: `__tests__/qa/profiles/MGR-SEAT-02.json` declares
   `{"profile": "content", "plan": "hub", "personalPlan": "plus"}` — the tenant's
-  organization sits on the capacity-only **hub** plan and every seeded member's
-  personal **Plus** plan carries the portable keys (`ai.chat`, `quiz.templates`)
+  organization sits on the capacity-only **hub** plan and every non-manager
+  member's personal **Plus** plan carries the portable keys (`ai.chat`, `quiz.templates`)
   into the org — plus an explicit `members` roster:
   - `manager` — manager account, `admin` org role;
   - `teacher` — educator account, `teacher` org role;

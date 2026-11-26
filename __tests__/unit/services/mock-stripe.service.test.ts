@@ -139,7 +139,7 @@ describe('MockStripeService', () => {
         'campus',
       );
       // Only the organization owner is passed to the entitlement writer: the
-      // manager's personal plan stays `solo` (#228/D2).
+      // manager's personal plan stays untouched (#228/D2).
       expect(entitlements.applyPlan).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'user' }),
         expect.anything(),

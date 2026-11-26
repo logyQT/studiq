@@ -147,7 +147,7 @@ where a new step cannot forget the guard or the invalidation.
 | `withAuth()`        | `401` without a valid claim.                                                                                                                                             | Keep unchanged; it is the real API gate.                                                |
 | Token               | In app code, every claim read is `supabase.auth.getUser()` and there is **no** browser Supabase client; RLS reads `auth.jwt()` in 10 policy sites.                       | Refresh the session server-side and set cookies; gate on the token claim, not the row.  |
 | Type trigger        | `handle_new_user()` prefers `app_metadata`, falls back to client-supplied `user_metadata`, raises when missing; `profiles.account_type` is `NOT NULL DEFAULT 'student'`. | Remove the fallback, allow untyped, drop the default.                                   |
-| Plan trigger        | Derives `base` / `lite` / `solo`; `personal_plan_key` is `NOT NULL DEFAULT 'free'`; `20261125170000_plan_catalog_owned_by_migrations.sql` sets the default to `'base'`.  | Null plan + drop the default in the plan-catalogue migration.                           |
+| Plan trigger        | Derives a personal key from the persona; `personal_plan_key` is nullable with no default since `20261126170000_plan_key_rename_manager_plan.sql`.                        | Null plan + drop the default in the plan-catalogue migration.                           |
 | Types               | `packages/server/src/types/database.ts` types `account_type` non-null.                                                                                                   | Regenerate in the schema slice, or null handling reads as dead code.                    |
 | Setup routes        | `/setup` chooser, `/setup/join`, `/setup/classroom` (educator); `/setup/org` (manager); `/app/join` (student).                                                           | All become `/setup`.                                                                    |
 | Staff gating        | `/edu` redirects to `/setup`; `/manage/layout.tsx:14` redirects to `/setup/org`, which this ADR deletes.                                                                 | Migrate the manager redirect; the educator one survives.                                |
@@ -322,11 +322,9 @@ guard and the same category.
 While `account_type IS NULL`:
 
 - `profiles.account_type` becomes nullable and loses `DEFAULT 'student'`.
-- `profiles.personal_plan_key` becomes nullable and loses its default — in the
-  plan-catalogue migration
-  (`20261125170000_plan_catalog_owned_by_migrations.sql`), which currently
-  re-sets `'base'` on every reset. The effective default today is `'base'`, not
-  `'free'`.
+- `profiles.personal_plan_key` is already nullable with no default: the plan
+  rename (`20261126170000_plan_key_rename_manager_plan.sql`) drops both and mints
+  NULL for a manager, so `db reset` no longer writes `base`.
 - `profiles.setup_completed_at` is added (nullable). It is written once when the
   done screen is reached (a deliberate skip counts); it is a completion fact, not
   a wizard index. It is what stops the bar reappearing on a returning visit, and
@@ -744,7 +742,8 @@ Each assertion names the production line it kills and is proven with
 - `supabase/migrations/20261122150000_plan_scope_audience_solo.sql` — trigger
   fallback, derived plans, `DEFAULT 'student'`.
 - `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` — the
-  `'base'` default, re-applied on reset;
+  old `'base'` default, superseded by
+  `20261126170000_plan_key_rename_manager_plan.sql`'s NULL default;
   `supabase/seeds/01_seed.sql` — fixture users typed through `raw_app_meta_data`.
 - `packages/server/src/types/database.ts` — non-null `account_type`.
 - `apps/web/src/components/providers/AuthProvider.tsx` — `refresh()` calls

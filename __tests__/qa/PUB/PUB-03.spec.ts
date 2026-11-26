@@ -299,7 +299,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     for (const key of ['free', 'plus', 'pro', 'max']) {
       expect(individualHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
-    for (const retired of ['lite', 'guide', 'creator', 'master', 'solo', 'team']) {
+    for (const retired of ['base', 'spark', 'ace']) {
       expect(individualHtml, `the retired ${retired} row is absent`).not.toContain(
         `id="${retired}"`,
       );

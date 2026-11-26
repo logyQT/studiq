@@ -136,6 +136,54 @@ const ORG_ENTITLEMENTS = ['flashcards', 'quiz'];
 
 const EXPECTED_FLAGS = ['branding', 'quiz.templates', 'stats.insights'];
 
+/**
+ * A subscription mirror row that predates the rename: its applied-entitlement
+ * column still names a retired key. The replay test writes it inside the
+ * rolled-back transaction, so a migration that forgets to re-point the column
+ * (or a guard that omits it) fails the replay instead of passing on an empty
+ * table.
+ */
+const REPLAY_USER_ID = '00000000-0000-4000-8000-0000000c0de1';
+const REPLAY_CUSTOMER_ID = '00000000-0000-4000-8000-0000000c0de2';
+const REPLAY_SUBSCRIPTION_ID = '00000000-0000-4000-8000-0000000c0de3';
+
+async function seedOldAppliedKey(tx: postgres.ISql): Promise<void> {
+  await tx.unsafe(
+    `insert into auth.users (
+       instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+       raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+     ) values (
+       '00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated',
+       'plan-replay@test.local', crypt('pass', gen_salt('bf')), now(),
+       '{"account_type":"student"}'::jsonb, '{}'::jsonb, now(), now()
+     )`,
+    [REPLAY_USER_ID],
+  );
+  await tx.unsafe(
+    `insert into public.billing_customers (id, user_id, stripe_customer_id, livemode)
+     values ($1, $2, 'cus_plan_replay', false)`,
+    [REPLAY_CUSTOMER_ID, REPLAY_USER_ID],
+  );
+  await tx.unsafe(
+    `insert into public.billing_subscriptions (
+       id, stripe_subscription_id, billing_customer_id, user_id, plan_key,
+       price_id, status, livemode, entitlement_applied_plan_key
+     ) values (
+       $1, 'sub_plan_replay', $2, $3, 'plus', 'price_plan_replay', 'active', false, 'spark'
+     )`,
+    [REPLAY_SUBSCRIPTION_ID, REPLAY_CUSTOMER_ID, REPLAY_USER_ID],
+  );
+}
+
+async function appliedKey(tx: postgres.ISql): Promise<string | null> {
+  const rows = await tx.unsafe<Array<{ key: string | null }>>(
+    `select entitlement_applied_plan_key as key
+     from public.billing_subscriptions where id = $1`,
+    [REPLAY_SUBSCRIPTION_ID],
+  );
+  return rows[0]?.key ?? null;
+}
+
 const localDatabaseUrl = (() => {
   const raw = process.env.SUPABASE_DB_URL;
   if (!raw) return null;
@@ -370,8 +418,15 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
     const replay = withDirect(async (sql) => {
       await sql.begin(async (tx) => {
+        await seedOldAppliedKey(tx);
+        expect(await appliedKey(tx), 'the fixture starts on a retired key').toBe('spark');
+
         await tx.unsafe(migrationSql);
         await tx.unsafe(migrationSql);
+
+        // The applied-entitlement marker follows the same mapping as every other
+        // reference; a pre-existing `spark` must be `plus` after the rename.
+        expect(await appliedKey(tx), 'the applied plan key is re-pointed').toBe('plus');
 
         duringRun = await readSnapshot(tx);
 

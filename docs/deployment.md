@@ -273,16 +273,15 @@ Preconditions:
 - This release's migrations are applied to the production database **before**
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
-- The approved ladder is applied by the plan-catalogue migrations
-  (`20261126130000_individual_plan_ladder.sql` for the four personal plans,
-  `20261126160000_organization_plan_ladder.sql` for the three organization
-  plans); the catalogue is migration-owned since #1494 and
-  `supabase/seeds/00_plans.sql` no longer writes plan rows. After the migrations
-  are applied, confirm the live ladder with this read-only query — it returns the
-  5 paid plans only while their amounts match. **Pass condition: exactly 5
-  rows.** The migrations insert those 5 paid keys, so fewer rows means the
-  migration did not apply (or a price differs from the ladder) — stop and fix the
-  catalog before continuing; an empty result is not a timing artefact:
+- The approved ladder is applied by the plan-catalogue migration
+  (`20261126170000_plan_key_rename_manager_plan.sql` for the four personal plans
+  and the three organization plans); the catalogue is migration-owned since
+  #1494 and `supabase/seeds/00_plans.sql` no longer writes plan rows. After the
+  migration is applied, confirm the live ladder with this read-only query — it
+  returns the 5 paid plans only while their amounts match. **Pass condition:
+  exactly 5 rows.** The migration inserts those 5 paid keys, so fewer rows means
+  the migration did not apply (or a price differs from the ladder) — stop and fix
+  the catalog before continuing; an empty result is not a timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly

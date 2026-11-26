@@ -110,11 +110,11 @@ LIMITS       = f(org plan, seat, personal plan)        // quotas
 We keep the three persona values because onboarding, pricing families and default
 dashboards need them. We stop using them as an authorization mechanism.
 
-| Persona    | Still decides                                                                                                                   | No longer decides                         |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `student`  | default dashboard, personal plan catalogue (`free/plus/pro/max`)                                                                | which org resources they may touch        |
-| `educator` | default dashboard, personal plan catalogue (`lite/guide/creator/master`), default group role `teacher` when they create a class | org authority                             |
-| `manager`  | default dashboard, organization plan catalogue, default role assignment when creating an org (`Admin`)                          | org authority, member management, billing |
+| Persona    | Still decides                                                                                                           | No longer decides                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `student`  | default dashboard, personal plan catalogue (`free/plus/pro/max`)                                                        | which org resources they may touch        |
+| `educator` | default dashboard, personal plan catalogue (`free/plus/pro/max`), default group role `teacher` when they create a class | org authority                             |
+| `manager`  | default dashboard, organization plan catalogue, default role assignment when creating an org (`Admin`)                  | org authority, member management, billing |
 
 Rules:
 

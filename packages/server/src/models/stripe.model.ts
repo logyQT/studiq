@@ -5,7 +5,7 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 /**
  * `POST /api/v1/stripe/create-checkout-session` body (#662 §5.1).
  *
- * The field is a catalog plan **key** (`spark`, `hub`, …), not a UUID. Amounts,
+ * The field is a catalog plan **key** (`plus`, `hub`, …), not a UUID. Amounts,
  * currencies, price ids and customer ids are resolved server-side and are not
  * accepted from the client.
  */
