@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { resultsHidden, reviewState } from '@studiq/server/lib/assignment-visibility';
 import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
@@ -120,7 +121,7 @@ export class StudentOverviewService {
       supabase
         .from('quiz_attempts')
         .select(
-          'id, score, total_questions, total_points, completed_at, is_assignment_attempt, config, teacher_assignments(title, show_results)',
+          'id, score, total_questions, total_points, completed_at, is_assignment_attempt, config, teacher_assignments(id, title, show_results, status, closed_at, deadline)',
         )
         .eq('user_id', ctx.userId)
         .not('completed_at', 'is', null)
@@ -180,12 +181,20 @@ export class StudentOverviewService {
         cardsStudied: s.cards_studied,
         scorePct: null,
         attemptId: null,
+        assignmentId: null,
+        reviewUnlocked: false,
       })),
       ...completedRows.map((a): StudentActivityItem => {
         const isAssignment = a.is_assignment_attempt;
         // A teacher may withhold the result of an assignment; the dashboard must not leak it. An
         // assignment that was deleted has no `show_results` left to honour, so it stays withheld.
-        const hidden = isAssignment && a.teacher_assignments?.show_results !== true;
+        const hidden = isAssignment && resultsHidden(a.teacher_assignments);
+        // The student routes serve only a published assignment. `reviewState` does not reject a
+        // draft, so this check is necessary for both links.
+        const published =
+          isAssignment && a.teacher_assignments?.status === 'published'
+            ? a.teacher_assignments
+            : null;
         return {
           kind: isAssignment ? 'assignment_submitted' : 'quiz_completed',
           at: a.completed_at,
@@ -193,6 +202,8 @@ export class StudentOverviewService {
           cardsStudied: null,
           scorePct: hidden ? null : scorePercent(a, gradable.data.get(a.id)),
           attemptId: a.id,
+          assignmentId: published?.id ?? null,
+          reviewUnlocked: reviewState(published, now) === 'open',
         };
       }),
     ]

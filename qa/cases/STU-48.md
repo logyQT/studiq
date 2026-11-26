@@ -26,7 +26,10 @@ AI włączone.
   not asserted. Neither tool names the deck (#1212): when the model gives no name,
   the name field shows the localized default „AI Wygenerowane Fiszki", and the spec
   has a case for it (`STU-48:unnamed-deck`); when the model names the deck, that name
-  is used, which the main flow asserts. The Expected result's
+  is used, which the main flow asserts. Topics the model
+  gives the cards are kept on save (#1330, `STU-48:topics`): an existing topic is
+  reused whatever its case, only the missing one is created, and the practice
+  topic filter offers both. The Expected result's
   toast „Talia utworzona z N fiszkami" does fire on save (`flashcard_deck_created`);
   the spec asserts the inline saved panel instead, `flashcard_saved` („Zapisano N
   fiszki do talii"), which is the string that stays on screen.
