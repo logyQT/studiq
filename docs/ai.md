@@ -10,13 +10,13 @@ Agent Q is a runtime AI chat session built with [Vercel AI SDK](https://sdk.verc
 
 ```
 POST /api/v1/ai/chat
-  → Auth check (manual getUser)
+  → withAuth() + ai.chat entitlement
   → streamText(model, systemPrompt, tools)
     → ReAct loop:
         1. LLM decides: tool call, question, or finish
         2. Tool executes server-side → result fed back
         3. Loop until finish or 30 steps
-  → Streaming response via SSE
+  → AI SDK UI message stream (no reasoning parts)
 ```
 
 ### Two pipelines (legacy vs agent)
@@ -133,19 +133,11 @@ The `call_agent` tool auto-discovers agents from the registry.
 
 ---
 
-## SSE events
+## Stream transport
 
-| Event         | Payload                                   | When                                   |
-| ------------- | ----------------------------------------- | -------------------------------------- |
-| `token`       | `{ text }`                                | LLM token during streaming             |
-| `thinking`    | `{ agent, step, label, description }`     | ReAct iteration / sub-agent step       |
-| `tool_call`   | `{ toolName, label, args }`               | Tool execution starts                  |
-| `tool_result` | `{ toolName, label, result, durationMs }` | Tool execution completes               |
-| `question`    | `{ id, text, options }`                   | `ask_user` — agent needs clarification |
-| `flashcards`  | `{ deckName, flashcards }`                | Flashcard generation complete          |
-| `complete`    | `{ message }`                             | All processing done                    |
-| `usage`       | `{ current, limit, plan, resetsAt }`      | Usage limit info                       |
-| `error`       | `{ message }`                             | Any failure                            |
+The route returns an AI SDK **UI message stream** (`toUIMessageStreamResponse()`), not SSE. Text, tool calls and their results arrive as message parts; `apps/web/src/hooks/use-ai-chat.ts` maps them to the transcript.
+
+The model's reasoning is never part of that stream: the route passes `sendReasoning: false` (#1210). Reasoning stays server-side, so prompt text and its jailbreak surface never reach the browser. The fake inference server still emits `reasoning_content` so a spec can prove the client drops it.
 
 ---
 
@@ -153,23 +145,14 @@ The `call_agent` tool auto-discovers agents from the registry.
 
 ### Current auth flow
 
-The AI chat route does **not** use the standard `withAuth()` wrapper. It performs a manual `getUser()` check:
+`POST /api/v1/ai/chat` is wrapped in `withAuth()`, so the handler receives the full `RequestContext` (user, account type, active org, permission scopes). The handler then:
 
-```typescript
-const supabase = await createClient();
-const {
-  data: { user },
-} = await supabase.auth.getUser();
-if (!user) return toNextResponse({ statusCode: 401, error: 'UNAUTHORIZED' });
-```
+1. calls `requireEntitlement(ctx, 'ai.chat')` before anything else, so authority is the first gate (ADR-0015 §7);
+2. applies a per-user rate limit (`20` requests per minute);
+3. rejects the request with `USAGE_LIMIT_EXCEEDED` when the daily token budget is spent;
+4. streams the answer and records the turn's token usage.
 
-This means:
-
-- ✅ User is authenticated
-- ❌ No `RequestContext` built (no org context, no permission scopes)
-- ✅ No account-type gate: access is the `ai.chat` entitlement (ADR-0015 §7) — `requireEntitlement(ctx, 'ai.chat')` is the first handler statement, so no persona is admitted or refused by type
-- ❌ No token budget enforcement (the simpler `ChatController` path enforces limits, agent route doesn't)
-- ❌ No rate limiting
+The account type is not a gate: access is the `ai.chat` entitlement, so no persona is admitted or refused by type.
 
 ### Security posture
 

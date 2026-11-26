@@ -53,7 +53,6 @@ export const ChatMessage = memo(
               status={message.status === 'running' ? 'running' : 'complete'}
               args={message.args}
               result={message.toolResult}
-              durationMs={message.durationMs}
             />
           </div>
         </div>

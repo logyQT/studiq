@@ -27,7 +27,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   then that canned exchange is part of the history it receives.
  * - The model's reasoning stays server-side (#1210): the route never streams it
  *   (`sendReasoning: false`), so the case's „Pokaż myślenie” toggle is gone.
- *   The fixture still sends a reasoning trace, which is what this spec pins.
+ *   The fixture still sends a reasoning trace. The route unit test pins the wire
+ *   flag; the toggle assertion here catches a client-side render regression.
  */
 
 const CASE = 'STU-47';

@@ -106,19 +106,14 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool_call';
   content: string;
   result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
-  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
+  status: 'sending' | 'streaming' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
   question?: QuestionData;
-  step?: number;
-  agent?: string;
   toolName?: string;
   label?: string;
-  subTask?: string;
-  subToolCount?: number;
   args?: unknown;
   toolResult?: unknown;
-  durationMs?: number;
 }
 
 export interface UsageInfo {
@@ -176,9 +171,8 @@ function toolResultLabel(toolName: string, output: unknown): string {
   }
 }
 
-function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
-  if (state === 'input-streaming') return 'thinking';
-  if (state === 'input-available') return 'running';
+function toolStateToStatus(state: string): 'running' | 'complete' {
+  if (state === 'input-streaming' || state === 'input-available') return 'running';
   return 'complete';
 }
 
