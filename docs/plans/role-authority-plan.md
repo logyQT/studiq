@@ -40,8 +40,9 @@ call, resolver diff 0, both org vintages identical, removal clean, deploy-order
 matrix fail-closed with no crash. The checklists and the "when there are users"
 answers live in [extendability.md](extendability.md).
 **Follow-up order:** [followup-order.md](followup-order.md) — defects first. #1494 (#1499),
-#1502 (#1503), #1484 (#1506), #1482 (#1510) and #1478 (#1474) have merged; next is #1492
-(A6, pending PR), then the plans, then the shell, then the `/app` decision, then onboarding.
+#1502 (#1503), #1484 (#1506), #1482 (#1510), #1478 (#1474) and #1492 (#1512) have merged;
+the defect list is empty. Next are the plans, then the shell, then the `/app` decision, then
+onboarding.
 **Open follow-ups (owned):** **#1483** notify org admins when a new entitlement
 is grantable; row 14 (per-user personal default permission set) still defers. A
 default-outside-any-plan layer is **proposed** as D37 and needs an ADR-0015
