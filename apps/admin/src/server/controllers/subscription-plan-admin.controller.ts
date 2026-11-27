@@ -2,7 +2,7 @@ import { createClient } from '@admin/lib/supabase/admin-client';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
-import { isFailure } from '@studiq/server/lib/service-result';
+import { isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
 import {
   AssignPlanOrganizationSchema,
   CreateSubscriptionPlanSchema,
@@ -84,11 +84,12 @@ export class SubscriptionPlanAdminController {
    * The plan key is the assignment key, and the route names the plan by id, so
    * every assignment handler resolves the plan first. The id parse stays
    * separate from the lookup: an invalid id is `BAD_REQUEST`, a missing plan
-   * `NOT_FOUND`.
+   * `NOT_FOUND`, and a database failure keeps its own code.
    */
-  private async planKeyOf(id: string): Promise<string | null> {
+  private async planKeyOf(id: string): Promise<ServiceResult<{ key: string }>> {
     const plan = await this.subscriptionPlanService.getById(id);
-    return isFailure(plan) ? null : plan.data.key;
+    if (isFailure(plan)) return plan;
+    return success({ key: plan.data.key });
   }
 
   async getAssignments(id: string): Promise<ControllerResponse> {
@@ -97,10 +98,10 @@ export class SubscriptionPlanAdminController {
       return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
     }
 
-    const planKey = await this.planKeyOf(parsedId.data.id);
-    if (!planKey) return controllerResponse.error('NOT_FOUND');
+    const plan = await this.planKeyOf(parsedId.data.id);
+    if (isFailure(plan)) return controllerResponse.error(plan.error);
 
-    const result = await this.subscriptionPlanService.listAssignments(planKey);
+    const result = await this.subscriptionPlanService.listAssignments(plan.data.key);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
@@ -121,11 +122,11 @@ export class SubscriptionPlanAdminController {
       };
     }
 
-    const planKey = await this.planKeyOf(parsedId.data.id);
-    if (!planKey) return controllerResponse.error('NOT_FOUND');
+    const plan = await this.planKeyOf(parsedId.data.id);
+    if (isFailure(plan)) return controllerResponse.error(plan.error);
 
     const result = await this.subscriptionPlanService.assignOrganization(
-      planKey,
+      plan.data.key,
       parsed.data.organizationId,
     );
     if (isFailure(result)) return controllerResponse.error(result.error);
@@ -148,11 +149,11 @@ export class SubscriptionPlanAdminController {
       };
     }
 
-    const planKey = await this.planKeyOf(parsedId.data.id);
-    if (!planKey) return controllerResponse.error('NOT_FOUND');
+    const plan = await this.planKeyOf(parsedId.data.id);
+    if (isFailure(plan)) return controllerResponse.error(plan.error);
 
     const result = await this.subscriptionPlanService.unassignOrganization(
-      planKey,
+      plan.data.key,
       parsed.data.organizationId,
     );
     if (isFailure(result)) return controllerResponse.error(result.error);
