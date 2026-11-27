@@ -99,7 +99,7 @@ function printHuman(snapshot: StatusSnapshot): void {
     `build       ${snapshot.build.state ?? 'unknown'}${buildFingerprintLabel(snapshot.build)}`,
   );
   writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
-  writeLine(`migrations  ${migrationsLabel(snapshot.migrations)}`);
+  writeLine(`migrations  ${migrationsLabel(snapshot.migrations, { shared: snapshot.shared })}`);
   for (const line of snapshotLines(snapshot.snapshot)) writeLine(line);
   // Only when there is one: a failed build moves its artifact aside instead of
   // deleting it, and this is how an agent learns the directory exists.

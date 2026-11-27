@@ -597,12 +597,15 @@ bun run env:reset-db --yes         # (optional) reloads fresh seed data, this br
 ```
 
 `env:ensure` probes the stack's applied migrations before it seeds or serves, so a
-merge that adds migrations cannot leave the database behind the code (#1186).
+merge that adds migrations cannot leave the database behind the code (#1186). It
+applies a pending file even when its version is older than the newest applied one.
 `env:status` prints `migrations pending N` from the recorded set without opening a
 database connection, and `env:doctor` probes the default stack live. If the
 database records a version with no local file (a branch switch), restore the file
 or drop the history entry with `bun run env:supa migration repair --status reverted
-<version>`; `env:ensure` refuses to apply anything until the two sides agree.
+<version>`. With nothing pending, `env:ensure` warns and still succeeds (exit 0);
+when pending versions exist too, it refuses until the two sides agree, and the
+next ensure probes again and clears the record once you repair it.
 
 Every worktree/branch gets its own stack and database automatically. If another
 developer/agent already runs the app on the same `APP_PORT`, change it in this

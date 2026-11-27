@@ -408,8 +408,12 @@ async function buildReport(): Promise<DoctorReport> {
       warnings.push('stack config drift: restart the stack to apply config.toml changes');
     }
     if (migrations.state === 'pending') {
+      const remedy =
+        migrations.remoteOnly.length > 0
+          ? "repair the versions with no local file first ('bun run env:supa migration repair --status reverted <version>'), then run 'bun run env:ensure'"
+          : "run 'bun run env:ensure'";
       warnings.push(
-        `migrations: ${migrations.pending.length} local version(s) are not applied on this stack — run 'bun run env:ensure'`,
+        `migrations: ${migrations.pending.length} local version(s) are not applied on this stack — ${remedy}`,
       );
     } else if (migrations.state === 'drift') {
       warnings.push(

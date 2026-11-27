@@ -133,6 +133,14 @@ export interface Harness {
   setMigrationUpFixture(value: unknown, exitCode?: number): void;
   /** Write `supabase/migrations/<version>_fixture.sql` files under this harness. */
   writeMigrationFiles(versions: readonly string[]): void;
+  /** Pre-seed `.dev/migrations.json` as an earlier run would have. */
+  writeMigrationsRecord(record: {
+    stackId: string;
+    stackName?: string;
+    checkedAt?: string;
+    versions: readonly string[];
+    remoteOnly?: readonly string[];
+  }): void;
   /** Make the next `times` `stack status` calls exit 1 before the fixture answers. */
   failStatusProbe(times: number): void;
   writeRegistryEntry(entry: Record<string, unknown>): void;
@@ -400,6 +408,18 @@ export function createHarness(): Harness {
       for (const version of versions) {
         writeFileSync(join(migrationsDir, `${version}_fixture.sql`), 'select 1;\n');
       }
+    },
+    writeMigrationsRecord(record) {
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(
+        join(stateDir, 'migrations.json'),
+        JSON.stringify({
+          stackName: 'default',
+          checkedAt: '2026-11-27T10:00:00.000Z',
+          remoteOnly: [],
+          ...record,
+        }),
+      );
     },
     failStatusProbe(times) {
       writeFileSync(statusFailsFile, String(times));

@@ -360,6 +360,65 @@ describe('env:doctor', () => {
     expect(harness.bunxCalls()).toContain('migration list --output-format json');
   });
 
+  it('warns that a remote-only version has no local file', async () => {
+    const server = await startHttpServer(200);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.track(() => server.close());
+    harness.setStatusFixture(stackStatusFixture({ apiUrl: server.url, apiPort: server.port }));
+    harness.writeMigrationFiles(['20260101000000']);
+    harness.setMigrationListFixture({
+      migrations: [
+        { local: '20260101000000', remote: '20260101000000', time: '2026-01-01 00:00:00' },
+        { local: '', remote: '20260901000000', time: '2026-09-01 00:00:00' },
+      ],
+    });
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      APP_URL: `http://localhost:${appPort}`,
+      SUPABASE_STACK: '',
+    });
+
+    expect(result.status).toBe(0);
+    const report = parseJsonObject(result.stdout);
+    expect(objectField(report, 'migrations')).toMatchObject({
+      state: 'drift',
+      remoteOnly: ['20260901000000'],
+    });
+    expect(stringList(report.warnings).join('\n')).toContain(
+      '1 version(s) in the database have no local file',
+    );
+  });
+
+  it('advises a repair when pending versions and remote-only versions coexist', async () => {
+    const server = await startHttpServer(200);
+    const appPort = await firstBindablePort(APP_PORT_BASE);
+    const harness = newHarness();
+    harness.track(() => server.close());
+    harness.setStatusFixture(stackStatusFixture({ apiUrl: server.url, apiPort: server.port }));
+    harness.writeMigrationFiles(['20260101000000', '20261125160000']);
+    harness.setMigrationListFixture({
+      migrations: [
+        { local: '20261125160000', remote: '', time: '2026-11-25 16:00:00' },
+        { local: '', remote: '20260901000000', time: '2026-09-01 00:00:00' },
+      ],
+    });
+
+    const result = await harness.run(['doctor', '--json'], {
+      APP_PORT: String(appPort),
+      APP_URL: `http://localhost:${appPort}`,
+      SUPABASE_STACK: '',
+    });
+
+    expect(result.status).toBe(0);
+    const warnings = stringList(parseJsonObject(result.stdout).warnings).join('\n');
+    expect(warnings).toContain('migration repair');
+    expect(warnings).not.toContain(
+      "migrations: 1 local version(s) are not applied on this stack — run 'bun run env:ensure'",
+    );
+  });
+
   it('reports migrations current when the stack applied every local version', async () => {
     const server = await startHttpServer(200);
     const appPort = await firstBindablePort(APP_PORT_BASE);

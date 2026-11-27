@@ -24,7 +24,12 @@ function newHarness(): Harness {
   return harness;
 }
 
-function writeMigrationRecord(harness: Harness, stackId: string, versions: string[]): void {
+function writeMigrationRecord(
+  harness: Harness,
+  stackId: string,
+  versions: string[],
+  remoteOnly: string[] = [],
+): void {
   writeFileSync(
     join(harness.stateDir, 'migrations.json'),
     JSON.stringify({
@@ -32,7 +37,7 @@ function writeMigrationRecord(harness: Harness, stackId: string, versions: strin
       stackName: 'default',
       checkedAt: '2026-11-27T10:00:00.000Z',
       versions,
-      remoteOnly: [],
+      remoteOnly,
     }),
   );
 }
@@ -85,6 +90,65 @@ describe('env:status migrations', () => {
 
     expect(report.state).toBe('unknown');
     expect(report.reason).toContain('another stack');
+  });
+
+  it('advises a repair, not an ensure, when pending and remote-only versions coexist', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({ apiUrl: 'http://127.0.0.1:1', apiPort: 20041 });
+    harness.setStatusFixture(fixture);
+    harness.writeMigrationFiles(['20260101000000', '20261125160000']);
+    writeMigrationRecord(
+      harness,
+      String(objectField(fixture, 'identity').id),
+      ['20260101000000'],
+      ['20260901000000'],
+    );
+
+    const human = await harness.run(['status']);
+
+    // `env:ensure` refuses this state until the repair runs, so pointing at it
+    // alone would send the reader in a circle.
+    expect(human.stdout).toContain('migrations  pending 1, drift 1 — repair first');
+    expect(human.stdout).toContain(
+      "'bun run env:supa migration repair --status reverted <version>'",
+    );
+    expect(human.stdout).toContain("then run 'bun run env:ensure'");
+  });
+
+  it('names the repair on a drift-only record', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({ apiUrl: 'http://127.0.0.1:1', apiPort: 20041 });
+    harness.setStatusFixture(fixture);
+    harness.writeMigrationFiles(['20260101000000']);
+    writeMigrationRecord(
+      harness,
+      String(objectField(fixture, 'identity').id),
+      ['20260101000000'],
+      ['20260901000000'],
+    );
+
+    const human = await harness.run(['status']);
+
+    expect(human.stdout).toContain(
+      'migrations  drift 1 (the database has versions with no local file)',
+    );
+    expect(human.stdout).toContain('bun run env:supa migration repair --status reverted <version>');
+  });
+
+  it('names the shared stack owner instead of an ensure that cannot help', async () => {
+    const harness = newHarness();
+
+    const human = await harness.run(['status'], {
+      SUPABASE_SHARED: '1',
+      SUPABASE_URL: 'http://127.0.0.1:1',
+      APP_PORT: '3000',
+    });
+
+    expect(human.stdout).toContain(
+      'migrations  unknown (the shared stack is owned by another checkout)',
+    );
+    expect(human.stdout).toContain('its owner applies migrations');
+    expect(human.stdout).not.toContain("run 'bun run env:ensure'");
   });
 });
 

@@ -184,7 +184,16 @@ export interface MigrationApplyResult {
   reason: string | null;
 }
 
-/** Apply every pending local migration to this checkout's stack. */
+/**
+ * Apply every pending local migration to this checkout's stack.
+ *
+ * `--include-all` applies a pending file whose version is older than the newest
+ * applied one. That set is routine: a merge adds `20261028100000` above
+ * `20261030203549`, and the CLI refuses it as "inserted before the last
+ * migration on remote database". The caller refuses a mixed set before this
+ * call, so the flag can never insert a version before a remote-only entry; it
+ * relaxes the ordering check only for local files.
+ */
 export function applyMigrations(options: {
   stackName: string | null;
   dbUrl: string | null;
@@ -193,10 +202,13 @@ export function applyMigrations(options: {
   if (options.stackName && !options.dbUrl) {
     return { ok: false, applied: [], reason: `no database URL for stack '${options.stackName}'` };
   }
-  const result = runDatabaseCommand(['migration', 'up', '--output-format', 'json'], {
-    dbUrl: options.dbUrl,
-    timeoutMs: options.timeoutMs ?? 300_000,
-  });
+  const result = runDatabaseCommand(
+    ['migration', 'up', '--include-all', '--output-format', 'json'],
+    {
+      dbUrl: options.dbUrl,
+      timeoutMs: options.timeoutMs ?? 300_000,
+    },
+  );
   if (!result.ok) {
     return { ok: false, applied: [], reason: failureReason(result) };
   }
@@ -257,19 +269,36 @@ export function absentMigrations(): MigrationsReport {
   };
 }
 
-/** One line an operator can act on, for a report state. */
-export function migrationsLabel(report: MigrationsReport): string {
+/**
+ * One line an operator can act on, for a report state.
+ *
+ * The advice must be the step that can resolve *this* state: `ensure` cannot
+ * apply on a shared stack, and it refuses a mixed set until a repair runs, so a
+ * blanket "run 'bun run env:ensure'" would send the reader in a circle.
+ */
+export function migrationsLabel(
+  report: MigrationsReport,
+  options: { shared?: boolean } = {},
+): string {
   switch (report.state) {
     case 'current':
       return 'current';
-    case 'pending':
-      return `pending ${report.pending.length} — run 'bun run env:ensure'`;
+    case 'pending': {
+      const pending = `pending ${report.pending.length}`;
+      if (report.remoteOnly.length > 0) {
+        return `${pending}, drift ${report.remoteOnly.length} — repair first ('bun run env:supa migration repair --status reverted <version>'), then run 'bun run env:ensure'`;
+      }
+      return `${pending} — run 'bun run env:ensure'`;
+    }
     case 'drift':
-      return `drift ${report.remoteOnly.length} (the database has versions with no local file)`;
+      return `drift ${report.remoteOnly.length} (the database has versions with no local file) — restore the file, or run 'bun run env:supa migration repair --status reverted <version>'`;
     case 'absent':
       return 'absent (no running stack)';
-    case 'unknown':
-      return `unknown${report.reason ? ` (${report.reason})` : ''} — run 'bun run env:ensure'`;
+    case 'unknown': {
+      const reason = report.reason ? ` (${report.reason})` : '';
+      const action = options.shared ? 'its owner applies migrations' : "run 'bun run env:ensure'";
+      return `unknown${reason} — ${action}`;
+    }
   }
 }
 

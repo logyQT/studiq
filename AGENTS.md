@@ -329,15 +329,18 @@ reconciles `.dev/env.json` with that same probe: `present`, `schema`,
 > CLI applies migrations when it creates a database, never again: a stack started
 > before a merge keeps the old schema and the symptom is a 500 in an unrelated
 > feature. `env:ensure` probes the applied set, applies pending migrations on this
-> checkout's own stack, and records the proven set in `.dev/migrations.json`; a
-> shared stack is reported, never mutated. `env:status` compares the record with
-> the local files (no database connection) and prints `pending N`; `env:doctor`
-> probes the default stack live. Local versions the database does not record are
-> `pending`; versions the database records with no local file are `drift`, and an
-> ensure refuses to apply while both exist (`migration repair` or restore the
-> file). `env:status --json` and `env:doctor --json` carry a `migrations` object
-> (state, pending, remoteOnly, checkedAt, source), and `env:reset-db` rewrites
-> the record.
+> checkout's own stack (`migration up --include-all`, so a version older than the
+> newest applied one still applies), and records the proven set in
+> `.dev/migrations.json`; a shared stack is reported, never mutated. `env:status`
+> compares a clean record with the local files (no database connection) and prints
+> `pending N`; a record that claims drift costs the next ensure a probe, so a
+> `migration repair` is noticed. `env:doctor` probes the default stack live. Local
+> versions the database does not record are `pending`; versions the database
+> records with no local file are `drift`. With nothing pending, a drift warns and
+> `ensure` continues (exit 0); with pending versions too, `ensure` refuses before
+> it applies anything and names the repair. `env:status --json` and
+> `env:doctor --json` carry a `migrations` object (state, pending, remoteOnly,
+> checkedAt, source), and `env:reset-db` rewrites the record.
 >
 > **One environment per checkout.** One stack and one web server: a second
 > `ensure`/`serve` for a different stack or profile, or on the same app port, is

@@ -162,8 +162,10 @@ async function ensureGrafanaBestEffort(): Promise<void> {
  *
  * This checkout's own stack is repaired silently: the local set is compared with
  * `.dev/migrations.json` first (the same claim `env status` reads), and the
- * database is opened only when that claim no longer covers the files. A shared
- * stack is never mutated: its owner applies migrations.
+ * database is opened only when that claim no longer covers the files. A record
+ * that claims remote-only versions never takes the cheap path: a `migration
+ * repair` may have dropped them, and only a probe can prove it. A shared stack is
+ * never mutated: its owner applies migrations.
  */
 function reconcileMigrations(input: {
   stackName: string | null;
@@ -176,11 +178,15 @@ function reconcileMigrations(input: {
 }): MigrationsReport {
   const local = localMigrationVersions();
   const record = readMigrationsState();
+  // A record with remote-only versions is not clean: a `migration repair` may
+  // have dropped them, and only a probe can tell. The cheap path needs a record
+  // that covers the local set and claims no drift.
   const proven =
     !input.shared &&
     input.stackId !== null &&
     record !== null &&
     record.stackId === input.stackId &&
+    record.remoteOnly.length === 0 &&
     record.versions.length === local.length &&
     local.every((version) => record.versions.includes(version));
   if (proven) return classifyMigrations(record, local, input.stackId);
@@ -216,7 +222,7 @@ function reconcileMigrations(input: {
       throw new EnvFailure(
         EXIT_START_FAILED,
         [
-          `cannot apply ${probe.pending.length} pending migration(s): the database records ${probe.remoteOnly.length} version(s) with no local file (${probe.remoteOnly.join(', ')})`,
+          `cannot apply ${probe.pending.length} pending migration(s) (${probe.pending.join(', ')}): the database records ${probe.remoteOnly.length} version(s) with no local file (${probe.remoteOnly.join(', ')})`,
           "restore those files, or drop the history entries with 'bun run env:supa migration repair --status reverted <version>', then re-run 'bun run env:ensure'",
         ].join('; '),
       );
@@ -225,7 +231,7 @@ function reconcileMigrations(input: {
     if (!applied.ok) {
       throw new EnvFailure(
         EXIT_START_FAILED,
-        `applying ${probe.pending.length} pending migration(s) failed: ${applied.reason ?? 'migration up failed'}`,
+        `applying ${probe.pending.length} pending migration(s) (${probe.pending.join(', ')}) failed: ${applied.reason ?? 'migration up failed'}; fix the failing migration, then re-run 'bun run env:ensure'`,
       );
     }
     // The exit code says the command ran; only a second read says the schema moved.
