@@ -343,6 +343,51 @@ export function readStackStatus(stackName: string | null): StackStatus | null {
   return readStack(stackName)?.status ?? null;
 }
 
+/**
+ * Port overrides the CLI honours on create and resume. A database command that
+ * targets a stack by URL must drop them: with a pinned port the CLI treats the
+ * URL as a local stack and looks for the wrong database.
+ */
+export const PORT_VARIABLES = [
+  'SUPABASE_API_PORT',
+  'SUPABASE_DB_PORT',
+  'SUPABASE_STUDIO_PORT',
+  'SUPABASE_MAIL_PORT',
+  'SUPABASE_LOCAL_SMTP_PORT',
+  'SUPABASE_LOCAL_SMTP_SMTP_PORT',
+  'SUPABASE_LOCAL_SMTP_POP3_PORT',
+  'SUPABASE_ANALYTICS_PORT',
+  'SUPABASE_EDGE_INSPECTOR_PORT',
+  'SUPABASE_POOLER_PORT',
+  'SUPABASE_SHADOW_PORT',
+  'SUPABASE_DB_SHADOW_PORT',
+  'SUPABASE_DB_POOLER_PORT',
+] as const;
+
+function withSslModeDisabled(url: string): string {
+  if (url.includes('sslmode=')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sslmode=disable`;
+}
+
+/**
+ * Run a database command against this checkout's stack.
+ *
+ * Database commands accept no `--stack`: a provided DB URL is the target, and
+ * without one the CLI's implicit local target applies. The URL carries the
+ * stack's password, so it is passed as one argv element and must never be
+ * logged (child output goes through `redactSecrets`).
+ */
+export function runDatabaseCommand(
+  args: string[],
+  options: { dbUrl: string | null; timeoutMs?: number },
+): SpawnResult {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of PORT_VARIABLES) delete env[name];
+  const full = [...args];
+  if (options.dbUrl) full.push(`--remote=${withSslModeDisabled(options.dbUrl)}`);
+  return runSupabase(full, { env, ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}) });
+}
+
 export interface ListedStack {
   id: string;
   name: string;

@@ -4,6 +4,7 @@ import { REPO_ROOT, currentCommit } from './repo';
 import type { SnapshotStatus } from './build-cache';
 import type { BuildArtifactState } from './state';
 import type { StackStatus } from './stack';
+import type { MigrationsReport } from './migrations';
 import { profileRequiresServe } from '../profiles';
 
 /**
@@ -184,6 +185,8 @@ export interface StatusSnapshot {
   };
   /** The published cache snapshot this machine would seed from; null when none. */
   snapshot: SnapshotStatus | null;
+  /** Local migration files against the stack's applied set (#1186). */
+  migrations: MigrationsReport;
   manifest: ManifestReport;
   warnings: string[];
   log: string;
@@ -212,6 +215,7 @@ export interface StatusInputs {
   buildFailed?: string[];
   buildSlots?: BuildSlotsStatus | null;
   snapshot?: SnapshotStatus | null;
+  migrations?: MigrationsReport;
   // Lifecycle facts (phase 2); all default to "unknown" for read-only calls.
   profile?: string | null;
   cold?: boolean | null;
@@ -298,6 +302,14 @@ export function shapeStatus(inputs: StatusInputs): StatusSnapshot {
       slots: inputs.buildSlots ?? null,
     },
     snapshot: inputs.snapshot ?? null,
+    migrations: inputs.migrations ?? {
+      state: contract.shared || stack !== null ? 'unknown' : 'absent',
+      pending: [],
+      remoteOnly: [],
+      checkedAt: null,
+      source: 'none',
+      reason: null,
+    },
     manifest: inputs.manifest ?? NO_MANIFEST,
     warnings: inputs.warnings,
     log: '.dev/env.log',

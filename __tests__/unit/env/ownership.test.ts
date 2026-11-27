@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -205,11 +205,12 @@ describe('env:reset-db refuses a stack this checkout does not own', () => {
     expect(harness.bunxCalls()).not.toContain('db reset');
   });
 
-  it('resets this checkout’s own stack', async () => {
+  it('resets this checkout’s own stack and records the re-applied migrations', async () => {
     const harness = newHarness();
     harness.setStatusFixture(
       stackStatusFixture({ apiUrl: 'http://127.0.0.1:20041', apiPort: 20041 }),
     );
+    harness.writeMigrationFiles(['20260101000000', '20261125160000']);
 
     const result = await harness.run(['reset-db', '--yes']);
 
@@ -218,6 +219,9 @@ describe('env:reset-db refuses a stack this checkout does not own', () => {
     const calls = harness.bunxCalls();
     expect(calls).toContain('db reset');
     expect(calls).toContain('--remote=');
+    expect(
+      parseJsonObject(readFileSync(join(harness.stateDir, 'migrations.json'), 'utf8')),
+    ).toMatchObject({ versions: ['20260101000000', '20261125160000'], remoteOnly: [] });
   });
 });
 

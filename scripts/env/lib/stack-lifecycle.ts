@@ -1,4 +1,10 @@
-import { runSupabase, type SpawnResult, type StackEnv } from './stack';
+import {
+  PORT_VARIABLES,
+  runDatabaseCommand,
+  runSupabase,
+  type SpawnResult,
+  type StackEnv,
+} from './stack';
 import { OTEL_ENDPOINT } from './observability';
 import { redactSecrets } from './output';
 import { currentBranchName, sanitizeProjectId } from './repo';
@@ -10,22 +16,6 @@ export interface StackActionResult {
   timedOut: boolean;
   stderr: string;
 }
-
-const PORT_VARIABLES = [
-  'SUPABASE_API_PORT',
-  'SUPABASE_DB_PORT',
-  'SUPABASE_STUDIO_PORT',
-  'SUPABASE_MAIL_PORT',
-  'SUPABASE_LOCAL_SMTP_PORT',
-  'SUPABASE_LOCAL_SMTP_SMTP_PORT',
-  'SUPABASE_LOCAL_SMTP_POP3_PORT',
-  'SUPABASE_ANALYTICS_PORT',
-  'SUPABASE_EDGE_INSPECTOR_PORT',
-  'SUPABASE_POOLER_PORT',
-  'SUPABASE_SHADOW_PORT',
-  'SUPABASE_DB_SHADOW_PORT',
-  'SUPABASE_DB_POOLER_PORT',
-] as const;
 
 export function startStack(options: {
   stackName: string | null;
@@ -64,30 +54,24 @@ export interface ResetDatabaseResult {
   exitCode: number | null;
 }
 
-function withSslModeDisabled(url: string): string {
-  if (url.includes('sslmode=')) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}sslmode=disable`;
-}
-
 /**
- * `supabase db reset` for this checkout's stack. A named stack is addressed by
- * its remote DB URL (database commands accept no `--stack`), and the port
- * overrides inherited from the parent shell are cleared so the CLI treats the
- * URL as remote instead of demanding a local stack.
+ * `supabase db reset` for this checkout's stack.
+ *
+ * Only a named stack is addressed by its DB URL; the default stack keeps the
+ * CLI's local target, which also applies the local migrations and seeds.
  */
 export function resetDatabase(options: {
   stackName: string | null;
   dbUrl: string | null;
   timeoutMs?: number;
 }): ResetDatabaseResult {
-  const args = ['db', 'reset', '--yes'];
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const name of PORT_VARIABLES) delete env[name];
-  if (options.stackName) {
-    if (!options.dbUrl) return { ok: false, timedOut: false, exitCode: null };
-    args.push(`--remote=${withSslModeDisabled(options.dbUrl)}`);
+  if (options.stackName && !options.dbUrl) {
+    return { ok: false, timedOut: false, exitCode: null };
   }
-  const result = runSupabase(args, { env, timeoutMs: options.timeoutMs ?? 300_000 });
+  const result = runDatabaseCommand(['db', 'reset', '--yes'], {
+    dbUrl: options.stackName ? options.dbUrl : null,
+    timeoutMs: options.timeoutMs ?? 300_000,
+  });
   return { ok: result.status === 0, timedOut: result.timedOut, exitCode: result.status };
 }
 
