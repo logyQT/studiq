@@ -3137,6 +3137,8 @@
     "grade": "Oceń"
   },
   "EduGradingPage": {
+    "shortcuts_group": "Ocenianie",
+    "position_done": "Praca {position} z {total}",
     "view_results": "Zobacz wyniki",
     "navigation": "Nawigacja między pracami",
     "position": "Praca {position} z {total} · do oceny: {left}",
@@ -3147,7 +3149,7 @@
     "grade_failed": "Błąd oceniania",
     "not_found": "Nie znaleziono odpowiedzi ucznia",
     "back": "Powrót do wyników",
-    "title": "Oceń ucznia",
+    "title": "Oceń pracę",
     "score": "Wynik: {earned}/{total}",
     "graded": "(ocenione)",
     "correct": "Poprawna",

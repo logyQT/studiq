@@ -3156,6 +3156,8 @@
     "grade": "Grade"
   },
   "EduGradingPage": {
+    "shortcuts_group": "Grading",
+    "position_done": "Attempt {position} of {total}",
     "view_results": "View results",
     "navigation": "Attempt navigation",
     "position": "Attempt {position} of {total} · {left} left to grade",
@@ -3166,7 +3168,7 @@
     "grade_failed": "Grade failed",
     "not_found": "Student submission not found",
     "back": "Back to Results",
-    "title": "Grade Student",
+    "title": "Grade Attempt",
     "score": "Score: {earned}/{total}",
     "graded": "(graded)",
     "correct": "Correct",

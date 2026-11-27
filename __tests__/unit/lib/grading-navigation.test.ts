@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   attemptNavigation,
+  GRADING_SHORTCUT_KEYS,
   gradingShortcut,
+  isGradingSheetPath,
   type NavigableAttempt,
 } from '@/lib/grading-navigation';
 
@@ -98,7 +100,26 @@ describe('gradingShortcut (#1354)', () => {
     ]);
   });
 
+  it('shows exactly these keys in the key lists', () => {
+    expect(GRADING_SHORTCUT_KEYS).toEqual({ previous: '[', next: ']', nextUngraded: 'N' });
+  });
+
   it('ignores every other key', () => {
     expect(['g', 'Enter', ' ', '1'].map(gradingShortcut)).toEqual([null, null, null, null]);
+  });
+});
+
+describe('isGradingSheetPath (#1354)', () => {
+  it('is true for the grading page of one attempt only', () => {
+    expect(isGradingSheetPath('/edu/assignments/a-1/results/attempt-1')).toBe(true);
+    expect(
+      [
+        '/edu/assignments/a-1/results',
+        '/edu/assignments/a-1/results/question/q-1',
+        '/edu/assignments/a-1',
+        '/app/assignments/a-1/results/x',
+        null,
+      ].map(isGradingSheetPath),
+    ).toEqual([false, false, false, false, false]);
   });
 });

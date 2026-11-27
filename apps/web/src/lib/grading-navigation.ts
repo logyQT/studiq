@@ -57,9 +57,20 @@ export const GRADING_SHORTCUT_KEYS: Record<GradingShortcut, string> = {
   nextUngraded: 'N',
 };
 
-/** The grading shortcut a pressed key stands for, if any. */
+const GRADING_SHORTCUTS: readonly GradingShortcut[] = ['previous', 'next', 'nextUngraded'];
+
+/**
+ * The grading shortcut a pressed key stands for, if any. It reads the map that the key lists
+ * show, so a list cannot name a key the page does not take.
+ */
 export function gradingShortcut(key: string): GradingShortcut | null {
-  if (key === '[') return 'previous';
-  if (key === ']') return 'next';
-  return key.toLowerCase() === 'n' ? 'nextUngraded' : null;
+  const pressed = key.toLowerCase();
+  return (
+    GRADING_SHORTCUTS.find((name) => GRADING_SHORTCUT_KEYS[name].toLowerCase() === pressed) ?? null
+  );
+}
+
+/** The grading page of one attempt. The per-question page has one segment more. */
+export function isGradingSheetPath(pathname: string | null | undefined): boolean {
+  return /^\/edu\/assignments\/[^/]+\/results\/[^/]+$/.test(pathname ?? '');
 }

@@ -7,8 +7,10 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import {
+  focusSheetTitle,
   GradingNavigation,
   GradingShortcutsPanel,
+  SHEET_TITLE_DESCRIPTION_ID,
 } from '@/components/assignments/grading-navigation';
 import { useApiQuery } from '@/hooks/use-api';
 import { useAssignmentBreadcrumb } from '@/hooks/use-assignment-breadcrumb';
@@ -148,7 +150,14 @@ function GradingSheet() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <h1
+            ref={focusSheetTitle}
+            tabIndex={-1}
+            aria-describedby={SHEET_TITLE_DESCRIPTION_ID}
+            className="text-2xl font-bold tracking-tight"
+          >
+            {t('title')}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {t('score', {
               earned: attempt.score,
@@ -299,7 +308,7 @@ function GradingSheet() {
           })}
       </div>
 
-      <GradingShortcutsPanel />
+      <GradingShortcutsPanel assignmentId={id} attemptId={studentId} />
     </div>
   );
 }

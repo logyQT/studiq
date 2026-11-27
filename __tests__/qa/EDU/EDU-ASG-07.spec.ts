@@ -46,7 +46,7 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 3. After the targeted student completes the assignment the row shows their name
  *    and e-mail, the score `1/1`, the status „Ocenione”, the completion date in
  *    the page's locale (`dd.MM.yyyy` in `pl`) and the „Oceń” action.
- * 4. „Oceń” opens the per-student grading page („Oceń ucznia”) for that attempt.
+ * 4. „Oceń” opens the per-student grading page („Oceń pracę”) for that attempt.
  *
  * The status vocabulary itself is part of the surface, and it is derived from the
  * attempt's served items (#1069): the case's item is true/false, so it is graded
@@ -73,7 +73,7 @@ const COPY = {
   empty: 'Żaden uczeń nie ukończył jeszcze tej kartkówki',
   graded: 'Ocenione',
   grade: 'Oceń',
-  gradingTitle: 'Oceń ucznia',
+  gradingTitle: 'Oceń pracę',
 } as const;
 
 const COLUMNS = ['Uczeń', 'E-mail', 'Wynik', 'Status', 'Ukończono', 'Akcje'] as const;

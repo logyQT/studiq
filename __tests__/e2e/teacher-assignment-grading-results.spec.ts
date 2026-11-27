@@ -119,6 +119,15 @@ async function saveOnePoint(page: Page): Promise<void> {
   expect((await saved).status()).toBe(200);
 }
 
+/** The next read of one assignment's results list. */
+function resultsRead(page: Page, assignmentId: string) {
+  return page.waitForResponse(
+    (res) =>
+      res.request().method() === 'GET' &&
+      new URL(res.url()).pathname === `/api/v1/teacher/assignments/${assignmentId}/results`,
+  );
+}
+
 /** The grading page of one attempt. */
 const onAttempt = (id: string | undefined) => new RegExp(`/results/${id}$`, 'i');
 
@@ -163,37 +172,25 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       const row = page.locator('tbody tr', { hasText: 'Classroom Student' });
       await expect(row.getByText(t('EduAssignmentResultsPage.submitted'))).toBeVisible();
 
+      // The grading page reads the list when it opens (#1354). Wait for that read itself: the
+      // navigation also renders from the cached list, so seeing it proves nothing. Only then
+      // can the wait below get no read but the one the grade caused.
+      const sheetRead = resultsRead(page, assignmentId);
       await row.getByRole('link', { name: t('EduAssignmentResultsPage.grade') }).click();
       await page.waitForURL(new RegExp(`/results/${attemptId}$`, 'i'));
-
-      // `POST …/questions` does not take points, so `assignment_questions.points`
-      // stays at the schema default 1 (#169 rejects anything above it).
-      await page.locator('input[type="number"]').first().fill('1');
-
-      // The grading page reads the list too (#1354). Let that first read end, so that the
-      // wait below can only get a read that the grade caused.
+      await (await sheetRead).finished();
+      // One attempt: no key leads anywhere, so the page offers no key list.
       await expect(
-        page.getByRole('navigation', { name: t('EduGradingPage.navigation') }),
-      ).toBeVisible();
+        page.getByRole('button', { name: t('AppFlashcardSessionPage.shortcuts_panel_label') }),
+      ).toHaveCount(0);
 
       // Arm the list refetch *before* the save: the whole point of #168 is that the grade
-      // makes the app read the list again. The grading page now has the list open, so the
-      // read can start at the save, before the navigation back.
-      const resultsRefetch = page.waitForResponse((res) => {
-        const url = new URL(res.url());
-        return (
-          res.request().method() === 'GET' &&
-          url.pathname === `/api/v1/teacher/assignments/${assignmentId}/results`
-        );
-      });
-
-      const saveGrade = page.waitForResponse(
-        (res) =>
-          res.request().method() === 'PUT' &&
-          res.url().toLowerCase().includes(`/results/${attemptId}`.toLowerCase()),
-      );
-      await page.getByRole('button', { name: t('EduGradingPage.save') }).click();
-      expect((await saveGrade).status()).toBe(200);
+      // makes the app read the list again. The grading page has the list open, so that read
+      // starts at the save, before the navigation back.
+      const resultsRefetch = resultsRead(page, assignmentId);
+      // `POST …/questions` does not take points, so `assignment_questions.points`
+      // stays at the schema default 1 (#169 rejects anything above it).
+      await saveOnePoint(page);
 
       await page.getByRole('link', { name: t('EduGradingPage.back') }).click();
       expect((await resultsRefetch).status()).toBe(200);
@@ -273,6 +270,17 @@ test.describe('moving between attempts on the grading page (#1354)', () => {
       await feedback.blur();
       await page.keyboard.press('[');
       await page.waitForURL(onAttempt(second));
+      await expect(
+        page.getByRole('heading', { level: 1, name: t('EduGradingPage.title') }),
+        'a move puts the focus on the new sheet',
+      ).toBeFocused();
+
+      // The `?` help dialog lists the keys of this page.
+      await page.keyboard.press('?');
+      const help = page.getByRole('dialog');
+      await expect(help.getByText(t('EduGradingPage.shortcuts_group'))).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(help).toHaveCount(0);
 
       await saveOnePoint(page);
       await link('next_ungraded').click();
