@@ -574,18 +574,23 @@ The admin panel is the only writer:
    `stripe_prices`. Fill entitlements and limits from the existing catalogs — a
    key that is not in `entitlement_catalog` is a code change, not a plan.
 2. Save, then reopen the plan. The **Assigned organizations** section lists the
-   organizations that may hold it. Add each organization that signed the
-   contract; remove one only after it has moved to another plan, or the removal
-   answers `409 CONFLICT`.
-3. Move each assigned organization onto the plan with the service-role
-   `change_org_plan(p_org_id, p_plan)` RPC. The admin panel has no plan-move
-   button, and `change_org_plan` refuses an unlisted plan for any organization
-   that is not assigned.
-4. The assigned organization's managers see the plan as their current plan on
+   organizations that may hold it. **Adding an organization assigns the plan and
+   moves the organization onto it in one step** (`assign_plan_to_org`), so the
+   contract grants its limits immediately.
+3. The assigned organization's managers see the plan as their current plan on
    `/manage/billing`. It never appears on `/pricing`, the upgrade grids, the
    seats picker or the public `GET /api/v1/subscription-plans` list, and
    `GET /api/v1/subscription-plans/<key>` answers `404` for it.
-5. Checkout (`POST /api/v1/stripe/create-checkout-session`) and plan change
+4. **To end a contract**, move the organization to another plan first (the
+   `/orgs` plan picker, `PUT /api/v1/organizations/<id>/plan`, backed by
+   `change_org_plan`), then remove the pin. Removing the pin while the
+   organization is still on the plan answers `409 CONFLICT`, and the panel shows
+   that message.
+5. The `/orgs` picker lists every plan, including unlisted ones. Selecting an
+   unlisted plan the organization is not assigned to is refused by the database
+   and shows the "assign the organization on the plan first" message; an unknown
+   plan shows a not-found message.
+6. Checkout (`POST /api/v1/stripe/create-checkout-session`) and plan change
    (`POST /api/v1/billing/change-plan`) refuse an `invoice`/`none` plan with
    `400`, and refuse an unlisted plan for an organization that is not assigned
    with `403`.

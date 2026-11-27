@@ -34,20 +34,20 @@ simulation was **zero lines**.
 Do it in the same PR as the surface — a key with no surface is a gate nobody
 reads, and the catalog is open (D22): ship it when its surface does.
 
-| #   | Step                                                                                                                                                                                        | Where                                                             | Layer          |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------- |
-| 1   | Fix the metadata: `category` (`baseline`/`surface`), `scope`, `seatEligible`, `personalPortable`, `quota`. `baseline` is never gated; a personal key inside an org needs `personalPortable` | decision, then the two catalogs                                   | —              |
-| 2   | Append the key to `ENTITLEMENTS` (never reorder: declaration order is `/me/entitlements` order)                                                                                             | `packages/authz/src/entitlements.ts`                              | code           |
-| 3   | One `entitlement_catalog` row with the same metadata                                                                                                                                        | migration                                                         | data           |
-| 4   | One **enabled** `entitlement_flags` row — a missing row fails the resolver closed                                                                                                           | migration                                                         | data           |
-| 5   | `plan_entitlements` rows for the plans that should carry it                                                                                                                                 | migration — the seed no longer owns plan rows (#1494)             | data           |
-| 6   | Grants and policies: **none**. `authenticated` already has table-level `SELECT` and the catalog policies are `using (true)`; a new row is readable like the existing ones                   | —                                                                 | —              |
-| 7   | One `requireEntitlement(ctx, key)` on the surface, first statement before the permission check and the parse                                                                                | the surface's controller                                          | code           |
-| 8   | The surface's disabled state: `useEntitlement()(key)` plus copy, only if the page needs one. The generic `ErrorState` is not a product denial                                               | the page + `apps/web/src/i18n/messages/{pl,en}.json`              | code           |
-| 9   | Admin panel: nothing. `/feature-flags` reads `entitlement_flags` live; the row appears on reload                                                                                            | —                                                                 | data           |
-| 10  | Tenant/QA fixture: seed the case on a plan that carries the key (`bun scripts/qa-tenant.ts <CASE> --plan <plan>`)                                                                           | `qa/.tenants/**` (generated)                                      | data (fixture) |
-| 11  | Tests: `catalog-invariants` already pins TS `ENTITLEMENTS` to `entitlement_catalog` and every surface key to a flag row; `plan-catalog` pins the plan matrix, so mirror step 5's row there  | `__tests__/integration/{catalog-invariants,plan-catalog}.test.ts` | —              |
-| 12  | Deploy: apply the migration to the running database (`supabase migration up` / `db push`), then **rebuild and restart the app** — the TS constant is baked into the build                   | deploy                                                            | both           |
+| #   | Step                                                                                                                                                                                                                              | Where                                                             | Layer          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------- |
+| 1   | Fix the metadata: `category` (`baseline`/`surface`), `scope`, `seatEligible`, `personalPortable`, `quota`. `baseline` is never gated; a personal key inside an org needs `personalPortable`                                       | decision, then the two catalogs                                   | —              |
+| 2   | Append the key to `ENTITLEMENTS` (never reorder: declaration order is `/me/entitlements` order)                                                                                                                                   | `packages/authz/src/entitlements.ts`                              | code           |
+| 3   | Assign the organizations the contract covers. Assigning pins the plan **and** moves the organization onto it in one transaction (`assign_plan_to_org`); the relation is many-to-many, so two organizations can share one contract | admin plan editor, "Assigned organizations"                       | data           |
+| 4   | To end a contract, move the organization to another plan (the `/orgs` plan picker, `change_org_plan`), then remove the pin                                                                                                        | admin `/orgs` + plan editor                                       | data           |
+| 5   | `plan_entitlements` rows for the plans that should carry it                                                                                                                                                                       | migration — the seed no longer owns plan rows (#1494)             | data           |
+| 6   | Grants and policies: **none**. `authenticated` already has table-level `SELECT` and the catalog policies are `using (true)`; a new row is readable like the existing ones                                                         | —                                                                 | —              |
+| 7   | One `requireEntitlement(ctx, key)` on the surface, first statement before the permission check and the parse                                                                                                                      | the surface's controller                                          | code           |
+| 8   | The surface's disabled state: `useEntitlement()(key)` plus copy, only if the page needs one. The generic `ErrorState` is not a product denial                                                                                     | the page + `apps/web/src/i18n/messages/{pl,en}.json`              | code           |
+| 9   | Admin panel: nothing. `/feature-flags` reads `entitlement_flags` live; the row appears on reload                                                                                                                                  | —                                                                 | data           |
+| 10  | Tenant/QA fixture: seed the case on a plan that carries the key (`bun scripts/qa-tenant.ts <CASE> --plan <plan>`)                                                                                                                 | `qa/.tenants/**` (generated)                                      | data (fixture) |
+| 11  | Tests: `catalog-invariants` already pins TS `ENTITLEMENTS` to `entitlement_catalog` and every surface key to a flag row; `plan-catalog` pins the plan matrix, so mirror step 5's row there                                        | `__tests__/integration/{catalog-invariants,plan-catalog}.test.ts` | —              |
+| 12  | Deploy: apply the migration to the running database (`supabase migration up` / `db push`), then **rebuild and restart the app** — the TS constant is baked into the build                                                         | deploy                                                            | both           |
 
 Measured cost for the whole simulation: **one migration + one catalog constant +
 one surface call**, plus the surface's own UI copy. Resolver change: **none**.
@@ -72,16 +72,20 @@ layer and not a per-organization copy (B3, #1495). The resolver does not change:
 the organization's plan key is still the ceiling, and the plan carries catalogue
 keys and limits like every other plan.
 
-| #   | Step                                                                                                                                                     | Where                                       | Layer |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----- |
-| 1   | Create the plan with `scope = 'organization'`, `visibility = 'unlisted'`, a `billing_mode`, and the price the contract records                           | admin `/subscription-plans`                 | data  |
-| 2   | Select only keys that exist in `entitlement_catalog`, and set `plan_limits` values from `limit_catalog`                                                  | admin plan editor                           | data  |
-| 3   | Assign the organizations the contract covers. The relation is many-to-many: two organizations can share one contract                                     | admin plan editor, "Assigned organizations" | data  |
-| 4   | Move each assigned organization onto the plan with `change_org_plan`. The admin panel has no plan-move button yet, so this step runs as the service role | service role RPC                            | data  |
-| 5   | A contract that includes seats also needs a bespoke personal seat-licence plan — see "Seats in a contract plan" below                                    | migration or admin panel                    | data  |
+| #   | Step                                                                                                                                                                                                                              | Where                                       | Layer |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----- |
+| 1   | Create the plan with `scope = 'organization'`, `visibility = 'unlisted'`, a `billing_mode`, and the price the contract records                                                                                                    | admin `/subscription-plans`                 | data  |
+| 2   | Select only keys that exist in `entitlement_catalog`, and set `plan_limits` values from `limit_catalog`                                                                                                                           | admin plan editor                           | data  |
+| 3   | Assign the organizations the contract covers. Assigning pins the plan **and** moves the organization onto it in one transaction (`assign_plan_to_org`); the relation is many-to-many, so two organizations can share one contract | admin plan editor, "Assigned organizations" | data  |
+| 4   | To end a contract, move the organization to another plan (the `/orgs` plan picker, `change_org_plan`), then remove the pin                                                                                                        | admin `/orgs` + plan editor                 | data  |
+| 5   | A contract that includes seats also needs a bespoke personal seat-licence plan — see "Seats in a contract plan" below                                                                                                             | migration or admin panel                    | data  |
 
 The schema and the server enforce the rest:
 
+- **Assignment is one step.** `assign_plan_to_org` inserts the pin
+  (`on conflict do nothing`, so a second call is a no-op) and moves
+  `organizations.plan` in the same transaction. A linked plan that grants
+  nothing would be a contract the operator believes is live.
 - **Public reads hide it.** `SubscriptionPlanService.listActive` filters
   `is_active = true AND visibility = 'public'`, and `getByKey` answers
   `NOT_FOUND` for an unlisted plan. Every pricing page, the upgrade grids, the
@@ -92,11 +96,14 @@ The schema and the server enforce the rest:
   is not one of its assigned organizations. The mock completion path calls the
   same two rules.
 - **`change_org_plan` refuses it.** An unlisted plan is refused for an
-  organization with no assignment row (`42501`).
+  organization with no assignment row (`42501`). The `/orgs` plan picker writes
+  through the same function, so the panel shows the "assign it first" message
+  instead of a stack trace.
 - **Unpinning is guarded.** An assignment cannot be deleted while the
   organization is on the plan (409 from the service, `23503` from a
-  `before delete` trigger), and a plan an assignment references cannot be
-  deleted (FK `on delete restrict`).
+  `before delete` trigger): move the organization to another plan first, then
+  unpin. A plan an assignment references cannot be deleted (FK
+  `on delete restrict`).
 - **Catalogue sweeps spare it.** A new matrix sweep must add
   `and visibility = 'public'` to its `delete from public.subscription_plans`,
   because a contract plan is created at runtime and is not in a migration
