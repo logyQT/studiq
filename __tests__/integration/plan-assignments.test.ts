@@ -72,6 +72,19 @@ describe('plan_assignments (B3)', () => {
       price_monthly: 0,
     });
     if (planError) throw new Error(`plan create failed: ${planError.message}`);
+
+    // Rows of its own, so the anon policy on the child tables has something to
+    // hide and the signed-in read has something to return.
+    const { error: entitlementError } = await service
+      .from('plan_entitlements')
+      .insert({ plan_key: PLAN_KEY, entitlement_key: 'flashcards' });
+    if (entitlementError)
+      throw new Error(`plan entitlement create failed: ${entitlementError.message}`);
+
+    const { error: limitError } = await service
+      .from('plan_limits')
+      .insert({ plan_key: PLAN_KEY, limit_key: 'max_flashcards', limit_value: 7 });
+    if (limitError) throw new Error(`plan limit create failed: ${limitError.message}`);
   });
 
   afterAll(async () => {
@@ -80,6 +93,8 @@ describe('plan_assignments (B3)', () => {
     if (orgA) await service.from('organizations').update({ plan: 'launch' }).eq('id', orgA);
     if (orgB) await service.from('organizations').update({ plan: 'launch' }).eq('id', orgB);
     await service.from('plan_assignments').delete().eq('plan_key', PLAN_KEY);
+    await service.from('plan_limits').delete().eq('plan_key', PLAN_KEY);
+    await service.from('plan_entitlements').delete().eq('plan_key', PLAN_KEY);
     await service.from('subscription_plans').delete().eq('key', PLAN_KEY);
     if (orgA) await cleanupOrganizationDeep(orgA);
     if (orgB) await cleanupOrganizationDeep(orgB);
@@ -118,6 +133,85 @@ describe('plan_assignments (B3)', () => {
       .eq('organization_id', orgB);
     expect(pinError).toBeNull();
     expect(pins).toHaveLength(0);
+  });
+
+  it('refuses an unlisted plan for an unassigned organization through the fenced webhook writer', async () => {
+    // The webhook's organization branch is `apply_entitlement_fenced` ->
+    // `change_org_plan`, so the assignment refusal must reach the fenced path
+    // as well: a replayed subscription must not grant a contract plan to an
+    // organization the operator never assigned.
+    const user = await createTestUser({ role: 'manager', password: PASSWORD });
+    const subscriptionId = `sub_plan_assign_${tag}`;
+
+    const { data: customer, error: customerError } = await service
+      .from('billing_customers')
+      .insert({
+        organization_id: orgA,
+        stripe_customer_id: `cus_plan_assign_${tag}`,
+        livemode: false,
+      })
+      .select('id')
+      .single();
+    if (customerError) throw new Error(customerError.message);
+
+    const { error: subscriptionError } = await service.from('billing_subscriptions').insert({
+      stripe_subscription_id: subscriptionId,
+      billing_customer_id: customer.id,
+      organization_id: orgA,
+      purchaser_user_id: user.id,
+      checkout_session_id: `cs_plan_assign_${tag}`,
+      plan_key: PLAN_KEY,
+      price_id: `price_plan_assign_${tag}`,
+      status: 'active',
+      current_period_start: new Date().toISOString(),
+      current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      last_event_created: 0,
+      livemode: false,
+    });
+    if (subscriptionError) throw new Error(subscriptionError.message);
+
+    const fencedWrite = () =>
+      service.rpc('apply_entitlement_fenced', {
+        p_owner_type: 'org',
+        p_owner_id: orgA,
+        p_plan: PLAN_KEY,
+        p_subscription_id: subscriptionId,
+        p_event_created: 100,
+        p_snapshot_generation: 0,
+      });
+
+    const refused = await fencedWrite();
+    expect(refused.error?.code).toBe('42501');
+    expect(refused.error?.message).toContain(PLAN_KEY);
+    expect(await orgPlan(orgA)).toBe('launch');
+
+    // The same write lands once the organization is pinned.
+    const assigned = await service.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgA,
+    });
+    expect(assigned.error).toBeNull();
+
+    const applied = await fencedWrite();
+    expect(applied.error).toBeNull();
+    expect(applied.data).toBe(true);
+    expect(await orgPlan(orgA)).toBe(PLAN_KEY);
+
+    // Unwind so the later cases see the fixture they expect.
+    const moveBack = await service.rpc('change_org_plan', { p_org_id: orgA, p_plan: 'launch' });
+    expect(moveBack.error).toBeNull();
+    const unpin = await service
+      .from('plan_assignments')
+      .delete()
+      .eq('plan_key', PLAN_KEY)
+      .eq('organization_id', orgA);
+    expect(unpin.error).toBeNull();
+    await service
+      .from('billing_subscriptions')
+      .delete()
+      .eq('stripe_subscription_id', subscriptionId);
+    await service.from('billing_customers').delete().eq('id', customer.id);
+    await service.auth.admin.deleteUser(user.id).catch(() => {});
   });
 
   it('is refused to anon and to a signed-in caller, and accepted with the service role', async () => {
@@ -246,6 +340,72 @@ describe('plan_assignments (B3)', () => {
 
     const serviceRead = await service.from('plan_assignments').select('plan_key').limit(1);
     expect(serviceRead.error).toBeNull();
+  });
+
+  it('hides an unlisted plan and its rows from anon, and keeps them for a signed-in caller', async () => {
+    const anon = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // The publishable key is shipped to every browser: it must not read a
+    // contract plan, its price, its entitlements or its limits.
+    const hiddenPlan = await anon
+      .from('subscription_plans')
+      .select('key, price_monthly')
+      .eq('key', PLAN_KEY);
+    expect(hiddenPlan.error).toBeNull();
+    expect(hiddenPlan.data).toEqual([]);
+
+    const hiddenEntitlements = await anon
+      .from('plan_entitlements')
+      .select('plan_key')
+      .eq('plan_key', PLAN_KEY);
+    expect(hiddenEntitlements.error).toBeNull();
+    expect(hiddenEntitlements.data).toEqual([]);
+
+    const hiddenLimits = await anon.from('plan_limits').select('plan_key').eq('plan_key', PLAN_KEY);
+    expect(hiddenLimits.error).toBeNull();
+    expect(hiddenLimits.data).toEqual([]);
+
+    // A public plan and its rows stay readable, so the pricing page still works.
+    const listedPlan = await anon.from('subscription_plans').select('key').eq('key', 'launch');
+    expect(listedPlan.error).toBeNull();
+    expect(listedPlan.data).toHaveLength(1);
+
+    const listedEntitlements = await anon
+      .from('plan_entitlements')
+      .select('plan_key')
+      .eq('plan_key', 'launch');
+    expect(listedEntitlements.error).toBeNull();
+    expect(listedEntitlements.data?.length).toBeGreaterThan(0);
+
+    const listedLimits = await anon.from('plan_limits').select('plan_key').eq('plan_key', 'launch');
+    expect(listedLimits.error).toBeNull();
+    expect(listedLimits.data?.length).toBeGreaterThan(0);
+
+    // `/me/plan` reads with the signed-in client: an organization on an unlisted
+    // plan must keep resolving its own rows. This is the same query shape the
+    // service issues, so the narrowed anon policy must not extend to this role.
+    const user = await createTestUser({ role: 'student', password: PASSWORD });
+    const session = createClient<Database>(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error: signInError } = await session.auth.signInWithPassword({
+      email: user.email,
+      password: PASSWORD,
+    });
+    expect(signInError).toBeNull();
+
+    const ownPlan = await session.from('subscription_plans').select('key').eq('key', PLAN_KEY);
+    expect(ownPlan.error).toBeNull();
+    expect(ownPlan.data).toHaveLength(1);
+
+    const ownEntitlements = await session
+      .from('plan_entitlements')
+      .select('plan_key')
+      .eq('plan_key', PLAN_KEY);
+    expect(ownEntitlements.error).toBeNull();
+    expect(ownEntitlements.data).toHaveLength(1);
   });
 
   it('unpins and deletes once the organization is off the plan', async () => {

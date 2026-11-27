@@ -272,6 +272,8 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     scope: string;
     price_monthly: number | null;
     sort_order: number;
+    visibility: string;
+    billing_mode: string;
   }>;
   let entitlementRows: Array<{ plan_key: string; entitlement_key: string }>;
   let limitRows: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
@@ -284,7 +286,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // created; the catalogue is the active set the product sells.
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope, price_monthly, sort_order')
+      .select('key, scope, price_monthly, sort_order, visibility, billing_mode')
       .eq('is_active', true)
       .order('key');
     if (plansError) throw new Error(`[plan-catalog] plan lookup failed: ${plansError.message}`);
@@ -341,7 +343,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
       .map((row) => row.key);
   }
 
-  it('is exactly the eight matrix plans, with the expected scope/price', () => {
+  it('is exactly the eight matrix plans, with the expected scope/price, all public and Stripe-billed', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
@@ -350,9 +352,21 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
       // `price` is pinned here because the closing guard covers it too: a
       // digit typo (`69900 → 6990`) must fail one of the two, not slip through.
-      expect({ scope: row.scope, price: row.price_monthly }, key).toEqual({
+      // `visibility`/`billing_mode` stay at the column defaults: the matrix
+      // sells the public catalogue, and a contract plan is created at runtime.
+      expect(
+        {
+          scope: row.scope,
+          price: row.price_monthly,
+          visibility: row.visibility,
+          billingMode: row.billing_mode,
+        },
+        key,
+      ).toEqual({
         scope: expected.scope,
         price: expected.price,
+        visibility: 'public',
+        billingMode: 'stripe',
       });
     }
   });
