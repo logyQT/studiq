@@ -185,6 +185,8 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       const row = page.locator('tbody tr', { hasText: 'Classroom Student' });
       await expect(row.getByText(t('EduAssignmentResultsPage.submitted'))).toBeVisible();
       await expect(page.getByText(/Not started \(0\)|Nie rozpoczęli \(0\)/)).toBeVisible();
+      // The section is collapsed, so the sentence is in the page but hidden.
+      await expect(page.getByText(t('EduAssignmentResultsPage.everyone_started'))).toBeAttached();
 
       // The grading page reads the list when it opens (#1354). Wait for that read itself: the
       // navigation also renders from the cached list, so seeing it proves nothing. Only then

@@ -53,7 +53,9 @@ export default function ResultsClient() {
     attempts: Attempt[];
     fairness: Fairness;
     /** Optional on the wire: a missing list hides the section instead of breaking the page. */
-    notStarted?: NotStartedStudentRow[];
+    /** `null` for a run that expects nobody (draft, cancelled): the section is not shown. */
+    notStarted?: NotStartedStudentRow[] | null;
+    targeted_count?: number;
     run_closed?: boolean;
   }>({
     queryKey: assignmentKeys.results(id),
@@ -182,7 +184,11 @@ export default function ResultsClient() {
       </div>
 
       {results?.notStarted && (
-        <NotStartedStudents students={results.notStarted} closed={results.run_closed ?? false} />
+        <NotStartedStudents
+          students={results.notStarted}
+          targetedCount={results.targeted_count ?? 0}
+          closed={results.run_closed ?? false}
+        />
       )}
 
       {fairness && fairness.items.length > 0 && (

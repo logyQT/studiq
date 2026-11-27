@@ -3134,6 +3134,7 @@
     "not_started": "Not started ({count})",
     "did_not_take": "Did not take it ({count})",
     "everyone_started": "Every targeted student has started.",
+    "nobody_targeted": "This assignment has no targeted students at the moment.",
     "groups": "Groups",
     "fairness_title": "Fairness by item",
     "fairness_hint": "Counts only, never option-level. Cells with fewer than {min} respondents are hidden.",

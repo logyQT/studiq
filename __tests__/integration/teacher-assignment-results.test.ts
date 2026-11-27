@@ -62,6 +62,7 @@ interface ResultsPayload {
   attempts: ResultsRow[];
   notStarted: Array<{ userId: string; email: string | null; groupNames: string[] }>;
   run_closed: boolean;
+  targeted_count: number;
   auto_graded_item_ids: string[];
 }
 
@@ -328,6 +329,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     expect(payload.notStarted.map((student) => student.userId)).toEqual([absent.user.id]);
     expect(payload.notStarted[0]?.email).toBe(absent.user.email);
     expect(payload.run_closed).toBe(false);
+    expect(payload.targeted_count).toBe(3);
   });
 
   it('returns empty answer arrays for an attempt with no answers', async () => {

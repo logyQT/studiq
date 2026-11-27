@@ -115,21 +115,24 @@ export interface NotStartedStudent {
 
 export interface NotStarted {
   students: NotStartedStudent[];
+  /** All students the run targets now, started or not. */
+  targeted: number;
   /** The run is over, so these students did not take it. */
   closed: boolean;
 }
 
 /**
  * The targeted students who have no attempt at all (#1340), by name. A running or expired
- * attempt counts as started. A draft assignment has reached nobody yet, and a cancelled one
- * expects nobody, so both answer an empty list.
+ * attempt counts as started. A draft assignment has reached nobody yet, a cancelled one
+ * expects nobody, and one without an organisation has no member list to check: they answer
+ * `null`, no list at all, because an empty list means that nobody is missing.
  *
  * The caller proves that the reader owns the assignment.
  */
 export async function readNotStarted(
   assignmentId: string,
   startedUserIds: ReadonlySet<string>,
-): Promise<ServiceResult<NotStarted>> {
+): Promise<ServiceResult<NotStarted | null>> {
   const admin = createServiceClient();
   const { data: assignment, error } = await admin
     .from('teacher_assignments')
@@ -137,9 +140,8 @@ export async function readNotStarted(
     .eq('id', assignmentId)
     .maybeSingle();
   if (error) return toDbFailure(error);
-  const nobody = { students: [], closed: false };
-  if (!assignment?.organization_id || !assignment.created_by) return success(nobody);
-  if (assignment.status === 'draft' || assignment.status === 'cancelled') return success(nobody);
+  if (!assignment?.organization_id || !assignment.created_by) return success(null);
+  if (assignment.status === 'draft' || assignment.status === 'cancelled') return success(null);
   const closed = isAssessmentClosed(assignment);
 
   let targeted: Map<string, string[]>;
@@ -182,6 +184,7 @@ export async function readNotStarted(
 
   return success({
     closed,
+    targeted: targeted.size,
     students: students.toSorted((a, b) =>
       (a.fullName ?? a.email ?? '').localeCompare(b.fullName ?? b.email ?? '', 'pl'),
     ),

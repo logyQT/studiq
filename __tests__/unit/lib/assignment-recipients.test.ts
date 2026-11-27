@@ -84,7 +84,7 @@ const read = async (started: string[] = []) => {
   if (!result.success) throw new Error(result.error);
   return result.data;
 };
-const missing = async (started: string[] = []) => (await read(started)).students;
+const missing = async (started: string[] = []) => (await read(started))?.students;
 
 /** Whether a published run with these bounds is reported as over. */
 async function closedBy(bounds: { closed_at?: string; deadline?: string }) {
@@ -98,7 +98,7 @@ async function closedBy(bounds: { closed_at?: string; deadline?: string }) {
   client(rows);
   const result = await readNotStarted('a-1', new Set());
   if (!result.success) throw new Error(result.error);
-  return result.data.closed;
+  return result.data?.closed;
 }
 
 beforeEach(() => {
@@ -137,25 +137,37 @@ describe('readNotStarted (#1340)', () => {
   it('is empty once everyone targeted has an attempt, and reads no profile', async () => {
     const queried = client(classRows());
 
-    expect(await missing(['anna', 'both', 'direct'])).toEqual([]);
+    expect(await read(['anna', 'both', 'direct'])).toMatchObject({ students: [], targeted: 3 });
     expect(queried).not.toContain('profiles');
   });
 
-  it.each(['draft', 'cancelled'])('expects nobody for a %s assignment', async (status) => {
+  it('tells a run with no targeted student from one where everyone has started', async () => {
+    // The only member left is the teacher, who never counts.
+    client({
+      ...classRows(),
+      targets: [{ group_id: 'g-2', student_id: null }],
+      members: [{ user_id: 'teacher', group_id: 'g-2' }],
+    });
+
+    expect(await read()).toMatchObject({ students: [], targeted: 0 });
+  });
+
+  it.each(['draft', 'cancelled'])('has no list for a %s assignment', async (status) => {
     const rows = classRows();
     rows.assignment = { organization_id: 'org-1', created_by: 'teacher', status };
     const queried = client(rows);
 
-    expect(await missing()).toEqual([]);
+    // `null`, not an empty list: an empty one reads as „everyone has started”.
+    expect(await read()).toBeNull();
     expect(queried).toEqual(['teacher_assignments']);
   });
 
-  it('expects nobody without an organisation to check membership against', async () => {
+  it('has no list without an organisation to check membership against', async () => {
     const rows = classRows();
     rows.assignment = { organization_id: null, created_by: 'teacher', status: 'published' };
     const queried = client(rows);
 
-    expect(await missing()).toEqual([]);
+    expect(await read()).toBeNull();
     expect(queried).toEqual(['teacher_assignments']);
   });
 

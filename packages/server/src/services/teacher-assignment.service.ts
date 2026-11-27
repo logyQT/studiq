@@ -1396,8 +1396,9 @@ export class TeacherAssignmentService {
     if (isFailure(notStarted)) return notStarted;
 
     return success({
-      notStarted: notStarted.data.students,
-      run_closed: notStarted.data.closed,
+      notStarted: notStarted.data?.students ?? null,
+      targeted_count: notStarted.data?.targeted ?? 0,
+      run_closed: notStarted.data?.closed ?? false,
       attempts: dbRows(attempts).map((attempt) => {
         const answers = dbRows(attempt.quiz_answers);
         return {

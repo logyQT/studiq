@@ -12,21 +12,26 @@ export interface NotStartedStudentRow {
 /** The targeted students with no attempt, under the results table (#1340). */
 export function NotStartedStudents({
   students,
+  targetedCount,
   closed,
 }: {
   students: NotStartedStudentRow[];
+  /** All students the run targets, started or not. */
+  targetedCount: number;
   /** The run is over: these students did not take it. */
   closed: boolean;
 }) {
   const t = useTranslations('EduAssignmentResultsPage');
   const title = t(closed ? 'did_not_take' : 'not_started', { count: students.length });
 
-  // With nobody left the section stays, closed: it says that everyone has started.
+  // With nobody left the section stays, closed: it says why the list is empty.
   return (
     <details open={students.length > 0} className="rounded-lg border" aria-label={title}>
       <summary className="cursor-pointer p-3 text-lg font-semibold tracking-tight">{title}</summary>
       {students.length === 0 ? (
-        <p className="border-t p-3 text-sm text-muted-foreground">{t('everyone_started')}</p>
+        <p className="border-t p-3 text-sm text-muted-foreground">
+          {t(targetedCount > 0 ? 'everyone_started' : 'nobody_targeted')}
+        </p>
       ) : (
         <table className="w-full border-t text-sm">
           <thead>
