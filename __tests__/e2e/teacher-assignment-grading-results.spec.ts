@@ -169,6 +169,12 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await page.goto(`/edu/assignments/${assignmentId}/results`);
       await expect(page.getByText(/Not started \(1\)|Nie rozpoczęli \(1\)/)).toBeVisible();
 
+      // The teacher leaves the page inside the app, so the list stays in the query cache. The
+      // mark on `window` is lost on a full load: it proves that none happens until the check.
+      await page.evaluate(() => Reflect.set(window, 'e2eSameDocument', true));
+      await page.getByRole('link', { name: t('EduAssignmentResultsPage.back') }).click();
+      await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}$`, 'i'));
+
       // ── The student submits a text answer ───────────────────────────────
       const studentPage = await studentContext.newPage();
       await login(studentPage, STUDENT_EMAIL);
@@ -179,6 +185,14 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
         questionId,
         'E2E answer for #168',
       );
+
+      // Back again, still inside the app: the page must not show the list from before.
+      await page
+        .getByRole('link', { name: t('EduAssignmentDetailPage.view_results'), exact: true })
+        .click();
+      await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results$`, 'i'));
+      await expect(page.getByText(/Not started \(0\)|Nie rozpoczęli \(0\)/)).toBeVisible();
+      expect(await page.evaluate(() => Reflect.has(window, 'e2eSameDocument'))).toBe(true);
 
       // ── Grade through the UI, then navigate back in-app ─────────────────
       await page.goto(`/edu/assignments/${assignmentId}/results`);
