@@ -25,9 +25,7 @@ describe('student assignment page translations', () => {
   });
 
   it('keeps no English literal from the report in the markup', () => {
-    // JSX text only: a line of its own, or the content of one element.
-    expect(source).not.toMatch(/^\s*(Scheduled|Closed)\s*$/m);
-    expect(source).not.toMatch(/\/>\s*Opens\s*$/m);
-    expect(source).not.toMatch(/>\s*(Opens in\b|This assignment is closed)/);
+    // JSX text: whatever follows the end of a tag, on the same line or on the next one.
+    expect(source).not.toMatch(/>\s*(Scheduled|Closed|Opens|This assignment is closed)\b/);
   });
 });
