@@ -27,6 +27,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'personal',
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   pro: {
     key: 'pro',
@@ -36,6 +38,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'personal',
     sortOrder: 2,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   hub: {
     key: 'hub',
@@ -45,6 +49,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'organization',
     sortOrder: 3,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
 };
 

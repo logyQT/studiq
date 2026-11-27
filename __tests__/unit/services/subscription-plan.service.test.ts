@@ -77,6 +77,8 @@ function planRow(key: string, scope: string = 'personal') {
     currency: 'PLN',
     sort_order: 0,
     is_active: true,
+    visibility: 'public',
+    billing_mode: 'stripe',
     scope,
   };
 }
@@ -136,6 +138,8 @@ describe('SubscriptionPlanService', () => {
           currency: 'PLN',
           sort_order: 0,
           is_active: true,
+          visibility: 'public',
+          billing_mode: 'stripe',
         },
       ];
       const features = [{ plan_key: 'free', entitlement_key: 'quiz' }];
@@ -225,6 +229,21 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
       expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
+    });
+
+    it('asks only for publicly listed plans (B3)', async () => {
+      // An unlisted contract plan must never reach a public read, so the
+      // filter is part of the query, not a post-filter of the rows.
+      const plansQb = qb([]);
+      mock.from.mockReturnValueOnce(plansQb);
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(result.success).toBe(true);
+      expect(plansQb.eq).toHaveBeenCalledWith('visibility', 'public');
     });
 
     it('returns error on plans query failure', async () => {
@@ -586,6 +605,8 @@ describe('SubscriptionPlanService', () => {
         currency: 'PLN',
         sort_order: 0,
         is_active: true,
+        visibility: 'public',
+        billing_mode: 'stripe',
       };
       mock.from.mockReturnValueOnce(qb(profile));
       mock.from.mockReturnValueOnce(qb(plan));
@@ -611,6 +632,8 @@ describe('SubscriptionPlanService', () => {
         currency: 'PLN',
         sort_order: 9,
         is_active: true,
+        visibility: 'public',
+        billing_mode: 'stripe',
         scope: 'organization',
       };
       mock.from
@@ -638,6 +661,8 @@ describe('SubscriptionPlanService', () => {
         currency: 'PLN',
         sort_order: 13,
         is_active: true,
+        visibility: 'public',
+        billing_mode: 'stripe',
         scope: 'personal',
       };
       mock.from
@@ -676,6 +701,27 @@ describe('SubscriptionPlanService', () => {
       expect(plansQb.order).toHaveBeenCalledWith('sort_order', { ascending: true });
       expect(expectSuccess(result).map((plan) => plan.key)).toEqual(['free']);
     });
+
+    it('derives selfServe from visibility and billing mode (B3)', async () => {
+      // The admin read returns unlisted plans too, so it is the one place the
+      // derived boolean can be observed for every combination.
+      mock.from
+        .mockReturnValueOnce(
+          qb([
+            planRow('free'),
+            { ...planRow('legacy'), billing_mode: 'invoice' },
+            { ...planRow('contract'), visibility: 'unlisted' },
+          ]),
+        )
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getAllAdmin();
+
+      expect(expectSuccess(result).map((plan) => plan.selfServe)).toEqual([true, false, false]);
+      expect(expectSuccess(result)[2]?.visibility).toBe('unlisted');
+      expect(expectSuccess(result)[1]?.billingMode).toBe('invoice');
+    });
   });
 
   describe('getByKey', () => {
@@ -689,6 +735,8 @@ describe('SubscriptionPlanService', () => {
         currency: 'PLN',
         sort_order: 0,
         is_active: true,
+        visibility: 'public',
+        billing_mode: 'stripe',
       };
       const plansQb = qb(plan);
       mock.from.mockReturnValueOnce(plansQb);
@@ -741,6 +789,19 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
     });
+
+    it('answers NOT_FOUND for an unlisted plan (B3)', async () => {
+      // The public `[key]` route and the checkout form both read this method,
+      // so an unlisted contract plan must be indistinguishable from a missing
+      // one. Only the catalog lookup runs: the plan is never composed.
+      mock.from.mockReturnValueOnce(qb({ ...planRow('contract'), visibility: 'unlisted' }));
+
+      const result = await service.getByKey('contract');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getById', () => {
@@ -763,6 +824,122 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('listAssignments', () => {
+    it('names each assigned organization and falls back to its id', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { organization_id: 'org-1', organizations: { name: 'Acme' } },
+          { organization_id: 'org-2', organizations: null },
+        ]),
+      );
+
+      const result = await service.listAssignments('contract');
+
+      expect(expectSuccess(result)).toEqual([
+        { organizationId: 'org-1', name: 'Acme' },
+        { organizationId: 'org-2', name: 'org-2' },
+      ]);
+    });
+
+    it('returns a database failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.listAssignments('contract');
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('assignOrganization', () => {
+    it('pins the plan and returns the organization name', async () => {
+      const insertQb = qb(undefined);
+      const orgQb = qb({ name: 'Acme' });
+      mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(orgQb);
+
+      const result = await service.assignOrganization('contract', 'org-1');
+
+      expect(insertQb.insert).toHaveBeenCalledWith({
+        plan_key: 'contract',
+        organization_id: 'org-1',
+      });
+      expect(expectSuccess(result)).toEqual({ organizationId: 'org-1', name: 'Acme' });
+    });
+
+    it('maps a duplicate pair to CONFLICT', async () => {
+      mock.from.mockReturnValueOnce(qb(undefined, { code: '23505', message: 'duplicate' }));
+
+      const result = await service.assignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+    });
+
+    it('maps a missing plan or organization to NOT_FOUND', async () => {
+      mock.from.mockReturnValueOnce(qb(undefined, { code: '23503', message: 'foreign key' }));
+
+      const result = await service.assignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('unassignOrganization', () => {
+    it('refuses to unpin the organization that is on the plan', async () => {
+      mock.from.mockReturnValueOnce(qb({ plan: 'contract' }));
+
+      const result = await service.unassignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+      // The delete never runs: the check is the guard, not the report.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes the pin when the organization is on another plan', async () => {
+      const deleteQb = qb([{ plan_key: 'contract' }]);
+      mock.from.mockReturnValueOnce(qb({ plan: 'launch' })).mockReturnValueOnce(deleteQb);
+
+      const result = await service.unassignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(true);
+      expect(deleteQb.delete).toHaveBeenCalled();
+      expect(deleteQb.eq).toHaveBeenCalledWith('plan_key', 'contract');
+      expect(deleteQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('returns NOT_FOUND when the organization does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.unassignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns NOT_FOUND when the pin does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb({ plan: 'launch' })).mockReturnValueOnce(qb([]));
+
+      const result = await service.unassignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('maps the trigger refusal to CONFLICT', async () => {
+      // The service check can pass while a concurrent plan change makes the
+      // trigger refuse the delete; that must read as the same conflict.
+      mock.from
+        .mockReturnValueOnce(qb({ plan: 'launch' }))
+        .mockReturnValueOnce(qb(null, { code: '23503', message: 'still the plan' }));
+
+      const result = await service.unassignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
     });
   });
 
@@ -796,6 +973,23 @@ describe('SubscriptionPlanService', () => {
 
       expect(b2.insert).toHaveBeenCalledWith(expect.objectContaining({ scope: 'personal' }));
     });
+
+    it('writes visibility and billing mode from the input (B3)', async () => {
+      const b = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b);
+
+      await service.create({
+        key: 'contract',
+        name: 'Contract',
+        scope: 'organization',
+        visibility: 'unlisted',
+        billingMode: 'invoice',
+      });
+
+      expect(b.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: 'unlisted', billing_mode: 'invoice' }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -827,6 +1021,26 @@ describe('SubscriptionPlanService', () => {
       await service.update('p-1', { scope: 'organization' });
 
       expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ scope: 'organization' }));
+    });
+
+    it('only writes visibility and billing mode when explicitly provided (B3)', async () => {
+      const b = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b);
+
+      await service.update('p-1', { name: 'Updated' });
+
+      expect(b.update).toHaveBeenCalledWith(
+        expect.not.objectContaining({ visibility: expect.anything() as unknown }) as unknown,
+      );
+
+      const b2 = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b2);
+
+      await service.update('p-1', { visibility: 'unlisted', billingMode: 'none' });
+
+      expect(b2.update).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: 'unlisted', billing_mode: 'none' }),
+      );
     });
   });
 
