@@ -104,6 +104,7 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 | EDU-DECK-04 | P2 ważny       | Fiszki w talii nauczyciela – CRUD                                    | EDU-DECK-02 | EDU – Panel nauczyciela (/edu)                    |
 | EDU-DECK-05 | P2 ważny       | Przycisk „Twórz z Agentem” (AI)                                      | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-DECK-06 | P2 ważny       | Statystyki fiszek (/edu/flashcards/stats)                            | —           | EDU – Panel nauczyciela (/edu)                    |
+| EDU-DECK-07 | P1 krytyczny   | Udostępnienie talii grupie daje tylko odczyt                         | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-TOP-01  | P2 ważny       | Tematy nauczyciela – CRUD i widoczność                               | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-Q-01    | P2 ważny       | Utworzenie banku dla grupy                                           | —           | EDU – Panel nauczyciela (/edu)                    |
 | EDU-Q-02    | P1 krytyczny   | Pytanie wielokrotnego wyboru                                         | —           | EDU – Panel nauczyciela (/edu)                    |

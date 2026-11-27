@@ -110,7 +110,9 @@ export function DeckDetailDialogs({
 }: DeckDetailDialogsProps) {
   const permission = usePermission();
 
-  const ownedDecks = allDecks.filter((d) => permission('deck.update', { createdBy: d.created_by }));
+  const ownedDecks = allDecks.filter((d) =>
+    permission('deck.update', { createdBy: d.created_by, orgId: d.organization_id }),
+  );
 
   const activeFlashcard = flashcards.find((fc) => fc.id === state.activeFlashcardId);
 

@@ -82,6 +82,7 @@ classification, not the scoreboard — what has actually shipped is tracked in `
 | EDU-DECK-04 | EDU  | P2   | e2e    |                                                                      |
 | EDU-DECK-05 | EDU  | P2   | e2e    |                                                                      |
 | EDU-DECK-06 | EDU  | P2   | e2e    |                                                                      |
+| EDU-DECK-07 | EDU  | P1   | e2e    | grupa = odczyt; zapis 403; brak edycji w edytorze ról (#961)         |
 | EDU-GRP-01  | EDU  | P2   | e2e    |                                                                      |
 | EDU-GRP-02  | EDU  | P2   | e2e    |                                                                      |
 | EDU-GRP-03  | EDU  | P2   | e2e    |                                                                      |
