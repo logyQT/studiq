@@ -94,6 +94,32 @@ describe('plan_assignments (B3)', () => {
     expect(await orgPlan(orgA)).toBe('launch');
   });
 
+  it('refuses a personal plan for an organization through both writers', async () => {
+    // `organizations.plan` is the organization ceiling, so a personal plan
+    // there would grant personal entitlements to the organization.
+    const moved = await service.rpc('change_org_plan', { p_org_id: orgB, p_plan: 'plus' });
+    expect(moved.error?.code).toBe('22023');
+    expect(moved.error?.message).toContain('plus');
+    expect(moved.error?.message).toContain('personal');
+    expect(await orgPlan(orgB)).toBe('launch');
+
+    const assigned = await service.rpc('assign_plan_to_org', {
+      p_plan_key: 'plus',
+      p_org_id: orgB,
+    });
+    expect(assigned.error?.code).toBe('22023');
+    expect(assigned.error?.message).toContain('personal');
+    // The refusal runs before the pin: nothing was linked and nothing moved.
+    expect(await orgPlan(orgB)).toBe('launch');
+    const { data: pins, error: pinError } = await service
+      .from('plan_assignments')
+      .select('plan_key')
+      .eq('plan_key', 'plus')
+      .eq('organization_id', orgB);
+    expect(pinError).toBeNull();
+    expect(pins).toHaveLength(0);
+  });
+
   it('is refused to anon and to a signed-in caller, and accepted with the service role', async () => {
     const anon = createClient(url, anonKey, {
       auth: { persistSession: false, autoRefreshToken: false },

@@ -892,6 +892,20 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('CONFLICT');
     });
+
+    it('maps a plan whose scope is not organization to BAD_REQUEST', async () => {
+      // A personal plan would grant personal entitlements to an organization;
+      // the database refuses it with 22023 before it pins anything.
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: '22023', message: 'plan plus has scope personal' },
+      });
+
+      const result = await service.assignOrganization('plus', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
+    });
   });
 
   describe('setOrganizationPlan', () => {
@@ -938,6 +952,18 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('maps a plan whose scope is not organization to BAD_REQUEST', async () => {
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: '22023', message: 'plan plus has scope personal' },
+      });
+
+      const result = await service.setOrganizationPlan('org-1', 'plus');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
   });
 
