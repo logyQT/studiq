@@ -60,6 +60,9 @@ export default function ResultsClient() {
   }>({
     queryKey: assignmentKeys.results(id),
     url: `/api/v1/teacher/assignments/${id}/results`,
+    // Students start and submit while the teacher is elsewhere, and nothing here invalidates
+    // the list for that. So every visit, and a return to the window, reads it again (#1340).
+    staleTime: 0,
   });
 
   // Same query key as the detail page, so in-app navigation is a cache hit.
