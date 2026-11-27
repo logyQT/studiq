@@ -43,6 +43,7 @@ export function PlanCard({
     isCurrent: isCurrentPlan,
     isFree: !paid,
     hasActivePlan,
+    isSelfServe: plan.selfServe,
   });
 
   return (

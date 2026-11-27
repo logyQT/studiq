@@ -16,12 +16,17 @@ export type PlanAction = 'none' | 'register' | 'current' | 'checkout' | 'change-
  * failed. A failed read must not claim the reader has no subscription, so the
  * row prints no action until the answer is known (the prices stay).
  *
- * The predicate order is `register → purchaseBlocked → current → null →
- * hasActivePlan → isFree → checkout`. A subscriber's free row is a downgrade,
- * not a second checkout, so `hasActivePlan` sits above `isFree`; a reader with
- * no subscription keeps `none` on a free row, because a checkout there would buy
- * nothing. `purchaseBlocked` is a manager on the individual ladder: they hold no
- * personal plan and the checkout refuses one (ADR-0007).
+ * `isSelfServe` is the plan's own answer (B3): a plan that is not publicly
+ * listable, or whose billing mode is not self-serve, has no checkout, no
+ * register and no change-plan path. It is absent for a caller that has no plan,
+ * which keeps every existing surface unchanged.
+ *
+ * The predicate order is `isSelfServe → register → purchaseBlocked → current →
+ * null → hasActivePlan → isFree → checkout`. A subscriber's free row is a
+ * downgrade, not a second checkout, so `hasActivePlan` sits above `isFree`; a
+ * reader with no subscription keeps `none` on a free row, because a checkout
+ * there would buy nothing. `purchaseBlocked` is a manager on the individual
+ * ladder: they hold no personal plan and the checkout refuses one (ADR-0007).
  */
 export function pricingPlanAction(input: {
   signedIn: boolean;
@@ -29,7 +34,10 @@ export function pricingPlanAction(input: {
   isFree: boolean;
   hasActivePlan: boolean | null;
   purchaseBlocked?: boolean;
+  /** The plan is public and its billing mode allows checkout (B3). */
+  isSelfServe?: boolean;
 }): PlanAction {
+  if (input.isSelfServe === false) return 'none';
   if (!input.signedIn) return 'register';
   if (input.purchaseBlocked) return 'none';
   if (input.isCurrent) return 'current';

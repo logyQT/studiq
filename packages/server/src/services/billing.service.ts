@@ -10,6 +10,7 @@ import { billingPath, personalBillingPath } from '@studiq/server/lib/payment/bil
 import { isCheckoutDisabled } from '@studiq/server/lib/payment/checkout-switch';
 import {
   resolveCheckoutOwner,
+  resolvePlanAssignment,
   resolvePurchasablePlan,
 } from '@studiq/server/lib/payment/checkout-rules';
 import {
@@ -206,6 +207,11 @@ export class BillingService {
     );
     if (isFailure(ownerResult)) return ownerResult;
     const owner = ownerResult.data;
+
+    // An unlisted contract plan (B3) is refused for every organization except
+    // the one it is pinned to; the owner is the only input that answers it.
+    const assignment = await resolvePlanAssignment(this.repository, plan, owner);
+    if (isFailure(assignment)) return assignment;
 
     let priceId: string | undefined;
     if (this.gateway.driver === 'stripe') {
@@ -519,6 +525,11 @@ export class BillingService {
     // attached to a personal owner (and vice versa), even if a caller guesses
     // the key.
     if (targetResult.data.isOrgPlan !== (owner.type === 'org')) return failure('FORBIDDEN');
+
+    // The same assignment rule as checkout: an unlisted contract plan is
+    // changeable only by its pinned organization (B3).
+    const assignment = await resolvePlanAssignment(this.repository, target, owner);
+    if (isFailure(assignment)) return assignment;
 
     const activeResult = await this.repository.findActiveSubscription(owner, this.gateway.livemode);
     if (isFailure(activeResult)) return activeResult;

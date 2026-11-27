@@ -1,4 +1,8 @@
 import { AccountType } from '@studiq/authz';
+import {
+  billingModeAllowsSelfServe,
+  isPubliclyListable,
+} from '@studiq/server/lib/payment/plan-availability';
 import type { PaymentOwner } from '@studiq/server/lib/payment/payment-gateway';
 import type { CatalogPlan } from '@studiq/server/lib/payment/stripe-repository';
 import { failure, isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
@@ -21,6 +25,8 @@ export interface CheckoutRulePort {
    * path, which has no ctx.
    */
   canManageBilling(orgId: string, userId: string): Promise<ServiceResult<boolean>>;
+  /** Whether the plan is pinned to the organization through `plan_assignments`. */
+  planIsAssignedToOrg(planKey: string, orgId: string): Promise<ServiceResult<boolean>>;
 }
 
 export interface ResolvedPlan {
@@ -40,13 +46,14 @@ export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): bool
 }
 
 /**
- * A plan may be *applied* when it exists and is active. A personal plan is
- * applicable to a content subscriber; a manager is an organization buyer and
- * holds no personal plan (ADR-0007), so a personal plan is refused for them.
- * An organization plan is applicable too, and the owner rule below decides who
- * may buy it. Free plans are included: they are reached by a lifecycle change
- * (the mock's completion command, Stripe's `customer.subscription.deleted`),
- * not by a purchase.
+ * A plan may be *applied* when it exists, is active and its billing mode allows
+ * self-serve checkout (B3: `invoice` and `none` are sales-led, never bought
+ * through checkout). A personal plan is applicable to a content subscriber; a
+ * manager is an organization buyer and holds no personal plan (ADR-0007), so a
+ * personal plan is refused for them. An organization plan is applicable too,
+ * and the owner rule below decides who may buy it. Free plans are included:
+ * they are reached by a lifecycle change (the mock's completion command,
+ * Stripe's `customer.subscription.deleted`), not by a purchase.
  */
 export async function resolveApplicablePlan(
   port: Pick<CheckoutRulePort, 'getPlan'>,
@@ -58,6 +65,7 @@ export async function resolveApplicablePlan(
 
   const plan = result.data;
   if (!plan?.isActive) return failure('BAD_REQUEST');
+  if (!billingModeAllowsSelfServe(plan.billingMode)) return failure('BAD_REQUEST');
 
   const isOrgPlan = isOrganizationPlanFamily(plan);
   if (!isOrgPlan && caller.accountType === AccountType.MANAGER) return failure('FORBIDDEN');
@@ -116,4 +124,28 @@ export async function resolveCheckoutOwner(
     userId: caller.userId,
     accountType: caller.accountType,
   });
+}
+
+/**
+ * An unlisted plan (B3) is bought or changed only by the organization it is
+ * pinned to. The owner must already be resolved, because the answer depends on
+ * it: the same plan key is refused for every other organization.
+ *
+ * `FORBIDDEN` matches the owner rule above: this is "not yours", not a syntax
+ * error, and it does not confirm that the plan exists to a caller who does not
+ * own it.
+ */
+export async function resolvePlanAssignment(
+  port: Pick<CheckoutRulePort, 'planIsAssignedToOrg'>,
+  plan: CatalogPlan,
+  owner: PaymentOwner,
+): Promise<ServiceResult<null>> {
+  if (isPubliclyListable(plan)) return success(null);
+  if (owner.type !== 'org') return failure('FORBIDDEN');
+
+  const assigned = await port.planIsAssignedToOrg(plan.key, owner.orgId);
+  if (isFailure(assigned)) return assigned;
+  if (!assigned.data) return failure('FORBIDDEN');
+
+  return success(null);
 }

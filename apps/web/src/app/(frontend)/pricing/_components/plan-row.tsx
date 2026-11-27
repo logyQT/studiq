@@ -54,6 +54,7 @@ export function PlanRow({
     isFree,
     hasActivePlan,
     purchaseBlocked,
+    isSelfServe: plan.selfServe,
   });
 
   return (

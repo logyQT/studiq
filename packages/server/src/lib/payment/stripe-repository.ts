@@ -22,6 +22,10 @@ export interface CatalogPlan {
   isActive: boolean;
   scope: string;
   sortOrder: number;
+  /** `public` or `unlisted` (B3); the CHECK constraint is the type boundary. */
+  visibility: string;
+  /** `stripe`, `invoice` or `none` (B3); only `stripe` is self-serve. */
+  billingMode: string;
 }
 
 export interface CustomerMapping {
@@ -83,6 +87,11 @@ export function validateListedPrice(
 
 export interface StripeBillingRepository {
   getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>>;
+  /**
+   * Whether the plan is pinned to the organization through `plan_assignments`
+   * (B3). An unlisted plan is refused for every other organization.
+   */
+  planIsAssignedToOrg(planKey: string, orgId: string): Promise<ServiceResult<boolean>>;
   /**
    * `org.billing.manage` in `orgId` for `userId`, read through the
    * `has_permission` definer RPC on the admin client — a permission check,
@@ -149,7 +158,15 @@ function mapPrice(row: {
 
 type CatalogPlanRow = Pick<
   Database['public']['Tables']['subscription_plans']['Row'],
-  'key' | 'name' | 'price_monthly' | 'currency' | 'is_active' | 'scope' | 'sort_order'
+  | 'key'
+  | 'name'
+  | 'price_monthly'
+  | 'currency'
+  | 'is_active'
+  | 'scope'
+  | 'sort_order'
+  | 'visibility'
+  | 'billing_mode'
 >;
 
 function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
@@ -161,6 +178,8 @@ function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
     isActive: row.is_active ?? true,
     scope: row.scope,
     sortOrder: row.sort_order ?? 0,
+    visibility: row.visibility,
+    billingMode: row.billing_mode,
   };
 }
 
@@ -175,7 +194,9 @@ export async function readCatalogPlan(
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('subscription_plans')
-    .select('key, name, price_monthly, currency, is_active, scope, sort_order')
+    .select(
+      'key, name, price_monthly, currency, is_active, scope, sort_order, visibility, billing_mode',
+    )
     .eq('key', planKey)
     .maybeSingle();
 
@@ -192,6 +213,19 @@ export class SupabaseStripeBillingRepository implements StripeBillingRepository 
 
   async getPlan(planKey: string): Promise<ServiceResult<CatalogPlan | null>> {
     return readCatalogPlan(this.createAdminClient, planKey);
+  }
+
+  async planIsAssignedToOrg(planKey: string, orgId: string): Promise<ServiceResult<boolean>> {
+    const supabase = this.createAdminClient();
+    const { data, error } = await supabase
+      .from('plan_assignments')
+      .select('plan_key')
+      .eq('plan_key', planKey)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    return success(data !== null);
   }
 
   async canManageBilling(orgId: string, userId: string): Promise<ServiceResult<boolean>> {
