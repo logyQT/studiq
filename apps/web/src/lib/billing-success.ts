@@ -31,6 +31,12 @@ export interface PollBillingActivationDeps {
   expectedPlanKey: string | null;
   sleep: (ms: number) => Promise<void>;
   isCancelled: () => boolean;
+  /**
+   * Drops the cached authority answers once the wait ends. The page can fetch
+   * them before the purchase is applied, and leaving it is a client-side
+   * navigation that keeps the cache (#799).
+   */
+  invalidateAuthority: () => void;
 }
 
 export type PollBillingActivationResult =
@@ -64,6 +70,7 @@ export async function pollBillingActivation(
       const planMatches =
         deps.expectedPlanKey === null || view.entitlementAppliedPlanKey === deps.expectedPlanKey;
       if (!deps.isCancelled() && planMatches && isActivatedSubscription(view)) {
+        deps.invalidateAuthority();
         return { state: 'activated', subscription: view };
       }
     } catch {
@@ -75,5 +82,9 @@ export async function pollBillingActivation(
     }
   }
 
-  return deps.isCancelled() ? { state: 'cancelled' } : { state: 'timeout' };
+  if (deps.isCancelled()) return { state: 'cancelled' };
+
+  // The webhook may have applied the purchase after the last read.
+  deps.invalidateAuthority();
+  return { state: 'timeout' };
 }
