@@ -68,7 +68,8 @@ tenant and never the legacy accounts.
   `explanation` and `question_answers: []`.
 - During the quiz (`/app/assignments/<id>/take?attemptId=…`) the same question renders as
   the free-text field „Wpisz swoją odpowiedź…” (plus the optional „Prześlij zdjęcie”)
-  instead of answer options; „Wyślij” completes the attempt and the detail page shows
+  instead of answer options; „Wyślij” and then „Wyślij odpowiedzi” in the confirmation
+  complete the attempt and the detail page shows
   „Ukończono”.
 - `/edu/assignments/<id>/results/<attemptId>` („Oceń ucznia”) shows the question, the raw
   type badge `open`, the model answer as „Wyjaśnienie: …”, the student's text as

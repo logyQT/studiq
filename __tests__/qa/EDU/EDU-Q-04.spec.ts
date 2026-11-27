@@ -71,6 +71,7 @@ const COPY = {
   openBadge: 'Otwarte',
   startQuiz: 'Rozpocznij kartkówkę',
   submitQuiz: 'Wyślij',
+  confirmSubmit: 'Wyślij odpowiedzi',
   completed: 'Ukończono',
   gradingTitle: 'Oceń ucznia',
   saveGrade: 'Zapisz ocenę',
@@ -340,6 +341,10 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
 
       await answerBox.fill(STUDENT_ANSWER);
       await studentPage.getByRole('button', { name: COPY.submitQuiz }).click();
+      await studentPage
+        .getByRole('alertdialog')
+        .getByRole('button', { name: COPY.confirmSubmit, exact: true })
+        .click();
 
       await expect(studentPage).toHaveURL(new RegExp(`/app/assignments/${assignmentId}$`));
       await expect(
