@@ -68,6 +68,9 @@ export class FlashcardService {
       deckVisibility = deck.data.visibility;
     }
 
+    const refused = await this.assertTopicsLinkable(supabase, data.topicIds ?? [], ctx);
+    if (refused) return refused;
+
     const { data: flashcard, error } = await supabase
       .from('flashcards')
       .insert({
@@ -117,6 +120,9 @@ export class FlashcardService {
       if (!deck) return failure('NOT_FOUND');
       await check(ctx, Permission.DECK_UPDATE, deck);
     }
+
+    const refused = await this.assertTopicsLinkable(supabase, data.topicIds ?? [], ctx);
+    if (refused) return refused;
 
     const visibility = bulkDeckVisibilities.includes('group') ? 'group' : 'personal';
 
@@ -229,6 +235,9 @@ export class FlashcardService {
 
     const denied = await this.assertCardWritable(supabase, id, ctx, Permission.FLASHCARD_UPDATE);
     if (denied) return denied;
+
+    const refused = await this.assertTopicsLinkable(supabase, data.topicIds ?? [], ctx, [id]);
+    if (refused) return refused;
 
     const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
     if (data.front) updateFields.front = data.front;
@@ -366,6 +375,12 @@ export class FlashcardService {
 
     const loaded = await this.loadBatchFor(supabase, data.ids, ctx, Permission.FLASHCARD_UPDATE);
     if (isFailure(loaded)) return loaded;
+
+    // Before any write: `set` deletes the old links first. `remove` links nothing.
+    if (op !== 'remove') {
+      const refused = await this.assertTopicsLinkable(supabase, topicIds, ctx, data.ids);
+      if (refused) return refused;
+    }
 
     if (op === 'add' && topicIds.length > 0) {
       const existing = await supabase
@@ -548,6 +563,51 @@ export class FlashcardService {
       await check(ctx, permission, card);
     }
     return success(cards);
+  }
+
+  /**
+   * Guards new topic links: the caller may link only a topic they can read. The
+   * RLS policy on the link table does not do this, because it accepts a visible
+   * card **or** a visible topic. A topic that every card in `cardIds` already
+   * carries passes, so an editor can save a card without being able to read the
+   * topics it came with. A missing and an unreadable id are both `NOT_FOUND`.
+   */
+  private async assertTopicsLinkable(
+    supabase: SupabaseClient<Database>,
+    topicIds: string[],
+    ctx: RequestContext,
+    cardIds: string[] = [],
+  ): Promise<ServiceResult<never> | null> {
+    const requested = [...new Set(topicIds)];
+    if (requested.length === 0) return null;
+
+    const readable = new Set<string>();
+    const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
+    if (!isImpossibleFilter(filter)) {
+      const { data, error } = await applyAccessFilter(
+        supabase.from('topics').select('id').in('id', requested),
+        filter,
+      );
+      if (error) return toDbFailure(error);
+      for (const topic of dbRows(data)) readable.add(topic.id);
+    }
+
+    const unreadable = requested.filter((id) => !readable.has(id));
+    if (unreadable.length === 0) return null;
+    if (cardIds.length === 0) return failure('NOT_FOUND');
+
+    const { data: links, error } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('flashcard_id, topic_id')
+      .in('flashcard_id', cardIds)
+      .in('topic_id', unreadable);
+    if (error) return toDbFailure(error);
+
+    const linked = new Set(dbRows(links).map((l) => `${l.flashcard_id}:${l.topic_id}`));
+    const carriedByAll = unreadable.every((topicId) =>
+      cardIds.every((cardId) => linked.has(`${cardId}:${topicId}`)),
+    );
+    return carriedByAll ? null : failure('NOT_FOUND');
   }
 
   /**

@@ -31,6 +31,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 interface FlashcardItem {
   id: string;
   front: string;
+  flashcard_topic_assignments?: Array<{ topic_id: string }> | null;
 }
 
 /** Any flashcards response: failure paths only read `success`. */
@@ -74,11 +75,35 @@ function batchDeleteRequest(ids: string[]) {
   );
 }
 
+/** Batch create into `deckId`, linking every new card to `topicIds`. */
+function createWithTopics(front: string, deckId: string, topicIds: string[]) {
+  const { request, params } = createNextRequestWithParams(
+    'http://localhost/api/v1/flashcards/batch/create',
+    { action: 'create' },
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cards: [{ front, back: 'A' }], deckId, topicIds }),
+    },
+  );
+  return batchAction(request, { params });
+}
+
+async function listCards(front: string) {
+  const request = createNextRequest(
+    `http://localhost/api/v1/flashcards?q=${encodeURIComponent(front)}`,
+  );
+  const body = await json<ListBody>(await GET(request));
+  return body.data.items;
+}
+
 describe(`Flashcards Integration`, () => {
   let teacher!: BeforeResult;
   let student!: TestUserFixture;
   let other!: TestUserFixture;
+  let stranger!: BeforeResult;
   let topicId!: string;
+  let foreignTopicId!: string;
   let deckId!: string;
 
   beforeAll(async () => {
@@ -86,6 +111,9 @@ describe(`Flashcards Integration`, () => {
     teacher = await before({ role: 'educator', topics: 1, decks: 1, flashcards: 6 });
     topicId = requiredAt(teacher.created.topics, 0, 'seeded topic');
     deckId = requiredAt(teacher.created.decks, 0, 'seeded deck');
+    // Another educator's unshared topic: the teacher cannot read it (#1515).
+    stranger = await before({ role: 'educator', topics: 1 });
+    foreignTopicId = requiredAt(stranger.created.topics, 0, 'foreign topic');
     // Student visibility check + manager for 403 checks.
     student = await createTestUser({ role: 'student' });
     other = await createTestUser({ role: 'manager' });
@@ -104,6 +132,7 @@ describe(`Flashcards Integration`, () => {
   });
 
   afterAll(async () => {
+    await cleanupFlashcardTopics(stranger.user.id);
     for (const user of [teacher.user, student, other]) {
       await cleanupFlashcards(user.id);
       await cleanupFlashcardTopics(user.id);
@@ -368,6 +397,31 @@ describe(`Flashcards Integration`, () => {
     const body = await json<CreateBatchBody>(response);
     return body.data.map((fc) => fc.id);
   }
+
+  describe('topic access on batch create (#1515)', () => {
+    it('refuses a topic the caller cannot use and writes no card', async () => {
+      mockUser(teacher.user);
+      const front = `fc-${suiteId}-foreign-topic`;
+
+      const response = await createWithTopics(front, deckId, [topicId, foreignTopicId]);
+
+      expect(response.status).toBe(404);
+      expect(await listCards(front)).toEqual([]);
+    });
+
+    it('accepts a topic the caller can use', async () => {
+      mockUser(teacher.user);
+      const front = `fc-${suiteId}-own-topic`;
+
+      const response = await createWithTopics(front, deckId, [topicId]);
+
+      expect(response.ok).toBe(true);
+      const cards = await listCards(front);
+      expect(cards.map((card) => card.flashcard_topic_assignments)).toEqual([
+        [{ topic_id: topicId }],
+      ]);
+    });
+  });
 
   describe('POST /api/v1/flashcards/batch/delete', () => {
     it('deletes own cards and returns 200', async () => {
