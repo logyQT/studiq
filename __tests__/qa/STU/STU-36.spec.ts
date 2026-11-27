@@ -63,7 +63,6 @@ const COPY = {
   completedCard: 'Ukończono',
   score: 'Wynik: 1/1',
   submit: 'Wyślij',
-  confirmSubmit: 'Wyślij odpowiedzi',
   confirmSubmitAnyway: 'Wyślij mimo to',
   confirmBack: 'Wróć',
   review: 'Zobacz podsumowanie',
@@ -290,10 +289,15 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
 
     await page.getByRole('button', { name: COPY.submit, exact: true }).click();
     await expect(dialog.getByRole('button', { name: /^Pytanie \d$/ })).toHaveCount(0);
-    await page
-      .getByRole('alertdialog')
-      .getByRole('button', { name: COPY.confirmSubmit, exact: true })
-      .click();
+
+    // The time limit asks nothing: it submits while the confirmation is still open (#1353). The
+    // take page reads the deadline from its URL, so moving it there runs the timer out without
+    // a reload, which would drop the selected answer. The server's close does not move.
+    await page.evaluate(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('deadline', new Date().toISOString());
+      window.history.replaceState(null, '', url);
+    });
     await page.waitForURL(new RegExp(`/app/assignments/${assignment.id}$`));
 
     // The attempt is completed and the result card replaces the start action.
