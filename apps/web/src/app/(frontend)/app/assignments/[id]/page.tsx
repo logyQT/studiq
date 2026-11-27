@@ -130,12 +130,12 @@ export default function StudentAssignmentDetailPage() {
         </div>
         {isScheduled && (
           <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-0.5 rounded-full">
-            Scheduled
+            {t('scheduled_badge')}
           </span>
         )}
         {isPastDeadline && (
           <span className="text-xs bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 px-2 py-0.5 rounded-full">
-            Closed
+            {t('closed_badge')}
           </span>
         )}
       </div>
@@ -179,7 +179,7 @@ export default function StudentAssignmentDetailPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Opens
+                <Clock className="w-3 h-3" /> {t('opens')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -205,7 +205,7 @@ export default function StudentAssignmentDetailPage() {
         <Card className="border-purple-200 dark:border-purple-800">
           <CardContent className="pt-6 text-center">
             <Lock className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Opens in {countdown}</p>
+            <p className="text-sm text-muted-foreground">{t('opens_in', { countdown })}</p>
           </CardContent>
         </Card>
       )}
@@ -213,7 +213,7 @@ export default function StudentAssignmentDetailPage() {
       {isPastDeadline && !running && (
         <Card className="border-gray-200 dark:border-gray-800 opacity-60">
           <CardContent className="pt-6 text-center">
-            <p className="text-sm text-muted-foreground">This assignment is closed.</p>
+            <p className="text-sm text-muted-foreground">{t('closed_message')}</p>
           </CardContent>
         </Card>
       )}

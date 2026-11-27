@@ -3235,6 +3235,11 @@
     "closed_on": "Closed: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Scheduled",
+    "closed_badge": "Closed",
+    "opens": "Opens",
+    "opens_in": "Opens in {countdown}",
+    "closed_message": "This assignment is closed.",
     "not_found": "Assignment not found",
     "back": "Back",
     "questions": "Questions",
