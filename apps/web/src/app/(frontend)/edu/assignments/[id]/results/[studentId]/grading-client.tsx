@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { GradingNavigation } from '@/components/assignments/grading-navigation';
 import { useApiQuery } from '@/hooks/use-api';
 import { useAssignmentBreadcrumb } from '@/hooks/use-assignment-breadcrumb';
 import { useGradeAnswerMutation } from '@/hooks/use-grade-mutation';
@@ -59,7 +60,16 @@ interface StudentAnswers {
   }>;
 }
 
+/**
+ * One sheet per attempt. The drafts are keyed by question, and every attempt shares the
+ * questions, so a move to another attempt must start with empty state (#1354).
+ */
 export default function StudentGradingClient() {
+  const { studentId } = useParams<{ studentId: string }>();
+  return <GradingSheet key={studentId} />;
+}
+
+function GradingSheet() {
   // The folder segment is `[studentId]`; the value it carries is the attempt id (#1062).
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const t = useTranslations('EduGradingPage');
@@ -130,6 +140,8 @@ export default function StudentGradingClient() {
           {t('back')}
         </Link>
       </div>
+
+      <GradingNavigation assignmentId={id} attemptId={studentId} />
 
       <div className="flex items-center justify-between">
         <div>

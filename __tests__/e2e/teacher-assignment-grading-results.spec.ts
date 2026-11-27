@@ -46,68 +46,117 @@ async function login(page: Page, email: string) {
   await waitForDashboardArea(page);
 }
 
+/**
+ * One open question, targeted at the Classroom student and published. `onCreated` gets the id
+ * as soon as it exists, so a later failure can still delete the assignment.
+ */
+async function publishOpenAssignment(
+  page: Page,
+  title: string,
+  onCreated: (id: string) => void,
+  options: { maxAttempts?: number; allowSameItemRetake?: boolean } = {},
+): Promise<{ assignmentId: string; questionId: string }> {
+  const questionsRes = await page.request.get('/api/v1/questions');
+  expect(questionsRes.ok()).toBeTruthy();
+  const questionsBody = await json<{ data?: Array<{ id: string; type: string }> }>(questionsRes);
+  const openQuestion = (questionsBody.data ?? []).find((question) => question.type === 'open');
+  if (!openQuestion) {
+    throw new Error('The Classroom seed must contain an open question');
+  }
+
+  const createRes = await page.request.post('/api/v1/teacher/assignments', {
+    data: { title, ...options },
+  });
+  expect(createRes.ok()).toBeTruthy();
+  const assignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
+  onCreated(assignmentId);
+
+  const addRes = await page.request.post(`/api/v1/teacher/assignments/${assignmentId}/questions`, {
+    data: { questionIds: [openQuestion.id] },
+  });
+  expect(addRes.ok()).toBeTruthy();
+
+  const targetsRes = await page.request.put(`/api/v1/teacher/assignments/${assignmentId}/targets`, {
+    data: { studentIds: [STUDENT_ID] },
+  });
+  expect(targetsRes.ok()).toBeTruthy();
+
+  const publishRes = await page.request.post(
+    `/api/v1/teacher/assignments/${assignmentId}/publish`,
+    { data: { deadline: PUBLISH_DEADLINE } },
+  );
+  expect(publishRes.ok()).toBeTruthy();
+
+  return { assignmentId, questionId: openQuestion.id };
+}
+
+/** Starts and submits one attempt with a text answer. */
+async function submitAttempt(
+  page: Page,
+  assignmentId: string,
+  questionId: string,
+  textAnswer: string,
+): Promise<string> {
+  const startRes = await page.request.post(`/api/v1/assignments/${assignmentId}/start`);
+  expect(startRes.ok(), `start attempt -> ${startRes.status()}`).toBeTruthy();
+  const attemptId = (await json<{ data: { id: string } }>(startRes)).data.id;
+
+  const submitRes = await page.request.post(`/api/v1/quiz/${attemptId}`, {
+    data: { attemptId, answers: [{ questionId, textAnswer }] },
+  });
+  expect(submitRes.ok(), `submit attempt -> ${submitRes.status()}`).toBeTruthy();
+  return attemptId;
+}
+
+/** Gives the open item its one point on the grading page that is open. */
+async function saveOnePoint(page: Page): Promise<void> {
+  await page.locator('input[type="number"]').first().fill('1');
+  const saved = page.waitForResponse(
+    (res) =>
+      res.request().method() === 'PUT' && /\/results\/[^/]+$/.test(new URL(res.url()).pathname),
+  );
+  await page.getByRole('button', { name: t('EduGradingPage.save') }).click();
+  expect((await saved).status()).toBe(200);
+}
+
+/** The grading page of one attempt. */
+const onAttempt = (id: string | undefined) => new RegExp(`/results/${id}$`, 'i');
+
+async function deleteAssignments(page: Page, ids: string[]): Promise<void> {
+  for (const id of ids) {
+    await page.request.delete(`/api/v1/teacher/assignments/${id}`).catch(() => undefined);
+  }
+}
+
 test.describe('teacher assignment grading refreshes the results table (#168)', () => {
   test('navigating back after grading shows the graded row without a reload', async ({
     page,
     browser,
     baseURL,
   }) => {
-    let createdAssignmentId: string | null = null;
+    const created: string[] = [];
     const studentContext = await browser.newContext({ baseURL });
 
     try {
       // ── Provision: one open question, targeted at SC and published ──────
       await login(page, TEACHER_EMAIL);
 
-      const questionsRes = await page.request.get('/api/v1/questions');
-      expect(questionsRes.ok()).toBeTruthy();
-      const questionsBody = await json<{ data?: Array<{ id: string; type: string }> }>(
-        questionsRes,
+      const { assignmentId, questionId } = await publishOpenAssignment(
+        page,
+        `E2E grading results #168 ${Date.now()}`,
+        (id) => created.push(id),
       );
-      const questions = questionsBody.data ?? [];
-      const openQuestion = questions.find((question) => question.type === 'open');
-      if (!openQuestion) {
-        throw new Error('The Classroom seed must contain an open question');
-      }
-
-      const createRes = await page.request.post('/api/v1/teacher/assignments', {
-        data: { title: `E2E grading results #168 ${Date.now()}` },
-      });
-      expect(createRes.ok()).toBeTruthy();
-      const assignmentId = (await json<{ data: { id: string } }>(createRes)).data.id;
-      createdAssignmentId = assignmentId;
-
-      const addRes = await page.request.post(
-        `/api/v1/teacher/assignments/${assignmentId}/questions`,
-        { data: { questionIds: [openQuestion.id] } },
-      );
-      expect(addRes.ok()).toBeTruthy();
-
-      const targetsRes = await page.request.put(
-        `/api/v1/teacher/assignments/${assignmentId}/targets`,
-        { data: { studentIds: [STUDENT_ID] } },
-      );
-      expect(targetsRes.ok()).toBeTruthy();
-
-      const publishRes = await page.request.post(
-        `/api/v1/teacher/assignments/${assignmentId}/publish`,
-        { data: { deadline: PUBLISH_DEADLINE } },
-      );
-      expect(publishRes.ok()).toBeTruthy();
 
       // ── The student submits a text answer ───────────────────────────────
       const studentPage = await studentContext.newPage();
       await login(studentPage, STUDENT_EMAIL);
 
-      const startRes = await studentPage.request.post(`/api/v1/assignments/${assignmentId}/start`);
-      expect(startRes.ok()).toBeTruthy();
-      const attemptId = (await json<{ data: { id: string } }>(startRes)).data.id;
-      const answers = [{ questionId: openQuestion.id, textAnswer: 'E2E answer for #168' }];
-
-      const submitRes = await studentPage.request.post(`/api/v1/quiz/${attemptId}`, {
-        data: { attemptId, answers },
-      });
-      expect(submitRes.ok(), `submit attempt -> ${submitRes.status()}`).toBeTruthy();
+      const attemptId = await submitAttempt(
+        studentPage,
+        assignmentId,
+        questionId,
+        'E2E answer for #168',
+      );
 
       // ── Grade through the UI, then navigate back in-app ─────────────────
       await page.goto(`/edu/assignments/${assignmentId}/results`);
@@ -146,11 +195,87 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       // Status alone is not enough: a stale score with a fresh status must fail too.
       await expect(row.locator('td').nth(2)).toHaveText('1/1');
     } finally {
-      if (createdAssignmentId) {
-        await page.request
-          .delete(`/api/v1/teacher/assignments/${createdAssignmentId}`)
-          .catch(() => undefined);
+      await deleteAssignments(page, created);
+      await studentContext.close();
+    }
+  });
+});
+
+test.describe('moving between attempts on the grading page (#1354)', () => {
+  test('grades three attempts in a row without going back to the results', async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    const created: string[] = [];
+    const studentContext = await browser.newContext({ baseURL });
+
+    try {
+      await login(page, TEACHER_EMAIL);
+      const { assignmentId, questionId } = await publishOpenAssignment(
+        page,
+        `E2E grading navigation #1354 ${Date.now()}`,
+        (id) => created.push(id),
+        { maxAttempts: 3, allowSameItemRetake: true },
+      );
+
+      const studentPage = await studentContext.newPage();
+      await login(studentPage, STUDENT_EMAIL);
+      for (const answer of ['first', 'second', 'third']) {
+        await submitAttempt(studentPage, assignmentId, questionId, `E2E ${answer} #1354`);
       }
+
+      // The order of the results table.
+      const resultsRes = await page.request.get(
+        `/api/v1/teacher/assignments/${assignmentId}/results`,
+      );
+      const order = (
+        await json<{ data: { attempts: Array<{ id: string }> } }>(resultsRes)
+      ).data.attempts.map((attempt) => attempt.id);
+      expect(order).toHaveLength(3);
+      const [first, second, third] = order;
+
+      await page.goto(`/edu/assignments/${assignmentId}/results/${first}`);
+      const nav = page.getByRole('navigation', { name: t('EduGradingPage.navigation') });
+      // `t` matches a substring, and „Next” is part of „Next ungraded”: anchor the whole name.
+      const link = (key: string) =>
+        nav.getByRole('link', {
+          name: new RegExp(`^(?:${t(`EduGradingPage.${key}`).source})$`, 'i'),
+        });
+      const points = page.locator('input[type="number"]').first();
+
+      await saveOnePoint(page);
+      await link('next_ungraded').click();
+      await page.waitForURL(onAttempt(second));
+      await expect(points).toHaveValue('');
+
+      // A draft that was not saved belongs to its own attempt: every attempt has this question.
+      await points.fill('1');
+      await link('next_attempt').click();
+      await page.waitForURL(onAttempt(third));
+      await expect(points, 'the draft did not follow').toHaveValue('');
+
+      // The keys move between attempts, but not while the teacher types.
+      const feedback = page.locator('textarea').first();
+      await feedback.click();
+      await page.keyboard.type(']n[');
+      await expect(feedback).toHaveValue(']n[');
+      await expect(page).toHaveURL(onAttempt(third));
+      await feedback.blur();
+      await page.keyboard.press('[');
+      await page.waitForURL(onAttempt(second));
+
+      await saveOnePoint(page);
+      await link('next_ungraded').click();
+      await page.waitForURL(onAttempt(third));
+      await saveOnePoint(page);
+
+      await expect(nav.getByText(t('EduGradingPage.all_graded'))).toBeVisible();
+      await expect(link('next_ungraded')).toHaveCount(0);
+      await link('view_results').click();
+      await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results$`, 'i'));
+    } finally {
+      await deleteAssignments(page, created);
       await studentContext.close();
     }
   });

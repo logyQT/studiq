@@ -3156,6 +3156,13 @@
     "grade": "Grade"
   },
   "EduGradingPage": {
+    "view_results": "View results",
+    "navigation": "Attempt navigation",
+    "position": "Attempt {position} of {total} · {left} left to grade",
+    "previous_attempt": "Previous",
+    "next_attempt": "Next",
+    "next_ungraded": "Next ungraded",
+    "all_graded": "All attempts graded.",
     "grade_failed": "Grade failed",
     "not_found": "Student submission not found",
     "back": "Back to Results",

@@ -3137,6 +3137,13 @@
     "grade": "Oceń"
   },
   "EduGradingPage": {
+    "view_results": "Zobacz wyniki",
+    "navigation": "Nawigacja między pracami",
+    "position": "Praca {position} z {total} · do oceny: {left}",
+    "previous_attempt": "Poprzednia",
+    "next_attempt": "Następna",
+    "next_ungraded": "Następna do oceny",
+    "all_graded": "Wszystkie prace są ocenione.",
     "grade_failed": "Błąd oceniania",
     "not_found": "Nie znaleziono odpowiedzi ucznia",
     "back": "Powrót do wyników",
