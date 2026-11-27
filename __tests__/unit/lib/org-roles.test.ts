@@ -142,6 +142,54 @@ describe('ROLE_TEMPLATES', () => {
 });
 
 /**
+ * #961: a group share is a view share. These eleven content writes cannot hold
+ * `group`, because the product offers no edit share. `organization` stays: it is
+ * the Admin role's deliberate org-wide authority, not sharing.
+ */
+const CONTENT_WRITE_KEYS = [
+  'deck.update',
+  'deck.delete',
+  'flashcard.create',
+  'flashcard.update',
+  'flashcard.delete',
+  'question.update',
+  'question.delete',
+  'question_bank.update',
+  'question_bank.delete',
+  'topic.update',
+  'topic.delete',
+] as const;
+
+describe('content writes and the group scope (#961)', () => {
+  it('the eleven content writes do not allow group', () => {
+    for (const key of CONTENT_WRITE_KEYS) {
+      expect(PERMISSIONS[key].allowedScopes, key).toEqual(['own', 'organization']);
+    }
+  });
+
+  it('the keys that keep group still allow it', () => {
+    const keepsGroup: PermissionCatalogKey[] = [
+      'deck.read',
+      'flashcard.read',
+      'topic.read',
+      'question.read',
+      'question_bank.read',
+      'deck.create',
+      'topic.create',
+      'question.create',
+      'question_bank.create',
+      'quiz.update',
+      'assignment.update',
+      'stats.read',
+      'group.manage',
+    ];
+    for (const key of keepsGroup) {
+      expect(PERMISSIONS[key].allowedScopes, key).toContain('group');
+    }
+  });
+});
+
+/**
  * `allowedScopes` is declared narrowest → widest (ADR-0015 §4.1). The role
  * editor and `grantableScopes` read `[0]` as "the narrowest scope this key
  * accepts", so the order is load-bearing, not cosmetic — a swapped pair would

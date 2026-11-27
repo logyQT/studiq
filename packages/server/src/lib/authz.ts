@@ -9,6 +9,7 @@ import {
   type PermissionScope,
   type RequestContext,
   type ResourceAccess,
+  resolveStoredScope,
 } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -42,7 +43,7 @@ export function evaluate(args: {
  */
 export function resolveScope(ctx: RequestContext, action: string): PermissionScope | null {
   const stored = ctx.permissionScopes[action];
-  if (stored !== undefined) return stored;
+  if (stored !== undefined) return resolveStoredScope(action, stored);
 
   if (ctx.activeOrgId != null) return null;
 
@@ -59,31 +60,6 @@ export type Resource = {
   created_by: string | null;
   organization_id: string | null;
 };
-
-export function checkPermission(
-  ctx: RequestContext,
-  permission: string,
-  resource: Resource | null,
-): void {
-  const scope = resolveScope(ctx, permission);
-  if (!scope) {
-    throw new AppError('FORBIDDEN');
-  }
-
-  const passed = evaluate({
-    scope,
-    userId: ctx.userId,
-    resource: {
-      createdBy: resource?.created_by ?? '',
-      orgId: resource?.organization_id ?? null,
-      activeOrgId: ctx.activeOrgId,
-    },
-  });
-
-  if (!passed) {
-    throw new AppError('FORBIDDEN');
-  }
-}
 
 export type QueryFilter = {
   _impossible?: true;

@@ -43,6 +43,7 @@ export {
   type PermissionKey,
   type PermissionScope,
   type ResourceAccess,
+  resolveStoredScope,
   scopeCovers,
 } from './lib/permissions';
 // ── Organization roles ──────────────────────────────────────────────────────

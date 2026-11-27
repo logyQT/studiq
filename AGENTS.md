@@ -573,7 +573,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 - Permission checks (all from `@studiq/server/lib/authz`):
   - `await check(ctx, Permission.XXX, resource)` — throws `AppError('FORBIDDEN')` on mismatch
   - `await accessibleFilter(ctx, Permission.XXX, resourceType)` / `buildQueryFilter(ctx, Permission.XXX)` — RLS-safe filters for list queries
-  - `hasPermission(ctx, Permission.XXX)` / `checkPermission(ctx, Permission.XXX, resource)` — synchronous ctx-only variants
+  - `hasPermission(ctx, Permission.XXX)` — synchronous ctx-only variant (a content write cannot hold `group`: sharing grants read, #961)
 
 ### Admin app notes
 
@@ -702,7 +702,7 @@ UI dashboards: `/manage`, `/edu`, `/app` are **auth-only** — a link is navigat
 - Server helpers (`@studiq/server/lib/authz`):
   - `can(ctx, permission, resource?)` / `check(ctx, permission, resource)` — async resource-aware checks (`check` throws `FORBIDDEN`) — **this is what controllers and services use**
   - `accessibleFilter(ctx, permission, resourceType)` / `buildQueryFilter(ctx, permission)` — RLS-safe query filters
-  - `hasPermission(ctx, permission)` / `checkPermission(ctx, permission, resource)` — synchronous ctx-only variants
+  - `hasPermission(ctx, permission)` — synchronous ctx-only variant (a content write cannot hold `group`: sharing grants read, #961)
 - Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/me/permissions`. Entitlements: `useEntitlement()` (`apps/web/src/hooks/use-entitlement.ts`) backed by `/api/v1/me/entitlements` (`entitlement('ai.chat')`). Both endpoints echo the `orgId` they resolved for, and both query keys are partitioned by it — `['permissions', orgId]` / `['entitlements', orgId]`, with `'personal'` when there is no active org — so an org switch cannot serve the previous org's answer. Drop both (plus `['me','plan']`, `['ai']` and `['question-reports']`) through `invalidateAuthority()` (`apps/web/src/lib/query-cache.ts`) on an org switch, a role save/delete, a seat change and a checkout.
 
 ---
