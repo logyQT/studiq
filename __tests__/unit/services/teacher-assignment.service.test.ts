@@ -2183,6 +2183,63 @@ describe('TeacherAssignmentService', () => {
       });
     });
 
+    it.each(['mcq', 'true_false'])(
+      'refuses a manual grade on a %s item before any write (#1301)',
+      async (type) => {
+        const link = { question_id: 'q-auto', points: 2, snapshot: { ...frozen('q-auto'), type } };
+
+        baseSetup();
+        mock.from
+          .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
+          .mockReturnValueOnce(chain([link]))
+          .mockReturnValueOnce(chain([{ question_id: 'q-auto' }]));
+
+        const result = await service.gradeAnswer(
+          assignmentId,
+          'attempt-1',
+          { questionId: 'q-auto', points: 0 },
+          ctx,
+        );
+
+        expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
+        // Ownership, attempt, assignment items and served set: no answer or score write.
+        expect(mock.from).toHaveBeenCalledTimes(4);
+      },
+    );
+
+    it('grades an item that was published as open (#1301)', async () => {
+      const link = {
+        question_id: 'q-open',
+        points: 2,
+        snapshot: { ...frozen('q-open'), type: 'open' },
+      };
+      const answerUpdate = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
+        .mockReturnValueOnce(chain([link]))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open' }]))
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(answerUpdate)
+        .mockReturnValueOnce(
+          chain([{ question_id: 'q-open', is_correct: true, teacher_points: 2 }]),
+        )
+        .mockReturnValueOnce(chain(null));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(answerUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ teacher_points: 2 }),
+      );
+    });
+
     it('rejects points above the question maximum (#169)', async () => {
       baseSetup();
       mock.from

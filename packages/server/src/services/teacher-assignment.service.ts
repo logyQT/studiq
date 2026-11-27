@@ -143,6 +143,19 @@ function manualGradeItems(snapshots: ReadonlyMap<string, QuestionSnapshot>): Set
   );
 }
 
+/**
+ * The items whose published type has an automatic key. A teacher cannot grade them: a manual
+ * write would replace `is_correct` with „the points are above zero” (#1301). An item without a
+ * readable snapshot is in neither this set nor `manualGradeItems`.
+ */
+function autoGradedItems(snapshots: ReadonlyMap<string, QuestionSnapshot>): Set<string> {
+  return new Set(
+    [...snapshots].flatMap(([questionId, snapshot]) =>
+      snapshot.type === 'open' ? [] : [questionId],
+    ),
+  );
+}
+
 /** The served items of one attempt, from its `quiz_attempt_questions` embed. */
 function servedItemIds(rows: ReadonlyArray<{ question_id: string | null }>): Set<string> {
   return new Set(rows.flatMap((row) => (row.question_id ? [row.question_id] : [])));
@@ -1393,6 +1406,8 @@ export class TeacherAssignmentService {
         };
       }),
       fairness: fairness.data,
+      // The per-question view has no other source of an item's published type (#1301).
+      auto_graded_item_ids: [...autoGradedItems(snapshots.data)],
     });
   }
 
@@ -1483,11 +1498,10 @@ export class TeacherAssignmentService {
     const served = await readServedQuestionIds(supabase, attempt.id);
     if (isFailure(served)) return served;
 
-    const questionMax = served.data.has(data.questionId)
-      ? maxPoints.data.get(data.questionId)?.points
-      : undefined;
-    if (questionMax === undefined) return failure('NOT_FOUND');
-    if (data.points > questionMax) return failure('UNPROCESSABLE_ENTITY');
+    const item = served.data.has(data.questionId) ? maxPoints.data.get(data.questionId) : undefined;
+    if (item === undefined) return failure('NOT_FOUND');
+    // Auto-graded is final: this write sets `is_correct` from the points (#1301).
+    if (item.hasAutoKey || data.points > item.points) return failure('UNPROCESSABLE_ENTITY');
 
     const { data: existingAnswer } = await supabase
       .from('student_answers')
@@ -1551,7 +1565,8 @@ export class TeacherAssignmentService {
 
   /**
    * question_id → max awardable points and whether the item is auto-graded (a closed item), from
-   * the assignment's published set. A missing key means the question is no longer part of it. The
+   * the assignment's published set. `graded` also counts an item without a readable snapshot as
+   * closed; `hasAutoKey` is true only when the snapshot says so. A missing key means the question is no longer part of it. The
    * pool is larger than one attempt's draw when `attempt_item_count` is set (R7), so this map is
    * intersected with the attempt's served items before it decides a score (#1298).
    *
@@ -1561,7 +1576,9 @@ export class TeacherAssignmentService {
   private async loadAssignmentPoints(
     supabase: SupabaseClient<Database>,
     assignmentId: string,
-  ): Promise<ServiceResult<Map<string | null, { points: number; graded: boolean }>>> {
+  ): Promise<
+    ServiceResult<Map<string | null, { points: number; graded: boolean; hasAutoKey: boolean }>>
+  > {
     const { data, error } = await supabase
       .from('assignment_questions')
       .select('question_id, points, snapshot')
@@ -1570,10 +1587,17 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
     return success(
       new Map(
-        dbRows(data).map((q) => [
-          q.question_id,
-          { points: q.points, graded: snapshotFromJson(q.snapshot)?.type !== 'open' },
-        ]),
+        dbRows(data).map((q) => {
+          const type = snapshotFromJson(q.snapshot)?.type;
+          return [
+            q.question_id,
+            {
+              points: q.points,
+              graded: type !== 'open',
+              hasAutoKey: type !== undefined && type !== 'open',
+            },
+          ];
+        }),
       ),
     );
   }
