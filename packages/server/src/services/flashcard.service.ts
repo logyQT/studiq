@@ -315,6 +315,21 @@ export class FlashcardService {
     const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
     if (isFailure(deck)) return deck;
 
+    // Every read that can fail the copy comes before the insert: an error after it would
+    // leave a card behind, and a retry would make a second one.
+    const { data: topicAssignments, error: topicFetchError } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('topic_id')
+      .eq('flashcard_id', id);
+
+    if (topicFetchError) return toDbFailure(topicFetchError);
+
+    // The copy takes only the topics the caller can read (#1541). It does not refuse: the
+    // caller asked for the card, not for a particular topic.
+    const sourceTopicIds = dbRows(topicAssignments).map((a) => a.topic_id);
+    const readable = await readableTopicIds(supabase, sourceTopicIds, ctx);
+    if (isFailure(readable)) return readable;
+
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')
       .insert({
@@ -329,19 +344,6 @@ export class FlashcardService {
       .single();
 
     if (insertError) return toDbFailure(insertError);
-
-    const { data: topicAssignments, error: topicFetchError } = await supabase
-      .from('flashcard_topic_assignments')
-      .select('topic_id')
-      .eq('flashcard_id', id);
-
-    if (topicFetchError) return toDbFailure(topicFetchError);
-
-    // The copy takes only the topics the caller can read (#1541). It does not refuse: the
-    // caller asked for the card, not for a particular topic.
-    const sourceTopicIds = dbRows(topicAssignments).map((a) => a.topic_id);
-    const readable = await readableTopicIds(supabase, sourceTopicIds, ctx);
-    if (isFailure(readable)) return readable;
 
     const newTopicAssignments = sourceTopicIds
       .filter((topicId) => readable.data.has(topicId))
@@ -460,6 +462,19 @@ export class FlashcardService {
     const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
     if (isFailure(deck)) return deck;
 
+    // Read before the insert, for the same reason as in `copy`.
+    const { data: topicAssignments } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('flashcard_id, topic_id')
+      .in('flashcard_id', data.ids);
+
+    const readable = await readableTopicIds(
+      supabase,
+      [...new Set((topicAssignments ?? []).map((a) => a.topic_id))],
+      ctx,
+    );
+    if (isFailure(readable)) return readable;
+
     const cardsToInsert = originalRows.map((fc) => ({
       front: fc.front,
       back: fc.back,
@@ -478,11 +493,6 @@ export class FlashcardService {
     const inserted = dbRows(newFlashcards);
     if (inserted.length === 0) return failure('NOT_FOUND');
 
-    const { data: topicAssignments } = await supabase
-      .from('flashcard_topic_assignments')
-      .select('flashcard_id, topic_id')
-      .in('flashcard_id', data.ids);
-
     if (topicAssignments && topicAssignments.length > 0) {
       const oldToNew = new Map(
         originalRows.flatMap((fc, i) => {
@@ -490,13 +500,6 @@ export class FlashcardService {
           return copy ? [[fc.id, copy.id] as const] : [];
         }),
       );
-      const readable = await readableTopicIds(
-        supabase,
-        [...new Set(topicAssignments.map((a) => a.topic_id))],
-        ctx,
-      );
-      if (isFailure(readable)) return readable;
-
       const newAssignments = topicAssignments
         .filter((a) => readable.data.has(a.topic_id))
         .map((a) => ({
