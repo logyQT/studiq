@@ -105,6 +105,24 @@ describe('SetRolePermissionsSchema', () => {
     expect(issueKeys(orgKey)).toContain('scope');
   });
 
+  it('refuses a group grant on a content write (#961)', () => {
+    const groupWrite = SetRolePermissionsSchema.safeParse(payload({ 'deck.update': 'group' }));
+
+    expect(groupWrite.success).toBe(false);
+    if (groupWrite.success) throw new Error('unreachable');
+    expect(groupWrite.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ['permissions', CATALOG_PERMISSION_KEYS.indexOf('deck.update'), 'scope'],
+      }),
+    );
+
+    // The positive control: the same payload at an allowed scope passes, so the
+    // refusal above cannot come from the payload's shape.
+    expect(SetRolePermissionsSchema.safeParse(payload({ 'deck.update': 'own' })).success).toBe(
+      true,
+    );
+  });
+
   it('accepts every allowed scope of every key', () => {
     for (const key of CATALOG_PERMISSION_KEYS) {
       for (const scope of PERMISSIONS[key].allowedScopes) {

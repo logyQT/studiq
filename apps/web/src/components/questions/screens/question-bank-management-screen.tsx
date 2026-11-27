@@ -119,7 +119,10 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             createdBy: bank.created_by,
             orgId: bank.organization_id ?? undefined,
           })}
-          canDelete={permission('question_bank.delete', { createdBy: bank.created_by })}
+          canDelete={permission('question_bank.delete', {
+            createdBy: bank.created_by,
+            orgId: bank.organization_id ?? undefined,
+          })}
           onEdit={() => screen.openEdit(bank)}
           onDelete={() => screen.setDeleteId(bank.id)}
           onSelect={() => selection.setIsSelecting(true)}

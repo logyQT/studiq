@@ -230,7 +230,14 @@ describe('group permission RLS predicate', () => {
 
     groupScopedRoleId = await groupRole(orgId, `group-scope-${tag}`, 'group');
     orgScopedRoleId = await groupRole(orgId, `org-scope-${tag}`, 'organization');
-    ownScopedRoleId = await groupRole(orgId, `own-scope-${tag}`, 'own');
+    // `group.invite` declares only group | organization, so the catalog guard
+    // refuses it at own. The own-scope case exercises a class write through
+    // `group.manage`, so the three keys that allow own are the fixture.
+    ownScopedRoleId = await roleWith(orgId, `own-scope-${tag}`, 'own', [
+      'group.read',
+      'group.manage',
+      'group.member.manage',
+    ]);
 
     groupTaughtId = await createGroup(orgId, 'taught');
     groupOtherId = await createGroup(orgId, 'other');

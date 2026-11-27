@@ -327,10 +327,20 @@ export function QuestionBankDetailScreen({
         onDelete={setDeleteId}
         onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
         canUpdate={(q) =>
-          access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
+          access.allowQuestionAction(
+            permission('question.update', {
+              createdBy: q.created_by,
+              orgId: bank?.organization_id ?? undefined,
+            }),
+          )
         }
         canDelete={(q) =>
-          access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
+          access.allowQuestionAction(
+            permission('question.delete', {
+              createdBy: q.created_by,
+              orgId: bank?.organization_id ?? undefined,
+            }),
+          )
         }
         emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
         isError={questionsError}

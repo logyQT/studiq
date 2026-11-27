@@ -300,6 +300,24 @@ Scope resolution:
 > membership guard in `TeacherAssignmentService.list` protects a **custom** role
 > granted `assignment.read` at `group`, not a shipped default.
 
+> **2026-11-27 (#961, operator decision).** A content `group` **write** is not a
+> grant: sharing a row to a class gives read. The catalog withdraws `group` from
+> the eleven content write keys (`deck`/`flashcard`/`topic`/`question`/
+> `question_bank` update and delete, plus `flashcard.create`), `resolveStoredScope`
+> resolves a surviving such row to `null`, the role editor and the save schema
+> refuse the grant, and `20261127150000_no_group_content_writes.sql` deletes the
+> rows that exist. An edit share would need its own permission — it is future work
+> with no issue. Twelve content writes keep `group` by design: the four `*.create`
+> keys (`deck`, `topic`, `question`, `question_bank`) target no existing row; the
+> five `assignment.*` keys (`create`, `update`, `delete`, `publish`, `grade`)
+> address the group a run is aimed at; and the three `quiz.*` keys (`create`,
+> `update`, `delete`) govern a class assessment's own lifecycle, not an edit of
+> shared content. A content `group` **read** is any member of the class the row is
+> shared to, which is what `can()` resolves through the share link; this settles
+> the phase 6e wording ("the classes the caller teaches") for content reads. An
+> `organization` grant is the Admin role's deliberate org-wide authority, not
+> sharing.
+
 A group teacher **does not** get `org.member.manage`. Inviting a student to a
 class is `group.invite` on that group, not an org invitation. The invitation row
 carries `group_id` and `target_group_role`; RLS checks `group.invite` for that

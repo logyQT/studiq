@@ -552,7 +552,10 @@ export function DeckDetailScreen({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key !== 'n') return;
       if (
-        !permission('deck.update', { createdBy: currentDeck?.created_by }) ||
+        !permission('deck.update', {
+          createdBy: currentDeck?.created_by,
+          orgId: currentDeck?.organization_id,
+        }) ||
         !permission('flashcard.create', { createdBy: user?.id })
       )
         return;
@@ -562,7 +565,7 @@ export function DeckDetailScreen({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentDeck?.created_by, user?.id, permission]);
+  }, [currentDeck?.created_by, currentDeck?.organization_id, user?.id, permission]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
@@ -592,7 +595,10 @@ export function DeckDetailScreen({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
+              {permission('deck.update', {
+                createdBy: currentDeck?.created_by,
+                orgId: currentDeck?.organization_id,
+              }) && (
                 <DropdownMenuItem
                   onClick={() =>
                     setD((prev) => ({
@@ -604,7 +610,10 @@ export function DeckDetailScreen({
                   <Pencil className="h-4 w-4 mr-2" /> {t('menu_edit')}
                 </DropdownMenuItem>
               )}
-              {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
+              {permission('deck.update', {
+                createdBy: currentDeck?.created_by,
+                orgId: currentDeck?.organization_id,
+              }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setImportOpen(true)}>
@@ -631,7 +640,10 @@ export function DeckDetailScreen({
               >
                 <FileDown className="h-4 w-4 mr-2" /> {t('common_export')}
               </DropdownMenuItem>
-              {permission('deck.delete', { createdBy: currentDeck?.created_by }) && (
+              {permission('deck.delete', {
+                createdBy: currentDeck?.created_by,
+                orgId: currentDeck?.organization_id,
+              }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -736,10 +748,15 @@ export function DeckDetailScreen({
           setSortOrder(so);
         }}
         topics={topics}
-        canGenerate={permission('deck.update', { createdBy: currentDeck?.created_by })}
+        canGenerate={permission('deck.update', {
+          createdBy: currentDeck?.created_by,
+          orgId: currentDeck?.organization_id,
+        })}
         canAddCard={
-          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
-          permission('flashcard.create', { createdBy: user?.id })
+          permission('deck.update', {
+            createdBy: currentDeck?.created_by,
+            orgId: currentDeck?.organization_id,
+          }) && permission('flashcard.create', { createdBy: user?.id })
         }
         onGenerate={() => router.push(aiHref)}
         onCreateNew={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
@@ -801,8 +818,10 @@ export function DeckDetailScreen({
         emptyIcon={<Layers className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_flashcards')}
         emptyAction={
-          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
-          permission('flashcard.create', { createdBy: user?.id }) ? (
+          permission('deck.update', {
+            createdBy: currentDeck?.created_by,
+            orgId: currentDeck?.organization_id,
+          }) && permission('flashcard.create', { createdBy: user?.id }) ? (
             <Button
               variant="outline"
               size="sm"
@@ -818,8 +837,14 @@ export function DeckDetailScreen({
           <FlashcardCard
             key={fc.id}
             fc={fc}
-            canUpdate={permission('flashcard.update', { createdBy: fc.created_by })}
-            canDelete={permission('flashcard.delete', { createdBy: fc.created_by })}
+            canUpdate={permission('flashcard.update', {
+              createdBy: fc.created_by,
+              orgId: currentDeck?.organization_id,
+            })}
+            canDelete={permission('flashcard.delete', {
+              createdBy: fc.created_by,
+              orgId: currentDeck?.organization_id,
+            })}
             topics={topics}
             t={t}
             selected={selection.selectedIds.has(fc.id)}
@@ -843,17 +868,29 @@ export function DeckDetailScreen({
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) =>
-            permission('flashcard.update', { createdBy: fc.created_by }),
+            permission('flashcard.update', {
+              createdBy: fc.created_by,
+              orgId: currentDeck?.organization_id,
+            }),
           );
         const canBulkDelete =
           selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) =>
-            permission('flashcard.delete', { createdBy: fc.created_by }),
+            permission('flashcard.delete', {
+              createdBy: fc.created_by,
+              orgId: currentDeck?.organization_id,
+            }),
           );
         const canBulkMove =
-          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
+          permission('deck.update', {
+            createdBy: currentDeck?.created_by,
+            orgId: currentDeck?.organization_id,
+          }) &&
           selectedFlashcards.every((fc) =>
-            permission('flashcard.update', { createdBy: fc.created_by }),
+            permission('flashcard.update', {
+              createdBy: fc.created_by,
+              orgId: currentDeck?.organization_id,
+            }),
           );
         return (
           <BulkActionBar
@@ -957,8 +994,10 @@ export function DeckDetailScreen({
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(permission('deck.update', { createdBy: currentDeck?.created_by }) &&
-              permission('flashcard.create', { createdBy: user?.id })
+              ...(permission('deck.update', {
+                createdBy: currentDeck?.created_by,
+                orgId: currentDeck?.organization_id,
+              }) && permission('flashcard.create', { createdBy: user?.id })
                 ? [
                     {
                       icon: Plus,

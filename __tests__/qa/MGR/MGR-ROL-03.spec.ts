@@ -41,13 +41,15 @@ import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
  *
  * Acceptance points:
  * 1. „Uprawnienia roli” opens the editor with the ten catalog sections and 44 rows;
- *    the five content sections (Fiszki, Talie, Tematy, Banki pytań, Pytania) carry the
- *    three scopes (Własne / Grupa / Organizacja) for every read/create/update/delete
- *    row. Each save carries the complete catalog.
+ *    the five content sections (Fiszki, Talie, Tematy, Banki pytań, Pytania) carry
+ *    the scopes their key allows — three for a read, two (Własne / Organizacja) for
+ *    a write, because a content write cannot hold „Grupa” (#961). Each save carries
+ *    the complete catalog.
  * 2. „Zapisz uprawnienia” shows the toast „Uprawnienia zaktualizowane”, closes the
- *    dialog and persists exactly the 20 chosen content scopes; reopening the editor
- *    shows them pre-selected. The role's entitlement profile („Profil uprawnień”) is
- *    part of the same dialog and round-trips as `none` for this custom role.
+ *    dialog and persists exactly the chosen content scopes: 20 at „Własne”, the five
+ *    reads at „Grupa”, 20 at „Organizacja”. Reopening the editor shows them
+ *    pre-selected. The role's entitlement profile („Profil uprawnień”) is part of the
+ *    same dialog and round-trips as `none` for this custom role.
  * 3. A user holding that role sees content according to the scope, for every section:
  *    „Własne” → only their own rows, „Grupa” → their own + group-linked rows,
  *    „Organizacja” → every row of the organization. This is checked for all five
@@ -84,11 +86,14 @@ const ACTIONS = ['read', 'create', 'update', 'delete'] as const;
 /**
  * The closed catalog the editor renders (ADR-0015 §4.1): one row per key, grouped
  * into ten sections. The arithmetic behind the counts is the catalog itself —
- * content 31 × 3 scopes, group 3 × 3 + `group.invite` 2, org 9 × 1.
+ * 102 radios = 23 keys at all three scopes (69) + the eleven banned content
+ * writes at own and organization only (22) + `group.invite` at group and
+ * organization (2) + the nine `org.*` keys at organization only (9). The 11
+ * content-write `Grupa` radios are gone (#961).
  */
 const CATALOG_KEYS = Object.keys(PERMISSIONS);
 const CATALOG_ROWS = 44;
-const CATALOG_RADIOS = 113;
+const CATALOG_RADIOS = 102;
 const CATALOG_SECTIONS = [
   'Fiszki',
   'Talie',
@@ -459,18 +464,38 @@ async function clearAllGrants(dialog: Locator) {
   await expect(dialog.locator('input[data-perm-toggle="true"]:checked')).toHaveCount(0);
 }
 
-/** Tick the five content sections and set each to one scope. */
+/**
+ * Tick the five content sections at one scope. „Grupa” grants the five reads only:
+ * a content write cannot hold it (#961), so the write rows are cleared instead.
+ */
 async function setContentSections(dialog: Locator, scope: Scope) {
   for (const section of SECTIONS) {
     for (const action of ACTIONS) {
       const name = `${section.key}.${action}`;
-      await dialog.locator(`input[data-perm-toggle="true"][name="${name}"]`).check();
+      const toggle = dialog.locator(`input[data-perm-toggle="true"][name="${name}"]`);
+      if (scope === 'group' && action !== 'read') {
+        if (await toggle.isChecked()) await toggle.uncheck();
+        continue;
+      }
+      await toggle.check();
       await dialog
         .locator(`input[data-perm-radio="true"][name="${name}"][value="${scope}"]`)
         .check();
     }
   }
-  await expect(dialog.locator('input[data-perm-radio="true"]:checked')).toHaveCount(20);
+  await expect(dialog.locator('input[data-perm-radio="true"]:checked')).toHaveCount(
+    tickedFor(scope),
+  );
+}
+
+/** The content actions one scope pass grants: the five reads at group, every action otherwise. */
+function actionsFor(scope: Scope): readonly (typeof ACTIONS)[number][] {
+  return scope === 'group' ? ['read'] : ACTIONS;
+}
+
+/** The content grants one scope pass saves: 20 own, the five reads at group, 20 organization. */
+function tickedFor(scope: Scope): number {
+  return SECTIONS.length * actionsFor(scope).length;
 }
 
 /** The complete permission payload one save must send: one entry per catalog key. */
@@ -496,7 +521,7 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
   const dialog = await openPermissionEditor(page, ROLE_NAME);
 
   // The editor renders the closed catalog: ten sections, 44 rows, one scope option
-  // per key's `allowed_scopes` (113 radios in total).
+  // per key's `allowed_scopes` (102 radios in total).
   await expect(dialog.locator('[data-perm-row]')).toHaveCount(CATALOG_ROWS);
   await expect(dialog.locator('input[data-perm-radio="true"]')).toHaveCount(CATALOG_RADIOS);
   for (const title of CATALOG_SECTIONS) {
@@ -528,7 +553,7 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
   expect(new Set(body.permissions.map((entry) => entry.permissionName))).toEqual(
     new Set(CATALOG_KEYS),
   );
-  expect(body.permissions.filter((entry) => entry.scope !== null)).toHaveLength(20);
+  expect(body.permissions.filter((entry) => entry.scope !== null)).toHaveLength(tickedFor(scope));
 
   // Step 3: toast „Uprawnienia zaktualizowane”, dialog closes, list reloads.
   await expect(
@@ -536,29 +561,31 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
     'save toast',
   ).toBeVisible();
   await expect(dialog).toHaveCount(0);
-  await expect(row.getByText('20 uprawnień')).toBeVisible();
+  await expect(row.getByText(`${tickedFor(scope)} uprawnień`)).toBeVisible();
 
-  // The write persisted exactly the 20 scopes, not a subset or a stale merge.
+  // The write persisted exactly the chosen scopes, not a subset or a stale merge.
   const permissions = await readRolePermissions(page, context.roleId);
-  expect(permissions).toHaveLength(SECTIONS.length * ACTIONS.length);
+  expect(permissions).toHaveLength(tickedFor(scope));
   for (const permission of permissions) {
     expect(permission.scope, `${permission.permissionName} scope`).toBe(scope);
   }
   expect(new Set(permissions.map((permission) => permission.permissionName)).size).toBe(
-    SECTIONS.length * ACTIONS.length,
+    tickedFor(scope),
   );
 
   // Reopening the editor renders the saved scopes pre-selected.
   const reopened = await openPermissionEditor(page, ROLE_NAME);
   for (const section of SECTIONS) {
-    for (const action of ACTIONS) {
+    for (const action of actionsFor(scope)) {
       await expect(
         reopened.locator(`input[name="${section.key}.${action}"][value="${scope}"]`),
         `${section.key}.${action} pre-selected ${scope}`,
       ).toBeChecked();
     }
   }
-  await expect(reopened.locator('input[data-perm-radio="true"]:checked')).toHaveCount(20);
+  await expect(reopened.locator('input[data-perm-radio="true"]:checked')).toHaveCount(
+    tickedFor(scope),
+  );
   await reopened.getByRole('button', { name: CANCEL_LABEL }).click();
   await expect(reopened).toHaveCount(0);
 }

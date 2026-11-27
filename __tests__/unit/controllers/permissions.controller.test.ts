@@ -140,6 +140,22 @@ describe('PermissionsController', () => {
       expect(perms['deck.delete']).toBeUndefined();
     });
 
+    // #961: a stored `group` content write is not a grant, so the payload the
+    // client gates on must omit it while the group read still resolves.
+    it('omits a stored group content write the catalog no longer allows', async () => {
+      const inOrgCtx: RequestContext = {
+        ...mockCtx,
+        activeOrgId: 'org-1',
+        orgRoleId: 'role-1',
+        permissionScopes: { 'deck.update': 'group', 'deck.read': 'group' },
+      };
+
+      const perms = body(await controller.listMyPermissions(inOrgCtx)).permissions;
+
+      expect(perms['deck.update']).toBeUndefined();
+      expect(perms['deck.read']).toBe('group');
+    });
+
     // D35: no account type is read, so a manager with no org resolves the same
     // personal set a student does — the whole 24-key map, not `{}`.
     it('returns the personal set to a manager with no org', async () => {

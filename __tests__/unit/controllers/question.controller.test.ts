@@ -312,7 +312,7 @@ describe('QuestionController', () => {
       expect(mockService.exposureLedger).not.toHaveBeenCalled();
     });
 
-    it.each(['own', 'group', 'organization'] as const)(
+    it.each(['own', 'organization'] as const)(
       'a caller holding question_bank.update at %s scope passes the gate',
       async (scope) => {
         mockService.exposureLedger.mockResolvedValueOnce(success([]));
@@ -323,6 +323,16 @@ describe('QuestionController', () => {
         expect(response).toEqual({ success: true, statusCode: 200, data: [] });
       },
     );
+
+    // #961: a content write cannot hold `group`, so a surviving row is no grant.
+    it('a stored group content write is refused', async () => {
+      const response = await controller.ledger('q-1', {
+        ...inOrg,
+        permissionScopes: { 'question_bank.update': 'group' },
+      });
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(mockService.exposureLedger).not.toHaveBeenCalled();
+    });
 
     it('a student-persona holder of the key is allowed (D13)', async () => {
       mockService.exposureLedger.mockResolvedValueOnce(success([]));

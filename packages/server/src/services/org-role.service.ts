@@ -6,6 +6,7 @@ import {
   PERMISSIONS,
   type PermissionDefinition,
   type RequestContext,
+  resolveStoredScope,
   ROLE_TEMPLATES,
   type RoleTemplate,
   scopeCovers,
@@ -62,7 +63,14 @@ function grantDenied(
 ): 'UNPROCESSABLE_ENTITY' | 'FORBIDDEN' | null {
   if (!CATALOG[key]?.assignable) return 'UNPROCESSABLE_ENTITY';
   if (callerHoldsOwnership) return null;
-  if (scope && !scopeCovers(ctx.permissionScopes[key], scope)) return 'FORBIDDEN';
+  if (scope) {
+    // The context carries the stored row, and a row older than the catalog's
+    // ban can still say `group` for a content write. That row is not a grant
+    // (#961), so it must not cover the `own` grant it would otherwise outrank.
+    const stored = ctx.permissionScopes[key];
+    const held = stored ? resolveStoredScope(key, stored) : null;
+    if (!scopeCovers(held, scope)) return 'FORBIDDEN';
+  }
   return null;
 }
 

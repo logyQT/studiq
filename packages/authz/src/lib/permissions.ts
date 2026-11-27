@@ -69,6 +69,13 @@ export interface PermissionDefinition {
 }
 
 const CONTENT_SCOPES = ['own', 'group', 'organization'] as const;
+/**
+ * Scopes for a content row the creator owns. `group` is not a grant (#961):
+ * sharing a row to a class gives read, so a content **write** cannot hold
+ * `group`. `organization` stays because it is the Admin role's deliberate
+ * org-wide authority, not sharing.
+ */
+const WRITE_SCOPES = ['own', 'organization'] as const;
 const GROUP_SCOPES = ['own', 'group', 'organization'] as const;
 const GROUP_INVITE_SCOPES = ['group', 'organization'] as const;
 const ORG_SCOPES = ['organization'] as const;
@@ -90,19 +97,19 @@ export const PERMISSIONS = {
   },
   'flashcard.create': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Create flashcards',
   },
   'flashcard.update': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Edit flashcards',
   },
   'flashcard.delete': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Delete flashcards',
   },
@@ -120,13 +127,13 @@ export const PERMISSIONS = {
   },
   'deck.update': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Edit decks',
   },
   'deck.delete': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Delete decks',
   },
@@ -144,13 +151,13 @@ export const PERMISSIONS = {
   },
   'topic.update': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Edit topics',
   },
   'topic.delete': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Delete topics',
   },
@@ -168,13 +175,13 @@ export const PERMISSIONS = {
   },
   'question.update': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Edit questions',
   },
   'question.delete': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Delete questions',
   },
@@ -192,13 +199,13 @@ export const PERMISSIONS = {
   },
   'question_bank.update': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Edit question banks',
   },
   'question_bank.delete': {
     category: 'content',
-    allowedScopes: CONTENT_SCOPES,
+    allowedScopes: WRITE_SCOPES,
     assignable: true,
     description: 'Delete question banks',
   },
@@ -437,6 +444,18 @@ export function scopeCovers(
   return SCOPE_ORDER[held] >= SCOPE_ORDER[wanted];
 }
 
+/**
+ * The scope a stored `org_role_permissions` row resolves to. A row that claims a
+ * scope the catalog does not allow for its key is not a grant (#961), so it
+ * resolves to `null` and every caller reads that as "not granted". Unknown keys
+ * keep their stored scope: the catalog cannot judge a name it does not own.
+ */
+export function resolveStoredScope(key: string, scope: PermissionScope): PermissionScope | null {
+  if (!isPermissionCatalogKey(key)) return scope;
+  const allowedScopes: readonly PermissionScope[] = PERMISSIONS[key].allowedScopes;
+  return allowedScopes.includes(scope) ? scope : null;
+}
+
 export function evaluateScope(
   scope: PermissionScope | null | undefined,
   userId: string,
@@ -446,13 +465,23 @@ export function evaluateScope(
 
   if (resource.createdBy === userId) return true;
 
-  const level = SCOPE_ORDER[scope];
-  if (level < 1) return false;
+  switch (scope) {
+    case 'own':
+      return false;
+    case 'group':
+      // A pure helper cannot resolve membership: `can()` reads the share-link
+      // table with a DB lookup. `resolveStoredScope` removes a content write's
+      // `group` before any legitimate call, and no client gate reads a shared
+      // row, so a `group` row here is "not granted". Never fall through to
+      // `organization`: that would authorize every row in the active org.
+      return false;
+    case 'organization':
+      return resource.activeOrgId != null && resource.orgId === resource.activeOrgId;
+  }
 
-  if (level < 2) return false;
-
-  if (resource.activeOrgId != null && resource.orgId === resource.activeOrgId) return true;
-  if (level < 3) return false;
-
-  return true;
+  // The switch covers every `PermissionScope`; the binding turns a new member
+  // into a compile error instead of a silent fall-through.
+  const unhandled: never = scope;
+  void unhandled;
+  return false;
 }

@@ -11,7 +11,6 @@ import {
   can,
   canCreateGroup,
   canGroup,
-  checkPermission,
   evaluate,
   hasPermission,
   isGroupPermission,
@@ -105,11 +104,14 @@ describe('authz (unified lib)', () => {
     it('resolves from ctx.permissionScopes (the with-auth batch)', () => {
       const ctx = {
         ...baseCtx,
-        permissionScopes: { 'deck.update': 'own' as const, 'flashcard.read': 'any' as const },
+        permissionScopes: {
+          'deck.update': 'organization' as const,
+          'flashcard.read': 'own' as const,
+        },
       };
 
-      expect(resolveScope(ctx, 'deck.update')).toBe('own');
-      expect(resolveScope(ctx, 'flashcard.read')).toBe('any');
+      expect(resolveScope(ctx, 'deck.update')).toBe('organization');
+      expect(resolveScope(ctx, 'flashcard.read')).toBe('own');
     });
 
     // D35 (register row 3): with no active org the personal-content key set is
@@ -201,19 +203,34 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(inOrgEducator, 'deck.read')).toBeNull();
     });
 
-    // The stored value is not narrowed to the personal set: a role holding a
-    // key at `group` keeps `group` even where the set would answer `own`.
+    // The stored value is not narrowed to the personal set: a key the catalog
+    // allows at `group` keeps `group` even where the set would answer `own`.
     // A `max(stored, 'own')`, a hard-coded `'own'`, or a `stored ?? default`
     // that ignored the row are all red here.
-    it('keeps a stored scope wider than the personal set outside an org', () => {
+    it('keeps a stored scope the catalog allows outside an org', () => {
       const ctx: RequestContext = {
         ...baseCtx,
         accountType: AccountType.EDUCATOR,
-        permissionScopes: { 'deck.update': 'group', 'deck.read': 'organization' },
+        permissionScopes: { 'deck.read': 'group', 'stats.read': 'organization' },
       };
 
-      expect(resolveScope(ctx, 'deck.update')).toBe('group');
-      expect(resolveScope(ctx, 'deck.read')).toBe('organization');
+      expect(resolveScope(ctx, 'deck.read')).toBe('group');
+      expect(resolveScope(ctx, 'stats.read')).toBe('organization');
+    });
+
+    // #961: a content write cannot hold `group`, so a surviving row is not a
+    // grant. The same row at an allowed scope still resolves.
+    it('drops a stored group content write', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        accountType: AccountType.EDUCATOR,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'deck.update': 'group' },
+      };
+      const ownRow: RequestContext = { ...ctx, permissionScopes: { 'deck.update': 'own' } };
+
+      expect(resolveScope(ctx, 'deck.update')).toBeNull();
+      expect(resolveScope(ownRow, 'deck.update')).toBe('own');
     });
 
     // The set's complement: all of `quiz.*` (quizzes are org rows) and the
@@ -263,6 +280,17 @@ describe('authz (unified lib)', () => {
 
     it('returns false when scope is null', () => {
       expect(hasPermission(baseCtx, 'org_role.manage')).toBe(false);
+    });
+
+    // #961: the row is stored but not a grant, so the capability is withheld.
+    it('returns false for a stored group content write', () => {
+      const ctx: RequestContext = {
+        ...baseCtx,
+        activeOrgId: 'org-1',
+        permissionScopes: { 'deck.update': 'group' },
+      };
+
+      expect(hasPermission(ctx, 'deck.update')).toBe(false);
     });
   });
 
@@ -327,42 +355,6 @@ describe('authz (unified lib)', () => {
 
     it('marks the filter impossible when scope is null', () => {
       expect(buildQueryFilter(baseCtx, 'org_role.manage')).toEqual({ _impossible: true });
-    });
-  });
-
-  describe('checkPermission', () => {
-    it('passes when the user owns the resource under own scope', () => {
-      const ctx = {
-        ...baseCtx,
-        permissionScopes: { 'deck.update': 'own' as const },
-      };
-
-      expect(() =>
-        checkPermission(ctx, 'deck.update', {
-          id: 'deck-1',
-          created_by: 'user-1',
-          organization_id: null,
-        }),
-      ).not.toThrow();
-    });
-
-    it('throws FORBIDDEN when scope is missing', () => {
-      expect(() => checkPermission(baseCtx, 'org_role.manage', null)).toThrow('FORBIDDEN');
-    });
-
-    it('throws FORBIDDEN when the resource is not in scope', () => {
-      const ctx = {
-        ...baseCtx,
-        permissionScopes: { 'deck.update': 'own' as const },
-      };
-
-      expect(() =>
-        checkPermission(ctx, 'deck.update', {
-          id: 'deck-1',
-          created_by: 'someone-else',
-          organization_id: null,
-        }),
-      ).toThrow('FORBIDDEN');
     });
   });
 
@@ -511,6 +503,22 @@ describe('authz (unified lib)', () => {
 
       expect(await can(groupCtx, 'deck.read', foreignDeck)).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+
+    // #961: the link and the membership are real, but a content write cannot
+    // hold `group`, so the row in ctx must not reach the share-link lookup at
+    // all. Without the normaliser this answers true and reads the link tables.
+    it('refuses a stored group content write even when the share link matches', async () => {
+      mock.from.mockReturnValueOnce(qb({ visibility: 'group' }));
+      mock.from.mockReturnValueOnce(qb(null, null, 1));
+
+      const writeCtx: RequestContext = {
+        ...groupCtx,
+        permissionScopes: { 'deck.update': 'group' },
+      };
+
+      expect(await can(writeCtx, 'deck.update', foreignDeck)).toBe(false);
+      expect(mock.from).not.toHaveBeenCalled();
     });
   });
 

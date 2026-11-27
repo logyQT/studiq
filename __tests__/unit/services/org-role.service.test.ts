@@ -1135,6 +1135,28 @@ describe('OrgRoleService', () => {
       expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
+    it('does not let a stale group content write cover an own grant', async () => {
+      // The context carries raw stored rows, so a role row older than the #961
+      // ban can still say `deck.update: group`. That row is not a grant, and it
+      // must not outrank `own` for the caller who wants to hand `own` out.
+      mockRoleLookup();
+      mock.from.mockReturnValueOnce(qb(undefined)); // upsert
+      mock.from.mockReturnValueOnce(qb(undefined)); // prune
+      const scopes = { ...nonOwnerScopes(), 'deck.update': 'group' as const };
+
+      const result = await service.setPermissions(
+        { ...permCtx, permissionScopes: scopes },
+        'r-1',
+        catalogPayload({ 'deck.update': 'own' }),
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('unreachable');
+      expect(result.error).toBe('FORBIDDEN');
+      // Nothing was written.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
     it('does not write the profile when a permission change is denied', async () => {
       const roleQb = mockRoleLookup(roleRow([], 'none'));
       // Stubbed so a profile write moved above the grant loop fails on the
