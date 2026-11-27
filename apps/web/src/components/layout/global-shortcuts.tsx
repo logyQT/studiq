@@ -24,6 +24,7 @@ import {
   sequencesDisabled,
   shortcutArea,
 } from '@/lib/shortcuts';
+import { GRADING_SHORTCUT_KEYS, isGradingSheetPath } from '@/lib/grading-navigation';
 
 const NO_SHORTCUTS: NavShortcut[] = [];
 
@@ -72,6 +73,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  */
 export function GlobalShortcuts() {
   const t = useTranslations('Shortcuts');
+  const tGrading = useTranslations('EduGradingPage');
   const router = useRouter();
   const pathname = usePathname();
   const area = shortcutArea(pathname);
@@ -193,6 +195,14 @@ export function GlobalShortcuts() {
                   then={t('then')}
                 />
               ))}
+            </Group>
+          )}
+
+          {isGradingSheetPath(pathname) && (
+            <Group title={tGrading('shortcuts_group')}>
+              <Row keys={[GRADING_SHORTCUT_KEYS.previous]} label={tGrading('previous_attempt')} />
+              <Row keys={[GRADING_SHORTCUT_KEYS.next]} label={tGrading('next_attempt')} />
+              <Row keys={[GRADING_SHORTCUT_KEYS.nextUngraded]} label={tGrading('next_ungraded')} />
             </Group>
           )}
 

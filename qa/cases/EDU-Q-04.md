@@ -71,7 +71,7 @@ tenant and never the legacy accounts.
   instead of answer options; „Wyślij” and then „Wyślij odpowiedzi” in the confirmation
   complete the attempt and the detail page shows
   „Ukończono”.
-- `/edu/assignments/<id>/results/<attemptId>` („Oceń ucznia”) shows the question, the raw
+- `/edu/assignments/<id>/results/<attemptId>` („Oceń pracę”) shows the question, the raw
   type badge `open`, the model answer as „Wyjaśnienie: …”, the student's text as
   „Odpowiedź ucznia: …”, a „Punkty (0–1)” input and „Informacja zwrotna”. „Zapisz ocenę”
   changes the header from „Wynik: 0/1” to „Wynik: 1/1 (ocenione)” and stores

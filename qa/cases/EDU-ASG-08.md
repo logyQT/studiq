@@ -54,7 +54,7 @@ Przesłana próba z pytaniem otwartym.
 
 ## Expected result
 
-- Strona „Oceń ucznia” pokazuje wynik „X/Y”, odpowiedzi ucznia (zamknięte: Poprawna/Niepoprawna), przesłane zdjęcie („Zobacz przesłane zdjęcie”).
+- Strona „Oceń pracę” pokazuje wynik „X/Y”, odpowiedzi ucznia (zamknięte: Poprawna/Niepoprawna), przesłane zdjęcie („Zobacz przesłane zdjęcie”).
 - Zapis powoduje oznaczenie „(ocenione)” i aktualizację wyniku w tabeli wyników.
 - Punkty poza zakresem 0…max są odrzucone lub przycinane – zanotuj.
 - UWAGA UX: przy odpowiedzi zamkniętej widoczny jest „ID wybranej odpowiedzi” (identyfikator) zamiast jej treści oraz „Poprawna: <wyjaśnienie>” zamiast treści poprawnej odpowiedzi – zgłoś jako uwagę.
@@ -63,7 +63,7 @@ Przesłana próba z pytaniem otwartym.
 
 - Tabela wyników: kolumny Uczeń / E-mail / Wynik / Status / Ukończono / Akcje; wiersz
   próby pokazuje „1/3”, status „Przesłane” i link „Oceń”.
-- Strona „Oceń ucznia”: „Wynik: 1/3”, pytanie zamknięte poprawne → „Poprawna”,
+- Strona „Oceń pracę”: „Wynik: 1/3”, pytanie zamknięte poprawne → „Poprawna”,
   „Wybrana odpowiedź: Odpowiedź poprawna”, „Poprawna odpowiedź: Odpowiedź poprawna”;
   pytanie zamknięte błędne → „Niepoprawna” z tą samą parą treści; pytanie otwarte →
   „Odpowiedź ucznia: …”, „Zobacz przesłane zdjęcie”, „Punkty (0–1)”,
