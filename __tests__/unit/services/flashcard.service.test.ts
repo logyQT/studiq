@@ -527,6 +527,42 @@ describe('FlashcardService', () => {
   describe('topic links (#1515)', () => {
     const card = { id: 'fc-1', front: 'Q', back: 'A' };
 
+    it('copies a card with only the topics the caller can read (#1541)', async () => {
+      const links = chain(null);
+      mock.from.mockReturnValueOnce(chain(card));
+      mock.from.mockReturnValueOnce(chain({ id: 'd-1', visibility: 'personal' }));
+      mock.from.mockReturnValueOnce(chain({ id: 'fc-new' }));
+      mock.from.mockReturnValueOnce(chain([{ topic_id: 't-1' }, { topic_id: 't-x' }]));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.from.mockReturnValueOnce(links);
+      mock.from.mockReturnValue(chain({ id: 'fc-new' }));
+
+      const result = await service.copy('fc-1', { targetDeckId: 'd-1' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(links.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-new', topic_id: 't-1' }]);
+    });
+
+    it('batch copies cards with only the topics the caller can read (#1541)', async () => {
+      const links = chain(null);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValueOnce(chain({ id: 'd-1', visibility: 'personal' }));
+      mock.from.mockReturnValueOnce(chain([{ id: 'fc-new' }]));
+      mock.from.mockReturnValueOnce(
+        chain([
+          { flashcard_id: 'fc-1', topic_id: 't-1' },
+          { flashcard_id: 'fc-1', topic_id: 't-x' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.from.mockReturnValue(links);
+
+      const result = await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(links.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-new', topic_id: 't-1' }]);
+    });
+
     it('refuses create with an unreadable topic and writes nothing', async () => {
       const cards = chain([], 0);
       mock.from.mockReturnValueOnce(cards);

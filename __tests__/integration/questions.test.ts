@@ -60,6 +60,7 @@ describe(`Questions Integration`, () => {
   let educator!: BeforeResult;
   let student!: TestUserFixture;
   let manager!: TestUserFixture;
+  let stranger!: BeforeResult;
   let orgId!: string;
 
   beforeAll(async () => {
@@ -68,6 +69,8 @@ describe(`Questions Integration`, () => {
     orgId = educator.orgId!;
     student = await createTestUser({ role: 'student' });
     manager = await createTestUser({ role: 'manager' });
+    // Another educator's unshared topic: this educator cannot read it (#1541).
+    stranger = await before({ role: 'educator', topics: 1 });
   });
 
   beforeEach(async () => {
@@ -84,6 +87,7 @@ describe(`Questions Integration`, () => {
   });
 
   afterAll(async () => {
+    await cleanupFlashcardTopics(stranger.user.id);
     await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${suiteId}`);
     await cleanupFlashcardTopics(educator.user.id, `copy-${suiteId}-topic-`);
     await cleanupOrganizationByName('seed-org-');
@@ -198,6 +202,39 @@ describe(`Questions Integration`, () => {
       expect(body.success).toBe(true);
       expect(body.data.content).toBe(`copy-${suiteId}-What is 2+2?`);
       expect(body.data.question_answers).toBeDefined();
+    });
+
+    it('refuses a topic the caller cannot use and writes no question (#1541)', async () => {
+      const bankId = await createBank(`q-test-bank-${suiteId}-foreign-topic`);
+      const foreignTopicId = requiredAt(stranger.created.topics, 0, 'foreign topic');
+      const content = `copy-${suiteId}-foreign-topic`;
+      mockUser(educator.user);
+
+      const response = await POST(
+        createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId,
+              type: 'mcq',
+              content,
+              explanation: fixtureExplanation('foreign topic'),
+              answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+              topicIds: [foreignTopicId],
+            }),
+          },
+          orgCookies(),
+        ),
+      );
+
+      expect(response.status, await response.clone().text()).toBe(404);
+      const { data } = await createServiceClient()
+        .from('questions')
+        .select('id')
+        .eq('content', content);
+      expect(data).toEqual([]);
     });
 
     it('returns 422 when content is empty', async () => {

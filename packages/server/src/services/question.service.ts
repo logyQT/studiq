@@ -18,6 +18,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { assertTopicsLinkable } from '@studiq/server/lib/topic-access';
 import type {
   CreateQuestionInput,
   QuestionListQuery,
@@ -120,6 +121,10 @@ export class QuestionService {
 
     const questionCount = await this.countOwned(supabase, ctx);
     await limitsResolver.checkLimit(ctx, 'max_questions', questionCount);
+
+    // Before the insert: a refused topic must not leave a question behind (#1541).
+    const refused = await assertTopicsLinkable(supabase, data.topicIds ?? [], ctx);
+    if (refused) return refused;
 
     // `questions.visibility` is the two-value `visibility_type` enum. The bank's
     // visibility arrives as a plain string; anything but `group` means the
@@ -428,6 +433,22 @@ export class QuestionService {
       options: data.answers ? data.answers.map((answer) => answer.content) : current.data.options,
     });
     if (issues.length > 0) return failure('UNPROCESSABLE_ENTITY', issues);
+
+    const refused = await assertTopicsLinkable(supabase, data.topicIds ?? [], ctx, {
+      itemIds: [id],
+      readLinks: async (unreadable) => {
+        const { data: links, error } = await supabase
+          .from('question_topic_assignments')
+          .select('question_id, topic_id')
+          .eq('question_id', id)
+          .in('topic_id', unreadable);
+        if (error) return toDbFailure(error);
+        return success(
+          dbRows(links).map((link) => ({ itemId: link.question_id, topicId: link.topic_id })),
+        );
+      },
+    });
+    if (refused) return refused;
 
     const updateFields: Database['public']['Tables']['questions']['Update'] = {};
     if (data.type) updateFields.type = data.type;

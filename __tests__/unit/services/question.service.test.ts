@@ -11,6 +11,7 @@ vi.mock('@studiq/server/lib/authz', () => ({
   Permission: {
     QUESTION_READ: 'question.read' as const,
     QUESTION_UPDATE: 'question.update' as const,
+    TOPIC_READ: 'topic.read' as const,
   },
 }));
 
@@ -255,6 +256,7 @@ describe('QuestionService', () => {
       const mockQuestion = { id: 'q-topic', type: 'mcq', content: 'Q1' };
 
       mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }])); // readable topics
       mock.from.mockReturnValueOnce(chain(mockQuestion));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce(chain(null));
@@ -286,6 +288,27 @@ describe('QuestionService', () => {
         topics: [{ id: 't-1', name: 'Kinematyka' }],
       });
       expect(mock.from).toHaveBeenCalledWith('question_topic_assignments');
+    });
+
+    it('refuses an unreadable topic and writes no question (#1541)', async () => {
+      const writes = chain({ id: 'q-new' });
+      mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.create(
+        {
+          bankId: '00000000-0000-4000-8020-000000000001',
+          type: 'mcq',
+          content: 'Q1',
+          topicIds: ['t-1', 't-x'],
+          answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+        },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(writes.insert).not.toHaveBeenCalled();
     });
 
     it('returns INTERNAL_SERVER when insert fails', async () => {
@@ -591,6 +614,34 @@ describe('QuestionService', () => {
         expect(result.details?.[0]?.path).toEqual(['modelAnswer']);
         expect(result.details?.[0]?.message).toBe(ValidationErrorCode.MODEL_ANSWER_REQUIRED);
       }
+    });
+
+    it('refuses a new unreadable topic before any write (#1541)', async () => {
+      const writes = chain({ id: 'q-1' });
+      mock.from.mockReturnValueOnce(chain(CURRENT));
+      mock.from.mockReturnValueOnce(chain([])); // readable topics
+      mock.from.mockReturnValueOnce(chain([])); // links the question has
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.update('q-1', { content: 'New', topicIds: ['t-x'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(writes.update).not.toHaveBeenCalled();
+      expect(writes.delete).not.toHaveBeenCalled();
+      expect(writes.insert).not.toHaveBeenCalled();
+    });
+
+    it('keeps an unreadable topic that the question already has (#1541)', async () => {
+      const writes = chain({ id: 'q-1', question_answers: [], question_topic_assignments: [] });
+      mock.from.mockReturnValueOnce(chain(CURRENT));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([{ question_id: 'q-1', topic_id: 't-x' }]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.update('q-1', { topicIds: ['t-x'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(writes.insert).toHaveBeenCalledWith([{ question_id: 'q-1', topic_id: 't-x' }]);
     });
 
     it('returns FORBIDDEN when question not owned by user', async () => {
