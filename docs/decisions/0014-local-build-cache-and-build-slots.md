@@ -485,7 +485,9 @@ differ in, so the seed adds nothing a rebuild does not already change.
      every 30 s with state, active and waiting counts, elapsed and remaining.
      Wait-cap expiry exits 7 (`queued too long`) and names the holders;
      build-cap expiry kills the group, invalidates `.next` (decision 7) and
-     exits nonzero. The 60-minute, 30-minute wait, 30-minute build and 30-second
+     exits nonzero. If the build's output pipes are still open 10 s after that
+     cleanup, the build ends anyway and frees its slot: a process that left the
+     group can hold them, is not signalled, and can still write to `.next`. The 60-minute, 30-minute wait, 30-minute build and 30-second
      progress figures are policy constants, not measurements.
    - **Queue contract.** There is no FIFO guarantee: directory slots have no
      ordering, so no position is promised. Waiters register a directory under
