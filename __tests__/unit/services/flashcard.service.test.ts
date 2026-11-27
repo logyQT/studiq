@@ -531,6 +531,8 @@ describe('FlashcardService', () => {
       const cards = chain([], 0);
       mock.from.mockReturnValueOnce(cards);
       mock.from.mockReturnValueOnce(chain([]));
+      // Anything after the lookup resolves, so the assertions below are what fail.
+      mock.from.mockReturnValue(cards);
 
       const result = await service.create({ front: 'Q', back: 'A', topicIds: ['t-x'] }, ctx);
 
@@ -542,6 +544,7 @@ describe('FlashcardService', () => {
     it('refuses the whole bulk create when one topic is unreadable', async () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.rpc.mockResolvedValue({ data: [card], error: null });
 
       const result = await service.bulkCreate(
         { cards: [{ front: 'Q', back: 'A' }], topicIds: ['t-1', 't-x'] },
@@ -577,6 +580,39 @@ describe('FlashcardService', () => {
 
       expect(result.success).toBe(true);
       expect(writes.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-1', topic_id: 't-x' }]);
+    });
+
+    it('refuses batch add of an unreadable topic and inserts no link', async () => {
+      const writes = chain([]);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.batchTopics(
+        { ids: ['fc-1'], operation: 'add', topicIds: ['t-x'] },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(writes.insert).not.toHaveBeenCalled();
+    });
+
+    it('lets the caller remove a topic that they cannot read', async () => {
+      const removal = chain(null);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValue(removal);
+
+      const result = await service.batchTopics(
+        { ids: ['fc-1'], operation: 'remove', topicIds: ['t-x'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(removal.delete).toHaveBeenCalled();
+      expect(removal.in).toHaveBeenCalledWith('topic_id', ['t-x']);
+      // The card read and the delete: removing asks for no topic access.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('refuses batch set when only some cards carry the topic, before the delete', async () => {

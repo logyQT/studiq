@@ -31,6 +31,7 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 interface FlashcardItem {
   id: string;
   front: string;
+  flashcard_topic_assignments?: Array<{ topic_id: string }> | null;
 }
 
 /** Any flashcards response: failure paths only read `success`. */
@@ -88,12 +89,12 @@ function createWithTopics(front: string, deckId: string, topicIds: string[]) {
   return batchAction(request, { params });
 }
 
-async function countCards(front: string) {
+async function listCards(front: string) {
   const request = createNextRequest(
     `http://localhost/api/v1/flashcards?q=${encodeURIComponent(front)}`,
   );
   const body = await json<ListBody>(await GET(request));
-  return body.data.items.length;
+  return body.data.items;
 }
 
 describe(`Flashcards Integration`, () => {
@@ -405,7 +406,7 @@ describe(`Flashcards Integration`, () => {
       const response = await createWithTopics(front, deckId, [topicId, foreignTopicId]);
 
       expect(response.status).toBe(404);
-      expect(await countCards(front)).toBe(0);
+      expect(await listCards(front)).toEqual([]);
     });
 
     it('accepts a topic the caller can use', async () => {
@@ -415,7 +416,10 @@ describe(`Flashcards Integration`, () => {
       const response = await createWithTopics(front, deckId, [topicId]);
 
       expect(response.ok).toBe(true);
-      expect(await countCards(front)).toBe(1);
+      const cards = await listCards(front);
+      expect(cards.map((card) => card.flashcard_topic_assignments)).toEqual([
+        [{ topic_id: topicId }],
+      ]);
     });
   });
 
