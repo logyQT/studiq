@@ -75,6 +75,7 @@ function createRepository(
       }),
     ),
     canManageBilling: vi.fn(),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success(null)),
     insertCustomer: vi
       .fn()

@@ -1,8 +1,6 @@
+import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES } from '@studiq/authz';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
-
-export const PLAN_SCOPES = ['personal', 'organization'] as const;
-export type PlanScope = (typeof PLAN_SCOPES)[number];
 
 /** Shared field builders — the create/update schemas differ only in defaults. */
 const KEY_FIELD = z
@@ -18,6 +16,14 @@ const NAME_FIELD = z
 
 /** The shared scope field; create adds a default, update stays partial. */
 const PLAN_SCOPE_FIELD = z.enum(PLAN_SCOPES, { error: ValidationErrorCode.INVALID_INPUT });
+
+const PLAN_VISIBILITY_FIELD = z.enum(PLAN_VISIBILITIES, {
+  error: ValidationErrorCode.INVALID_INPUT,
+});
+
+const PLAN_BILLING_MODE_FIELD = z.enum(PLAN_BILLING_MODES, {
+  error: ValidationErrorCode.INVALID_INPUT,
+});
 
 export const CreateSubscriptionPlanSchema = registry.register(
   'CreateSubscriptionPlanRequest',
@@ -55,6 +61,8 @@ export const CreateSubscriptionPlanSchema = registry.register(
       .optional()
       .default('PLN'),
     scope: PLAN_SCOPE_FIELD.optional().default('personal'),
+    visibility: PLAN_VISIBILITY_FIELD.optional().default('public'),
+    billingMode: PLAN_BILLING_MODE_FIELD.optional().default('stripe'),
   }),
 );
 
@@ -89,6 +97,8 @@ export const UpdateSubscriptionPlanSchema = registry.register(
       .max(3, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     scope: PLAN_SCOPE_FIELD.optional(),
+    visibility: PLAN_VISIBILITY_FIELD.optional(),
+    billingMode: PLAN_BILLING_MODE_FIELD.optional(),
   }),
 );
 
@@ -99,6 +109,32 @@ export const SubscriptionPlanIdParamsSchema = registry.register(
   }),
 );
 
+/** The organization an unlisted plan is pinned to (B3, #1495). */
+export const AssignPlanOrganizationSchema = registry.register(
+  'AssignPlanOrganizationRequest',
+  z.object({
+    organizationId: z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+
+export const PlanAssignmentParamsSchema = registry.register(
+  'PlanAssignmentParams',
+  z.object({
+    organizationId: z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+
+/** The plan an organization moves to, from the `/orgs` plan picker (B3). */
+export const SetOrganizationPlanSchema = registry.register(
+  'SetOrganizationPlanRequest',
+  z.object({
+    plan: KEY_FIELD,
+  }),
+);
+
 export type CreateSubscriptionPlanInput = z.infer<typeof CreateSubscriptionPlanSchema>;
 export type UpdateSubscriptionPlanInput = z.infer<typeof UpdateSubscriptionPlanSchema>;
 export type SubscriptionPlanIdParams = z.infer<typeof SubscriptionPlanIdParamsSchema>;
+export type AssignPlanOrganizationInput = z.infer<typeof AssignPlanOrganizationSchema>;
+export type PlanAssignmentParams = z.infer<typeof PlanAssignmentParamsSchema>;
+export type SetOrganizationPlanInput = z.infer<typeof SetOrganizationPlanSchema>;

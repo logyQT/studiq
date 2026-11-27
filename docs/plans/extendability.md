@@ -65,6 +65,90 @@ new key's plan rows go into the matrix that owns those plans;
 fails until the test is updated in the same PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
 next migration re-asserts.
 
+## Adding a sales-led contract plan (unlisted)
+
+A contract plan is an ordinary `subscription_plans` row, not a new entitlement
+layer and not a per-organization copy (B3, #1495). The resolver does not change:
+the organization's plan key is still the ceiling, and the plan carries catalogue
+keys and limits like every other plan.
+
+| #   | Step                                                                                                                                                                                                                              | Where                                       | Layer |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----- |
+| 1   | Create the plan with `scope = 'organization'`, `visibility = 'unlisted'`, a `billing_mode`, and the price the contract records                                                                                                    | admin `/subscription-plans`                 | data  |
+| 2   | Select only keys that exist in `entitlement_catalog`, and set `plan_limits` values from `limit_catalog`                                                                                                                           | admin plan editor                           | data  |
+| 3   | Assign the organizations the contract covers. Assigning pins the plan **and** moves the organization onto it in one transaction (`assign_plan_to_org`); the relation is many-to-many, so two organizations can share one contract | admin plan editor, "Assigned organizations" | data  |
+| 4   | To end a contract, move the organization to another plan (the `/orgs` plan picker, `change_org_plan`), then remove the pin                                                                                                        | admin `/orgs` + plan editor                 | data  |
+| 5   | A contract that includes seats also needs a bespoke personal seat-licence plan — see "Seats in a contract plan" below                                                                                                             | migration or admin panel                    | data  |
+
+The schema and the server enforce the rest:
+
+- **Assignment is one step.** `assign_plan_to_org` inserts the pin
+  (`on conflict do nothing`, so a second call is a no-op) and moves
+  `organizations.plan` in the same transaction. A linked plan that grants
+  nothing would be a contract the operator believes is live.
+- **The plan must be an organization plan.** `change_org_plan` and
+  `assign_plan_to_org` both refuse a plan whose `scope` is not `organization`
+  (`22023`), because `organizations.plan` is the organization ceiling: a
+  personal plan there would grant personal entitlements to the organization.
+  The admin `/orgs` picker offers organization plans only.
+- **Public reads hide it.** `SubscriptionPlanService.listActive` filters
+  `is_active = true AND visibility = 'public'`, and `getByKey` answers
+  `NOT_FOUND` for an unlisted plan. The pricing pages, the upgrade grids, the
+  seats picker, `manage/settings`, `manage/billing` and the mock checkout form
+  read the **list** or the detail through one of those two methods, so none of
+  those lists can contain the plan. `/me/plan` is a different read: the assigned
+  organization's managers still see the plan as their current plan on
+  `manage/billing` and `manage/settings`, because that read is the caller's own
+  plan row (see [deployment.md](../deployment.md#sales-led-contract-plans-unlisted)).
+- **Anonymous PostgREST reads only the listed catalogue.** The `anon` policies
+  on `subscription_plans`, `plan_entitlements` and `plan_limits` require
+  `visibility = 'public' AND is_active`, so the publishable key cannot read a
+  contract plan or its rows even with a direct table query. A signed-in caller
+  still can (pre-existing D34); only the service reads are filtered for them.
+- **Checkout refuses it.** `billingModeAllowsSelfServe` admits only the `stripe`
+  mode, and `resolvePlanAssignment` refuses an unlisted plan for any owner that
+  is not one of its assigned organizations. The mock completion path calls the
+  same two rules.
+- **`change_org_plan` refuses it.** An unlisted plan is refused for an
+  organization with no assignment row (`42501`). The `/orgs` plan picker writes
+  through the same function, so the panel shows the "assign it first" message
+  instead of a stack trace.
+- **Unpinning is guarded.** An assignment cannot be deleted while the
+  organization is on the plan (409 from the service, `23503` from a
+  `before delete` trigger): move the organization to another plan first, then
+  unpin. A plan an assignment references cannot be deleted (FK
+  `on delete restrict`).
+- **Catalogue sweeps spare it.** A new matrix sweep must add
+  `and visibility = 'public'` to its `delete from public.subscription_plans`,
+  because a contract plan is created at runtime and is not in a migration
+  matrix. `__tests__/unit/guards/plan-catalog-sweep.test.ts` fails a new sweep
+  without the predicate; the sweeps before B3 are allowlisted there.
+- **The billing seam is one module.**
+  `packages/server/src/lib/payment/plan-availability.ts` decides who may
+  self-serve, and `PlanInfo.selfServe` is the derived boolean the web app reads.
+  A new payment path — a private Stripe subscription created by sales, or
+  another integration — adds a mode value and one arm there, not a new
+  comparison in a service, a controller or a component.
+
+### Seats in a contract plan
+
+Per D15/D33 an organization contract that includes seats needs a matching
+bespoke **personal** seat-licence plan: `scope = 'personal'`, every key
+`seatEligible`, `visibility = 'unlisted'`. The pool is that plan's licence.
+
+The pin and the move are organization-plan concepts, and this plan is personal:
+`assign_plan_to_org` refuses a plan whose `scope` is not `organization`, and no
+reader consults `plan_assignments` for a personal plan. So the seat-licence plan
+is **not** pinned, and the plan editor's "Assigned organizations" section does
+not list it. This slice adds no pin path for personal plans.
+
+The seats picker (`/manage/seats`) reads the public list today, so a bespoke
+seat-licence plan is **not offerable from that picker yet**. The operator
+bootstraps the pool manually (`org_seat_pools` / `addPool`) until a follow-up
+exposes unlisted personal plans to the picker. Seats are frozen at the UI
+(#1493); the data path stays for #1511. This slice deliberately does not change
+the picker.
+
 ### Retrofitting a gate onto a free read is a breaking change
 
 A paid key belongs on a surface that is **already paid** or **new**. The first

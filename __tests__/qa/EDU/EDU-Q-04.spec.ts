@@ -47,7 +47,7 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * 4. In the quiz the same question renders as a free-text field
  *    („Wpisz swoją odpowiedź…”) instead of answer options; the submitted text is
  *    stored as `text_answer`.
- * 5. „Oceń ucznia” shows the model answer („Odpowiedź wzorcowa: …”) and the student's text
+ * 5. „Oceń pracę” shows the model answer („Odpowiedź wzorcowa: …”) and the student's text
  *    („Odpowiedź ucznia: …”) with a points input; saving „1” turns the header into
  *    „Wynik: 1/1 (ocenione)” and stores `teacher_points: 1`.
  */
@@ -71,8 +71,9 @@ const COPY = {
   openBadge: 'Otwarte',
   startQuiz: 'Rozpocznij kartkówkę',
   submitQuiz: 'Wyślij',
+  confirmSubmit: 'Wyślij odpowiedzi',
   completed: 'Ukończono',
-  gradingTitle: 'Oceń ucznia',
+  gradingTitle: 'Oceń pracę',
   saveGrade: 'Zapisz ocenę',
 } as const;
 
@@ -340,6 +341,10 @@ test.describe('@case:EDU-Q-04 @area:EDU @prio:P2 open answer question', () => {
 
       await answerBox.fill(STUDENT_ANSWER);
       await studentPage.getByRole('button', { name: COPY.submitQuiz }).click();
+      await studentPage
+        .getByRole('alertdialog')
+        .getByRole('button', { name: COPY.confirmSubmit, exact: true })
+        .click();
 
       await expect(studentPage).toHaveURL(new RegExp(`/app/assignments/${assignmentId}$`));
       await expect(

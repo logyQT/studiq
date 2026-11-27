@@ -59,6 +59,8 @@ function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
     features: [],
     limits: {},
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
     isActive: true,
     scope: 'personal',
     seatEligible: false,
@@ -75,6 +77,8 @@ function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     isActive: true,
     scope: 'personal',
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
     ...overrides,
   };
 }
@@ -113,6 +117,7 @@ function createRepository(
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(success(catalogPlan())),
     canManageBilling: vi.fn().mockResolvedValue(success(true)),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),

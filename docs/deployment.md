@@ -563,6 +563,58 @@ Entitlements (`organizations.plan`, `profiles.personal_plan_key`) are written
 **only** by `EntitlementService`, on the fenced path used by webhook activation
 and `POST /api/v1/billing/reconcile`.
 
+## Sales-led contract plans (unlisted)
+
+A contract plan is an ordinary plan marked `visibility = unlisted` (B3, #1495).
+The admin panel is the only writer:
+
+1. **Plans → Create Plan**: set `scope` to `Organization`, `Visibility` to
+   `Unlisted`, and a `Billing` mode. Use `Invoice` or `None` for a plan with no
+   Stripe price; use `Self-serve (Stripe)` only when a private price exists in
+   `stripe_prices`. Fill entitlements and limits from the existing catalogs — a
+   key that is not in `entitlement_catalog` is a code change, not a plan.
+2. Save, then reopen the plan. The **Assigned organizations** section lists the
+   organizations that may hold it. **Adding an organization assigns the plan and
+   moves the organization onto it in one step** (`assign_plan_to_org`), so the
+   contract grants its limits immediately. The plan must have
+   `scope = 'organization'`; assigning an organization to a personal plan is
+   refused with "An organization's plan must be an organization plan."
+3. The assigned organization's managers see the plan as their current plan on
+   `/manage/billing`. It never appears on `/pricing`, the upgrade grids, the
+   seats picker or the public `GET /api/v1/subscription-plans` list, and
+   `GET /api/v1/subscription-plans/<key>` answers `404` for it. The anonymous
+   database read is filtered too: the `anon` policies on `subscription_plans`,
+   `plan_entitlements` and `plan_limits` require a public, active plan, so the
+   publishable key returns no row for a contract plan or its rows. A signed-in
+   caller can still read the catalogue table directly, including an unlisted
+   plan — the pre-existing property D34 records; the service reads are filtered
+   for them and no page lists the plan.
+4. **To end a contract**, move the organization to another plan first (the
+   `/orgs` plan picker, `PUT /api/v1/organizations/<id>/plan`, backed by
+   `change_org_plan`), then remove the pin. Removing the pin while the
+   organization is still on the plan answers `409 CONFLICT`, and the panel shows
+   that message.
+5. The `/orgs` picker lists every **organization** plan, including unlisted
+   ones, because `organizations.plan` is the organization ceiling and a personal
+   plan there would grant personal entitlements to the organization. Selecting
+   an unlisted plan the organization is not assigned to is refused by the
+   database and shows the "assign the organization on the plan first" message;
+   an unknown plan shows a not-found message. A legacy row on another scope
+   stays visible as read-only text.
+6. Checkout (`POST /api/v1/stripe/create-checkout-session`) and plan change
+   (`POST /api/v1/billing/change-plan`) refuse an `invoice`/`none` plan with
+   `400`, and refuse an unlisted plan for an organization that is not assigned
+   with `403`.
+
+Deleting the plan still fails while an organization or an assignment
+references it (`409`). Seats need a bespoke **personal** seat-licence plan
+(`scope = 'personal'`, `visibility = 'unlisted'`). It is **not** pinned: the pin
+and the move are organization-plan concepts, `assign_plan_to_org` refuses a
+personal plan, and no reader consults `plan_assignments` for one. The seats
+picker reads the public list, so it does not offer the plan yet; the operator
+bootstraps the pool manually — see
+[plans/extendability.md](plans/extendability.md#seats-in-a-contract-plan).
+
 ## Production Considerations
 
 - **HTTPS** — Vercel provides automatic HTTPS
@@ -594,6 +646,8 @@ bun start
 # Deploy to Vercel (if CLI is installed)
 vercel --prod
 ```
+
+The production admin server must start through `bun run env:run -- bun run start:admin` (or an equivalent that exports this checkout's stack contract): a bare `bun run start:admin` has no `NEXT_PUBLIC_SUPABASE_URL`/key in its environment and answers 500 with `supabaseKey is required`.
 
 ## Database Migrations
 

@@ -6,6 +6,12 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import {
+  focusSheetTitle,
+  GradingNavigation,
+  GradingShortcutsPanel,
+  SHEET_TITLE_DESCRIPTION_ID,
+} from '@/components/assignments/grading-navigation';
 import { useApiQuery } from '@/hooks/use-api';
 import { useAssignmentBreadcrumb } from '@/hooks/use-assignment-breadcrumb';
 import { useGradeAnswerMutation } from '@/hooks/use-grade-mutation';
@@ -59,7 +65,16 @@ interface StudentAnswers {
   }>;
 }
 
+/**
+ * One sheet per attempt. The drafts are keyed by question, and every attempt shares the
+ * questions, so a move to another attempt must start with empty state (#1354).
+ */
 export default function StudentGradingClient() {
+  const { studentId } = useParams<{ studentId: string }>();
+  return <GradingSheet key={studentId} />;
+}
+
+function GradingSheet() {
   // The folder segment is `[studentId]`; the value it carries is the attempt id (#1062).
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const t = useTranslations('EduGradingPage');
@@ -131,9 +146,18 @@ export default function StudentGradingClient() {
         </Link>
       </div>
 
+      <GradingNavigation assignmentId={id} attemptId={studentId} />
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <h1
+            ref={focusSheetTitle}
+            tabIndex={-1}
+            aria-describedby={SHEET_TITLE_DESCRIPTION_ID}
+            className="text-2xl font-bold tracking-tight"
+          >
+            {t('title')}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {t('score', {
               earned: attempt.score,
@@ -283,6 +307,8 @@ export default function StudentGradingClient() {
             );
           })}
       </div>
+
+      <GradingShortcutsPanel assignmentId={id} attemptId={studentId} />
     </div>
   );
 }

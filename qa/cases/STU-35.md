@@ -16,13 +16,16 @@ Oczekująca kartkówka z pytaniami MCQ, P/F i otwartym.
 1. Kliknij „Rozpocznij kartkówkę”.
 2. Odpowiedz na pytania zamknięte i wpisz tekst w pytaniu otwartym („Wpisz swoją odpowiedź…”).
 3. Dla otwartego dodaj zdjęcie przyciskiem „Prześlij zdjęcie”.
-4. Użyj „Poprzednie”/„Następne”, na końcu „Wyślij”.
+4. Użyj „Poprzednie”/„Następne”, na końcu „Wyślij” i potwierdź w oknie „Wysłać odpowiedzi?”.
 
 ## Expected result
 
 - Rozpoczęcie tworzy próbę (strona /app/assignments/<id>/take?attemptId=…).
 - Odpowiedzi są zachowywane przy nawigacji; zdjęcie przesyła się („Przesyłanie…”) i pojawia się miniatura.
-- Po „Wyślij” przejście do podsumowania lub listy z oznaczeniem „Ukończono”.
+- „Wyślij” otwiera okno „Wysłać odpowiedzi?”. Przy brakach okno wymienia pytania bez odpowiedzi
+  („Pytanie N” prowadzi do pytania; „Wróć” i „Wyślij mimo to”).
+- Po potwierdzeniu („Wyślij odpowiedzi”) przejście do podsumowania lub listy z oznaczeniem
+  „Ukończono”.
 
 ## Prereqs (tenant model)
 
@@ -69,7 +72,9 @@ case's own tenant and never the legacy accounts.
   the button label becomes **„Przesyłanie...”** while the upload request is in flight;
   on success the toast „Dodano zdjęcie: <nazwa>” appears and a 64×64 thumbnail with the
   file name is listed under `ul[aria-label="Dodane zdjęcia"]`.
-- On the last question the button is **„Wyślij”** („Wysyłanie...” while submitting).
+- On the last question the button is **„Wyślij”** („Wysyłanie...” while submitting). It opens
+  the confirmation „Wysłać odpowiedzi?”; **„Wyślij odpowiedzi”** (or „Wyślij mimo to” with
+  unanswered questions) sends the attempt. The time limit sends it without asking.
   Submitting navigates back to `/app/assignments/<id>`, which now shows
   **„Ukończono”** plus, with `showResults` on, „Wynik: 2/3” and
   „Zobacz podsumowanie”. The „Rozpocznij kartkówkę” action is gone (one attempt).

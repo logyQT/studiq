@@ -5,6 +5,7 @@ import {
   type RequestContext,
 } from '@studiq/authz';
 import { hasPermission, Permission } from '@studiq/server/lib/authz';
+import { isPubliclyListable, isSelfServePlan } from '@studiq/server/lib/payment/plan-availability';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -33,6 +34,15 @@ export interface PlanInfo {
   sortOrder: number;
   isActive: boolean;
   scope: string;
+  /** `public` or `unlisted` (B3). */
+  visibility: string;
+  /** `stripe`, `invoice` or `none` (B3). */
+  billingMode: string;
+  /**
+   * Derived (B3): the plan is public and its billing mode allows checkout. The
+   * web app reads this boolean, never the two raw values above.
+   */
+  selfServe: boolean;
   /**
    * Derived from the live `entitlement_catalog` (D33): true iff the plan
    * carries at least one entitlement and every one of its keys is
@@ -44,6 +54,12 @@ export interface PlanInfo {
 }
 
 type SubscriptionPlanRow = Database['public']['Tables']['subscription_plans']['Row'];
+
+/** One organization an unlisted plan is pinned to (B3, #1495). */
+export interface PlanAssignment {
+  organizationId: string;
+  name: string;
+}
 
 /**
  * One `plan_entitlements` row with its catalog embed, as the reads select it.
@@ -149,6 +165,12 @@ export class SubscriptionPlanService {
       sortOrder: plan.sort_order ?? 0,
       isActive: plan.is_active ?? true,
       scope: plan.scope,
+      visibility: plan.visibility,
+      billingMode: plan.billing_mode,
+      selfServe: isSelfServePlan({
+        visibility: plan.visibility,
+        billingMode: plan.billing_mode,
+      }),
       features: features ?? entitlementRows.map((row) => row.entitlement_key),
       seatEligible: SubscriptionPlanService.seatEligibilityOf(entitlementRows),
       limits,
@@ -233,11 +255,19 @@ export class SubscriptionPlanService {
     );
   }
 
-  /** No filters returns every active plan — the public pricing behaviour (D34). */
+  /**
+   * No filters returns every active public plan — the public pricing behaviour
+   * (D34). `unlisted` plans are sales-led contracts (B3) and never appear here,
+   * so no public page and no checkout form reads through this method.
+   */
   async listActive(filters: PlanCatalogFilters = {}): Promise<ServiceResult<PlanInfo[]>> {
     const supabase = await this.clientFactory();
 
-    let query = supabase.from('subscription_plans').select('*').eq('is_active', true);
+    let query = supabase
+      .from('subscription_plans')
+      .select('*')
+      .eq('is_active', true)
+      .eq('visibility', 'public');
 
     if (filters.scope) {
       query = query.eq('scope', filters.scope);
@@ -351,6 +381,11 @@ export class SubscriptionPlanService {
     return this.planViews(supabase, plans);
   }
 
+  /**
+   * The public plan detail. An unlisted plan (B3) is not public detail: the
+   * `[key]` route and the mock checkout form both answer `NOT_FOUND`, the same
+   * answer a missing key gets.
+   */
   async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
 
@@ -362,6 +397,7 @@ export class SubscriptionPlanService {
 
     if (error) return toDbFailure(error);
     if (!plan) return failure('NOT_FOUND');
+    if (!isPubliclyListable(plan)) return failure('NOT_FOUND');
 
     // Public plan detail: same filter as the list (#1484).
     return this.planView(supabase, plan, true);
@@ -382,6 +418,132 @@ export class SubscriptionPlanService {
     return success(data);
   }
 
+  /** The organizations an unlisted plan is pinned to, newest last (B3). */
+  async listAssignments(planKey: string): Promise<ServiceResult<PlanAssignment[]>> {
+    const supabase = await this.clientFactory();
+
+    const { data, error } = await supabase
+      .from('plan_assignments')
+      .select('organization_id, organizations(name)')
+      .eq('plan_key', planKey)
+      .order('created_at', { ascending: true });
+
+    if (error) return toDbFailure(error);
+
+    return success(
+      dbRows(data).map((row) => ({
+        organizationId: row.organization_id,
+        name: dbNested(row.organizations)?.name ?? row.organization_id,
+      })),
+    );
+  }
+
+  /**
+   * Pin an unlisted plan to an organization and move the organization onto it
+   * in one transaction (B3). `assign_plan_to_org` owns both writes, so a linked
+   * plan is never left granting nothing. A second call is a no-op: the pin
+   * already exists and the move is the same.
+   *
+   * A plan or organization that does not exist is `NOT_FOUND` (`P0002`). A plan
+   * whose scope is not `organization` is `BAD_REQUEST` (`22023`): a personal
+   * plan would grant personal entitlements to an organization. The function
+   * writes the pin itself, so it never raises the assignment refusal (`42501`)
+   * that `change_org_plan` raises for an unlisted plan without a pin.
+   */
+  async assignOrganization(
+    planKey: string,
+    organizationId: string,
+  ): Promise<ServiceResult<PlanAssignment>> {
+    const supabase = await this.clientFactory();
+
+    const { error } = await supabase.rpc('assign_plan_to_org', {
+      p_plan_key: planKey,
+      p_org_id: organizationId,
+    });
+
+    if (error) {
+      if (error.code === 'P0002') return failure('NOT_FOUND');
+      if (error.code === '22023') return failure('BAD_REQUEST');
+      return toDbFailure(error);
+    }
+
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    if (orgError) return toDbFailure(orgError);
+    return success({ organizationId, name: org?.name ?? organizationId });
+  }
+
+  /**
+   * Move an organization to a plan through the one writer, `change_org_plan`
+   * (B3). The database refuses an unlisted plan the organization is not pinned
+   * to (`42501`); that is `CONFLICT`, because the operator can fix it by
+   * assigning the plan first. A plan whose scope is not `organization` is
+   * `BAD_REQUEST` (`22023`): `organizations.plan` is the organization ceiling,
+   * so a personal plan there is a category error, not a state to fix. An
+   * unknown plan or organization is `NOT_FOUND` (`P0002`).
+   */
+  async setOrganizationPlan(
+    organizationId: string,
+    planKey: string,
+  ): Promise<ServiceResult<{ plan: string }>> {
+    const supabase = await this.clientFactory();
+
+    const { error } = await supabase.rpc('change_org_plan', {
+      p_org_id: organizationId,
+      p_plan: planKey,
+    });
+
+    if (error) {
+      if (error.code === '22023') return failure('BAD_REQUEST');
+      if (error.code === '42501') return failure('CONFLICT');
+      if (error.code === 'P0002') return failure('NOT_FOUND');
+      return toDbFailure(error);
+    }
+
+    return success({ plan: planKey });
+  }
+
+  /**
+   * Remove the pin. The organization's own plan is the guard: an organization
+   * still on this plan would be left on a plan it may no longer hold, so the
+   * answer is `CONFLICT` (the table trigger declines the same delete in SQL).
+   */
+  async unassignOrganization(
+    planKey: string,
+    organizationId: string,
+  ): Promise<ServiceResult<{ success: true }>> {
+    const supabase = await this.clientFactory();
+
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .select('plan')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    if (orgError) return toDbFailure(orgError);
+    if (!org) return failure('NOT_FOUND');
+    if (org.plan === planKey) return failure('CONFLICT');
+
+    const { data, error } = await supabase
+      .from('plan_assignments')
+      .delete()
+      .eq('plan_key', planKey)
+      .eq('organization_id', organizationId)
+      .select('plan_key');
+
+    if (error) {
+      if (error.code === '23503') return failure('CONFLICT');
+      return toDbFailure(error);
+    }
+    if (dbRows(data).length === 0) return failure('NOT_FOUND');
+
+    return success({ success: true });
+  }
+
   async create(input: CreateSubscriptionPlanInput) {
     const supabase = await this.clientFactory();
 
@@ -397,6 +559,8 @@ export class SubscriptionPlanService {
         is_active: input.isActive,
         currency: input.currency,
         scope: input.scope,
+        visibility: input.visibility,
+        billing_mode: input.billingMode,
       })
       .select()
       .single();
@@ -419,6 +583,8 @@ export class SubscriptionPlanService {
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
     if (input.currency !== undefined) updateData.currency = input.currency;
     if (input.scope !== undefined) updateData.scope = input.scope;
+    if (input.visibility !== undefined) updateData.visibility = input.visibility;
+    if (input.billingMode !== undefined) updateData.billing_mode = input.billingMode;
 
     const { data, error } = await supabase
       .from('subscription_plans')

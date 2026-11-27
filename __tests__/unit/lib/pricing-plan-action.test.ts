@@ -68,4 +68,11 @@ describe('pricingPlanAction', () => {
   it('keeps register above the free row', () => {
     expect(action({ signedIn: false, isFree: true })).toBe('register');
   });
+
+  it('prints no action on a plan that is not sold self-serve (B3)', () => {
+    // An unlisted plan, or one billed by invoice, has no checkout, no register
+    // and no change-plan path: the sales CTA owns that conversation.
+    expect(action({ signedIn: true, isSelfServe: false })).toBe('none');
+    expect(action({ signedIn: false, isSelfServe: false })).toBe('none');
+  });
 });

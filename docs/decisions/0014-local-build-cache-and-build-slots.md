@@ -456,9 +456,15 @@ differ in, so the seed adds nothing a rebuild does not already change.
    - **Kill and reclaim.** The build is spawned as its own process group and its
      `pgid` is recorded in the slot, together with the group leader's start time.
      On timeout, launcher exit or any exit path, send `SIGTERM` to the group, wait
-     a 10 s grace, then `SIGKILL`, and only then release the slot. A reclaim
-     signals a recorded group only while that recorded identity still holds: a
-     `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
+     a 10 s grace, then `SIGKILL`, and only then release the slot. If the system
+     still answers `EPERM` after `SIGKILL`, the group is not confirmed ended: the
+     command exits `6`. After its own build it keeps the slot (if it claimed one);
+     in a reclaim, the new build does not start. When the group can possibly write
+     this checkout's `.next`, `env:ensure` restores no previous build, starts no
+     web server and keeps the backup. A later reclaim of a kept slot follows the
+     rule for every reclaim, and a lasting `EPERM` blocks the new build again. A
+     reclaim signals a recorded group only while that recorded identity still
+     holds: a `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
      group. A leader that is gone leaves no start time to read, and the surviving
      group is still ours — the kernel keeps a group id allocated while the group
      exists — so the orphan is killed; a leader that is alive with a different
@@ -487,8 +493,13 @@ differ in, so the seed adds nothing a rebuild does not already change.
      build-cap expiry kills the group, invalidates `.next` (decision 7) and
      exits nonzero. If the build's output pipes are still open 10 s after that
      cleanup, the build ends anyway and frees its slot: a process that left the
-     group can hold them, is not signalled, and can still write to `.next`. The 60-minute, 30-minute wait, 30-minute build and 30-second
-     progress figures are policy constants, not measurements.
+     group can hold them, is not signalled, and can still write to `.next`. The
+     slot can be freed because its record names only the build's group, so a
+     reclaim could not stop that process either. The consequence: `env:ensure`
+     treats this as a timed-out build, so it restores the previous build and
+     restarts the previous web server, if one was running, while that process
+     can still write to `.next`. The 60-minute, 30-minute wait, 30-minute build
+     and 30-second progress figures are policy constants, not measurements.
    - **Queue contract.** There is no FIFO guarantee: directory slots have no
      ordering, so no position is promised. Waiters register a directory under
      `<registry>/build-slots/waiters/` (same identity, reclaimed by the same
@@ -634,7 +645,8 @@ differ in, so the seed adds nothing a rebuild does not already change.
      the caller throws names the log: `build failed (exit 4); full log:
 .dev/env.log`. `.dev/env.log` holds every warning from a successful build
      and the full output of a failed one, ANSI-stripped. Build-path exit codes
-     are 4 (failed), 5 (timed out), 6 (refused) and 7 (queued too long).
+     are 4 (failed), 5 (timed out), 6 (refused, or a process group not confirmed
+     ended) and 7 (queued too long).
 
 7. **Blast-radius guard on Linux, not a watchdog anywhere.** Where the platform
    has an OOM killer and a score knob, set `oom_score_adj=1000` on the build

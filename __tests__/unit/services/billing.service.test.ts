@@ -49,6 +49,8 @@ function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     isActive: true,
     scope: 'personal',
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
     ...overrides,
   };
 }
@@ -87,6 +89,7 @@ function createRepository(
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(success(plan())),
     canManageBilling: vi.fn().mockResolvedValue(success(true)),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn(),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -227,6 +230,55 @@ describe('BillingService.startCheckout', () => {
       expect.objectContaining({
         owner: { type: 'org', orgId: 'org-2', userId: 'u-1', accountType: AccountType.STUDENT },
       }),
+    );
+  });
+
+  it('refuses an unlisted plan for an organization it is not assigned to (B3)', async () => {
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(
+      success(
+        plan({
+          key: 'enterprise',
+          name: 'Enterprise',
+          scope: 'organization',
+          visibility: 'unlisted',
+        }),
+      ),
+    );
+    vi.mocked(repository.canManageBilling).mockResolvedValueOnce(success(true));
+    vi.mocked(repository.planIsAssignedToOrg).mockResolvedValueOnce(success(false));
+
+    await expect(service.startCheckout(managerCtx, 'enterprise', 'org-1')).resolves.toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
+    expect(repository.planIsAssignedToOrg).toHaveBeenCalledWith('enterprise', 'org-1');
+    expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('accepts an unlisted plan for its assigned organization when the billing mode is Stripe (B3)', async () => {
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(
+      success(
+        plan({
+          key: 'enterprise',
+          name: 'Enterprise',
+          scope: 'organization',
+          visibility: 'unlisted',
+        }),
+      ),
+    );
+    vi.mocked(repository.canManageBilling).mockResolvedValueOnce(success(true));
+    vi.mocked(repository.planIsAssignedToOrg).mockResolvedValueOnce(success(true));
+    vi.mocked(repository.findListedPrice).mockResolvedValueOnce(
+      success(
+        listedPrice({ planKey: 'enterprise', stripePriceId: 'price_enterprise', unitAmount: 999 }),
+      ),
+    );
+
+    await expect(service.startCheckout(managerCtx, 'enterprise', 'org-1')).resolves.toMatchObject({
+      success: true,
+    });
+    expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ planKey: 'enterprise', priceId: 'price_enterprise' }),
     );
   });
 

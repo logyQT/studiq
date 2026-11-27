@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import {
   resolveApplicablePlan,
   resolveCheckoutOwner,
+  resolvePlanAssignment,
 } from '@studiq/server/lib/payment/checkout-rules';
 import {
   type PaymentHistoryWriter,
@@ -28,7 +29,10 @@ export type MockWebhookEvent = {
   org_id?: string;
 };
 
-type MockCheckoutRules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling'>;
+type MockCheckoutRules = Pick<
+  StripeBillingRepository,
+  'getPlan' | 'canManageBilling' | 'planIsAssignedToOrg'
+>;
 type MockEntitlements = Pick<EntitlementService, 'applyPlan'>;
 
 /**
@@ -84,6 +88,11 @@ export class MockStripeService {
       event.org_id,
     );
     if (isFailure(owner)) return owner;
+
+    // The assignment guard is the same one checkout and change-plan use (B3),
+    // so a forged event cannot pin an unlisted plan to another organization.
+    const assignment = await resolvePlanAssignment(this.rules, applicable.data.plan, owner.data);
+    if (isFailure(assignment)) return assignment;
 
     const organizationId = owner.data.type === 'org' ? owner.data.orgId : null;
     const plan = applicable.data.plan;

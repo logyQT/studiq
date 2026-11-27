@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seedQuizAnswers, toSaveAnswersPayload } from '@/lib/quiz-draft';
+import { seedQuizAnswers, toSaveAnswersPayload, unansweredIndexes } from '@/lib/quiz-draft';
 
 const questions = [
   { id: 'q-mcq', type: 'mcq' },
@@ -126,5 +126,32 @@ describe('toSaveAnswersPayload (#349, #1161)', () => {
       { questionId: 'q-open', textAnswer: 'Wisła' },
       { questionId: 'q-unanswered', skipped: true },
     ]);
+  });
+});
+
+describe('unansweredIndexes (#1353)', () => {
+  const sheet = [
+    { id: 'q-1', type: 'mcq' },
+    { id: 'q-2', type: 'open' },
+    { id: 'q-3', type: 'true_false' },
+  ];
+
+  it('is empty when every question has an answer', () => {
+    expect(unansweredIndexes(sheet, { 'q-1': 'a', 'q-2': 'text', 'q-3': 'b' })).toEqual([]);
+  });
+
+  it('lists exactly the questions with no answer, by position', () => {
+    expect(unansweredIndexes(sheet, { 'q-2': 'text' })).toEqual([0, 2]);
+  });
+
+  it('counts a text of whitespace as no answer', () => {
+    expect(unansweredIndexes(sheet, { 'q-1': 'a', 'q-2': ' \n\t ', 'q-3': 'b' })).toEqual([1]);
+  });
+
+  it('counts an attached photo as an answer, but not an empty list', () => {
+    const answers = { 'q-1': 'a', 'q-3': 'b' };
+
+    expect(unansweredIndexes(sheet, answers, { 'q-2': ['photo'] })).toEqual([]);
+    expect(unansweredIndexes(sheet, answers, { 'q-2': [] })).toEqual([1]);
   });
 });

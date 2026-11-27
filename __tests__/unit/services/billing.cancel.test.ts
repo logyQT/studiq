@@ -62,6 +62,7 @@ function createRepository(
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn(),
     canManageBilling: vi.fn().mockResolvedValue(success(true)),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),

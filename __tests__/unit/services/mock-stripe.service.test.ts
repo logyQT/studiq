@@ -20,6 +20,8 @@ const studentPlan: CatalogPlan = {
   isActive: true,
   scope: 'personal',
   sortOrder: 1,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const orgPlan: CatalogPlan = {
   key: 'campus',
@@ -29,6 +31,8 @@ const orgPlan: CatalogPlan = {
   isActive: true,
   scope: 'organization',
   sortOrder: 8,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const freeStudentPlan: CatalogPlan = {
   key: 'free',
@@ -38,6 +42,8 @@ const freeStudentPlan: CatalogPlan = {
   isActive: true,
   scope: 'personal',
   sortOrder: 0,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const freeOrgPlan: CatalogPlan = {
   key: 'launch',
@@ -47,6 +53,8 @@ const freeOrgPlan: CatalogPlan = {
   isActive: true,
   scope: 'organization',
   sortOrder: 3,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const inactivePlan: CatalogPlan = { ...studentPlan, key: 'old', isActive: false };
 
@@ -56,7 +64,7 @@ const event = {
   plan_id: 'plus',
 };
 
-type Rules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling'>;
+type Rules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling' | 'planIsAssignedToOrg'>;
 type Entitlements = Pick<EntitlementService, 'applyPlan'>;
 
 describe('MockStripeService', () => {
@@ -74,6 +82,7 @@ describe('MockStripeService', () => {
     rules = {
       getPlan: vi.fn().mockResolvedValue(success(studentPlan)),
       canManageBilling: vi.fn().mockResolvedValue(success(true)),
+      planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     };
     entitlements = { applyPlan: vi.fn().mockResolvedValue(success(undefined)) };
     payments = {
@@ -181,6 +190,20 @@ describe('MockStripeService', () => {
       );
 
       expect(result).toEqual(failure('FORBIDDEN'));
+      expect(payments.record).not.toHaveBeenCalled();
+      expect(entitlements.applyPlan).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unlisted plan for an organization it is not assigned to (B3)', async () => {
+      // The mock completion path shares the checkout rule, so a forged event
+      // cannot pin a contract plan to another organization.
+      mockPlan({ ...orgPlan, visibility: 'unlisted' });
+      vi.mocked(rules.planIsAssignedToOrg).mockResolvedValueOnce(success(false));
+
+      const result = await service.handleWebhook(orgEvent, AccountType.MANAGER, 'u-1');
+
+      expect(result).toEqual(failure('FORBIDDEN'));
+      expect(rules.planIsAssignedToOrg).toHaveBeenCalledWith('campus', 'org-1');
       expect(payments.record).not.toHaveBeenCalled();
       expect(entitlements.applyPlan).not.toHaveBeenCalled();
     });

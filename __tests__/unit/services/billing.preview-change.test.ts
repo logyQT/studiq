@@ -36,6 +36,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     scope: 'personal',
     audience: 'student',
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   ace: {
     key: 'ace',
@@ -46,6 +48,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     scope: 'personal',
     audience: 'student',
     sortOrder: 2,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   hub: {
     key: 'hub',
@@ -56,6 +60,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     scope: 'organization',
     audience: null,
     sortOrder: 3,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   campus: {
     key: 'campus',
@@ -66,6 +72,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     scope: 'organization',
     audience: null,
     sortOrder: 4,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
 };
 
@@ -131,6 +139,7 @@ function createRepository(
       .fn()
       .mockImplementation((key: string) => Promise.resolve(success(CATALOG[key] ?? null))),
     canManageBilling: vi.fn().mockResolvedValue(success(true)),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
