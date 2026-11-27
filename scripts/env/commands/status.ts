@@ -4,6 +4,7 @@ import { printJson, writeLine } from '../lib/output';
 import type { ManifestReport, StatusSnapshot } from '../lib/json';
 import { formatBuildSlots } from '../lib/locks';
 import type { SnapshotStatus } from '../lib/build-cache';
+import { migrationsLabel } from '../lib/migrations';
 
 function orDash(value: string | number | boolean | null): string {
   if (value === null) return '-';
@@ -98,6 +99,7 @@ function printHuman(snapshot: StatusSnapshot): void {
     `build       ${snapshot.build.state ?? 'unknown'}${buildFingerprintLabel(snapshot.build)}`,
   );
   writeLine(`slots       ${formatBuildSlots(snapshot.build.slots)}`);
+  writeLine(`migrations  ${migrationsLabel(snapshot.migrations)}`);
   for (const line of snapshotLines(snapshot.snapshot)) writeLine(line);
   // Only when there is one: a failed build moves its artifact aside instead of
   // deleting it, and this is how an agent learns the directory exists.

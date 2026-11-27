@@ -24,6 +24,70 @@ function newHarness(): Harness {
   return harness;
 }
 
+function writeMigrationRecord(harness: Harness, stackId: string, versions: string[]): void {
+  writeFileSync(
+    join(harness.stateDir, 'migrations.json'),
+    JSON.stringify({
+      stackId,
+      stackName: 'default',
+      checkedAt: '2026-11-27T10:00:00.000Z',
+      versions,
+      remoteOnly: [],
+    }),
+  );
+}
+
+describe('env:status migrations', () => {
+  it('reports a local version the recorded set does not cover as pending', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({ apiUrl: 'http://127.0.0.1:1', apiPort: 20041 });
+    harness.setStatusFixture(fixture);
+    harness.writeMigrationFiles(['20260101000000', '20261125160000']);
+    writeMigrationRecord(harness, String(objectField(fixture, 'identity').id), ['20260101000000']);
+
+    const result = await harness.run(['status', '--json']);
+
+    expect(result.status).toBe(0);
+    expect(parseJsonObject(result.stdout).migrations).toMatchObject({
+      state: 'pending',
+      pending: ['20261125160000'],
+      source: 'record',
+    });
+
+    const human = await harness.run(['status']);
+    expect(human.stdout).toContain("migrations  pending 1 — run 'bun run env:ensure'");
+  });
+
+  it('reports current when the record covers exactly the local set', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({ apiUrl: 'http://127.0.0.1:1', apiPort: 20041 });
+    harness.setStatusFixture(fixture);
+    harness.writeMigrationFiles(['20260101000000', '20261125160000']);
+    writeMigrationRecord(harness, String(objectField(fixture, 'identity').id), [
+      '20260101000000',
+      '20261125160000',
+    ]);
+
+    const result = await harness.run(['status', '--json']);
+
+    expect(parseJsonObject(result.stdout).migrations).toMatchObject({ state: 'current' });
+  });
+
+  it('reports a record written on another stack as unknown', async () => {
+    const harness = newHarness();
+    const fixture = stackStatusFixture({ apiUrl: 'http://127.0.0.1:1', apiPort: 20041 });
+    harness.setStatusFixture(fixture);
+    harness.writeMigrationFiles(['20260101000000']);
+    writeMigrationRecord(harness, 'another-stack-id', ['20260101000000']);
+
+    const result = await harness.run(['status', '--json']);
+    const report = objectField(parseJsonObject(result.stdout), 'migrations');
+
+    expect(report.state).toBe('unknown');
+    expect(report.reason).toContain('another stack');
+  });
+});
+
 describe('env:status --json', () => {
   it('reports a stopped checkout without crashing and without secrets', async () => {
     const harness = newHarness();

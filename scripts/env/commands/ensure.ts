@@ -73,11 +73,22 @@ import {
   buildFingerprintOrNull,
   classifyBuildArtifact,
   identityKey,
+  readMigrationsState,
   readStackState,
   writeBuildState,
+  writeMigrationsState,
   writeStackState,
   type StackState,
 } from '../lib/state';
+import {
+  applyMigrations,
+  classifyMigrations,
+  localMigrationVersions,
+  probeMigrations,
+  probeReport,
+  unknownMigrations,
+  type MigrationsReport,
+} from '../lib/migrations';
 import {
   readWebPid,
   recordedWebReadiness,
@@ -140,6 +151,128 @@ async function ensureGrafanaBestEffort(): Promise<void> {
       `env: Grafana MCP token not configured (${error instanceof Error ? error.message : String(error)}); run 'bun run env:observability ensure'`,
     );
   }
+}
+
+/**
+ * Make the stack's schema match the local migration files (#1186).
+ *
+ * A stack applies migrations when the CLI creates it, never again, so a branch
+ * that merges new migrations keeps an old schema until someone remembers
+ * `migration up` — and the failure surfaces as a 500 in an unrelated feature.
+ *
+ * This checkout's own stack is repaired silently: the local set is compared with
+ * `.dev/migrations.json` first (the same claim `env status` reads), and the
+ * database is opened only when that claim no longer covers the files. A shared
+ * stack is never mutated: its owner applies migrations.
+ */
+function reconcileMigrations(input: {
+  stackName: string | null;
+  dbUrl: string | null;
+  /** Null for a shared stack: it has no identity this checkout may record. */
+  stackId: string | null;
+  shared: boolean;
+  /** A warm run carries no keys, so a named stack is re-read only when probing. */
+  refreshDbUrl?: () => string | null;
+}): MigrationsReport {
+  const local = localMigrationVersions();
+  const record = readMigrationsState();
+  const proven =
+    !input.shared &&
+    input.stackId !== null &&
+    record !== null &&
+    record.stackId === input.stackId &&
+    record.versions.length === local.length &&
+    local.every((version) => record.versions.includes(version));
+  if (proven) return classifyMigrations(record, local, input.stackId);
+
+  const dbUrl = input.refreshDbUrl ? input.refreshDbUrl() : input.dbUrl;
+  // Never let a shared run fall through to the CLI's local target: this checkout
+  // has no stack, and the shared stack is not ours to inspect without its URL.
+  if (input.shared && !dbUrl) {
+    writeStderrLine(
+      'env: shared stack migration state is unknown (SUPABASE_DB_URL is not exported); its owner applies migrations',
+    );
+    return unknownMigrations('the shared stack has no exported database URL');
+  }
+  const checkedAt = new Date().toISOString();
+  const probe = probeMigrations({ stackName: input.stackName, dbUrl });
+  const report = probeReport(probe, checkedAt);
+  if (!probe.ok) {
+    writeStderrLine(
+      `env: could not check the stack's migrations (${report.reason ?? 'probe failed'}); they are not known to be applied`,
+    );
+    return report;
+  }
+  if (probe.pending.length > 0) {
+    if (input.shared) {
+      writeStderrLine(
+        `env: shared stack has ${probe.pending.length} pending migration(s); this checkout does not apply them`,
+      );
+      return report;
+    }
+    // `migration up` refuses this state itself ("remote migration versions not
+    // found"), and choosing which side is stale is the operator's decision.
+    if (probe.remoteOnly.length > 0) {
+      throw new EnvFailure(
+        EXIT_START_FAILED,
+        [
+          `cannot apply ${probe.pending.length} pending migration(s): the database records ${probe.remoteOnly.length} version(s) with no local file (${probe.remoteOnly.join(', ')})`,
+          "restore those files, or drop the history entries with 'bun run env:supa migration repair --status reverted <version>', then re-run 'bun run env:ensure'",
+        ].join('; '),
+      );
+    }
+    const applied = applyMigrations({ stackName: input.stackName, dbUrl });
+    if (!applied.ok) {
+      throw new EnvFailure(
+        EXIT_START_FAILED,
+        `applying ${probe.pending.length} pending migration(s) failed: ${applied.reason ?? 'migration up failed'}`,
+      );
+    }
+    // The exit code says the command ran; only a second read says the schema moved.
+    const after = probeMigrations({ stackName: input.stackName, dbUrl });
+    if (!after.ok) {
+      writeStderrLine(
+        `env: applied ${probe.pending.length} migration(s) but the re-probe failed (${after.reason ?? 'probe failed'})`,
+      );
+      return unknownMigrations(after.reason);
+    }
+    if (after.pending.length > 0) {
+      throw new EnvFailure(
+        EXIT_START_FAILED,
+        `migrations still pending after apply: ${after.pending.join(', ')}`,
+      );
+    }
+    appendEnvLog(
+      `migrations: applied ${probe.pending.length} on stack ${input.stackName ?? 'default'}`,
+    );
+    writeStderrLine(`env: applied ${probe.pending.length} pending migration(s)`);
+    if (input.stackId !== null) {
+      writeMigrationsState({
+        stackId: input.stackId,
+        stackName: input.stackName ?? 'default',
+        checkedAt: new Date().toISOString(),
+        versions: local,
+        remoteOnly: after.remoteOnly,
+      });
+    }
+    return probeReport(after, new Date().toISOString());
+  }
+
+  if (!input.shared && input.stackId !== null) {
+    writeMigrationsState({
+      stackId: input.stackId,
+      stackName: input.stackName ?? 'default',
+      checkedAt,
+      versions: local,
+      remoteOnly: probe.remoteOnly,
+    });
+  }
+  if (probe.remoteOnly.length > 0) {
+    writeStderrLine(
+      `env: the database has ${probe.remoteOnly.length} migration version(s) with no local file; the stack may belong to another branch`,
+    );
+  }
+  return report;
 }
 
 function withPort(contract: Contract, appPort: number): Contract {
@@ -873,6 +1006,12 @@ export async function runEnsure(
         );
       }
       applyStackEnv(sharedEnv, { appUrl: contract.appUrl, appEnv });
+      const sharedMigrations = reconcileMigrations({
+        stackName: contract.stackName,
+        dbUrl: sharedEnv.dbUrl,
+        stackId: null,
+        shared: true,
+      });
       if (seed) runSeeder(options.profile, process.env);
       const envHash = buildEnvHash({
         supabaseUrl: sharedEnv.apiUrl,
@@ -948,6 +1087,7 @@ export async function runEnsure(
         ready: true,
         profile: options.profile,
         cold: false,
+        migrations: sharedMigrations,
         warnings: ['shared stack (no mutation)'],
       });
       await ensureGrafanaBestEffort();
@@ -1036,6 +1176,17 @@ export async function runEnsure(
     if (!warm) {
       applyStackEnv(stack.env, { appUrl: contract.appUrl, appEnv, stackId: stack.status.id });
     }
+    // Before the seed: the seeders write rows the new schema may define.
+    const migrations = reconcileMigrations({
+      stackName: cliStackName,
+      // A warm read carries no keys, and the default stack needs none.
+      dbUrl: warm ? null : stack.env.dbUrl,
+      stackId: stack.status.id,
+      shared: false,
+      ...(warm && cliStackName
+        ? { refreshDbUrl: () => readStack(cliStackName)?.env.dbUrl ?? null }
+        : {}),
+    });
     if (seed) runSeeder(options.profile, process.env);
 
     const envHash =
@@ -1178,6 +1329,7 @@ export async function runEnsure(
       web: { pid: webPid, http: webHttp },
       supabaseHttp: 200,
       ready,
+      migrations,
       profile: options.profile,
       cold,
     });

@@ -17,6 +17,13 @@ import {
   sanitizeProjectId,
 } from './repo';
 import { profileRequiresServe } from '../profiles';
+import {
+  absentMigrations,
+  classifyMigrations,
+  localMigrationVersions,
+  unknownMigrations,
+  type MigrationsReport,
+} from './migrations';
 import { probeStackStatus, readListedStackRuntime, type StackStatus } from './stack';
 import {
   buildArtifactDir,
@@ -24,6 +31,7 @@ import {
   classifyRecordedArtifact,
   failedBuildArtifacts,
   readBuildState,
+  readMigrationsState,
   readStackState,
   type StackState,
 } from './state';
@@ -41,6 +49,8 @@ export interface SnapshotOptions {
   warnings?: string[];
   profile?: string | null;
   cold?: boolean | null;
+  /** A report the caller already proved (ensure), instead of the recorded claim. */
+  migrations?: MigrationsReport;
   /**
    * Test seam: the artifact `build.state`/`build.present` describe. Production
    * uses `apps/web/.next`; the unit tests point this at a temporary directory.
@@ -183,6 +193,16 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
   const stackProbeFailed = !contract.shared && probeError !== null;
   const commit = currentCommit();
   const branch = currentBranchName();
+  // A live probe costs a database connection, so the snapshot reports this
+  // checkout's last proven apply against the local files. The caller that
+  // probes (ensure) passes its own report; doctor probes separately.
+  const migrations =
+    options.migrations ??
+    (contract.shared
+      ? unknownMigrations('the shared stack is owned by another checkout')
+      : statusStack
+        ? classifyMigrations(readMigrationsState(), localMigrationVersions(), statusStack.id)
+        : absentMigrations());
 
   return shapeStatus({
     contract,
@@ -206,6 +226,7 @@ export async function collectSnapshot(options: SnapshotOptions = {}): Promise<St
     buildFailed: failedBuildArtifacts(artifactDir).map((path) => relative(REPO_ROOT, path)),
     buildSlots: slots,
     snapshot: cacheSnapshot,
+    migrations,
     profile,
     cold: options.cold ?? state?.cold ?? null,
     buildFingerprint: record?.fingerprint ?? null,

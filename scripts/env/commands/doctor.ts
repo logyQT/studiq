@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ParsedCommand } from '../atoms';
-import { readContract } from '../lib/contract';
+import { readContract, type Contract } from '../lib/contract';
 import { contractWithLease } from '../lib/contract-lease';
 import { probeHttp } from '../lib/health';
 import { probePortBind } from '../lib/net';
@@ -28,7 +28,18 @@ import {
   worktreeCacheDir,
   type CacheLayout,
 } from '../lib/build-cache';
+import {
+  absentMigrations,
+  classifyMigrations,
+  localMigrationVersions,
+  migrationsLabel,
+  probeMigrations,
+  probeReport,
+  unknownMigrations,
+  type MigrationsReport,
+} from '../lib/migrations';
 import { printJson, writeLine } from '../lib/output';
+import { readMigrationsState } from '../lib/state';
 import { readRegistry, registryPathExists } from '../lib/registry';
 import {
   REPO_ROOT,
@@ -80,7 +91,25 @@ export interface DoctorReport {
   warnings: string[];
   observability: ObservabilityStatus;
   cache: BuildCacheReport;
+  migrations: MigrationsReport;
   lines: string[];
+}
+
+/**
+ * The live answer where doctor can get one.
+ *
+ * The default stack is the CLI's implicit database target, so doctor reads it
+ * directly. A named stack needs its DB URL, which an unwrapped read-only command
+ * does not hold (no keys), and the shared stack belongs to another checkout:
+ * both fall back to this checkout's record.
+ */
+function doctorMigrations(contract: Contract, stack: StackStatus | null): MigrationsReport {
+  if (contract.shared) return unknownMigrations('the shared stack is owned by another checkout');
+  if (!stack) return absentMigrations();
+  if (contract.stackName) {
+    return classifyMigrations(readMigrationsState(), localMigrationVersions(), stack.id);
+  }
+  return probeReport(probeMigrations({ stackName: null, dbUrl: null }), new Date().toISOString());
 }
 
 const OBSERVABILITY_PROBE_MS = 750;
@@ -273,6 +302,7 @@ async function buildReport(): Promise<DoctorReport> {
       : contract.shared
         ? 'shared stack (owned by another checkout; not inspected)'
         : 'none (no stack for this branch)';
+  const migrations = doctorMigrations(contract, stack);
 
   // Read-only: one shallow `readdir` plus the recorded cap. Reclamation belongs
   // to the admission path, so doctor reports staleness and never cleans it.
@@ -376,6 +406,19 @@ async function buildReport(): Promise<DoctorReport> {
     }
     if (stack.configDrift && stack.configDrift !== 'unchanged') {
       warnings.push('stack config drift: restart the stack to apply config.toml changes');
+    }
+    if (migrations.state === 'pending') {
+      warnings.push(
+        `migrations: ${migrations.pending.length} local version(s) are not applied on this stack — run 'bun run env:ensure'`,
+      );
+    } else if (migrations.state === 'drift') {
+      warnings.push(
+        `migrations: ${migrations.remoteOnly.length} version(s) in the database have no local file — the stack may belong to another branch`,
+      );
+    } else if (migrations.state === 'unknown') {
+      warnings.push(
+        `migrations: could not check (${migrations.reason ?? 'no probe covers this stack'}) — run 'bun run env:ensure'`,
+      );
     }
   }
   if (observedRuntime === 'docker') {
@@ -490,6 +533,7 @@ async function buildReport(): Promise<DoctorReport> {
     lines.push(`  db         ${orDash(sharedDbUrl)}`);
   } else {
     lines.push(...stackLines(stack));
+    lines.push(`  migrations ${migrationsLabel(migrations)}`);
   }
 
   lines.push(
@@ -639,7 +683,15 @@ async function buildReport(): Promise<DoctorReport> {
       worktreeCacheLayout === null ? null : cacheLayoutRecognised(worktreeCacheLayout),
   };
 
-  return { ok: problems.length === 0, problems, warnings, observability, cache, lines };
+  return {
+    ok: problems.length === 0,
+    problems,
+    warnings,
+    observability,
+    cache,
+    migrations,
+    lines,
+  };
 }
 
 export async function runDoctor(parsed: ParsedCommand): Promise<number> {
@@ -651,6 +703,7 @@ export async function runDoctor(parsed: ParsedCommand): Promise<number> {
       warnings: report.warnings,
       observability: report.observability,
       cache: report.cache,
+      migrations: report.migrations,
     });
   } else {
     for (const line of report.lines) writeLine(line);

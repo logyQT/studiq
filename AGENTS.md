@@ -325,6 +325,20 @@ reconciles `.dev/env.json` with that same probe: `present`, `schema`,
 > `env:ensure` just created; it settles after the stack's first restart. It is not
 > a conflict and never changes doctor's exit code.
 >
+> **A stack does not follow a merge, so `env` reconciles migrations (#1186).** The
+> CLI applies migrations when it creates a database, never again: a stack started
+> before a merge keeps the old schema and the symptom is a 500 in an unrelated
+> feature. `env:ensure` probes the applied set, applies pending migrations on this
+> checkout's own stack, and records the proven set in `.dev/migrations.json`; a
+> shared stack is reported, never mutated. `env:status` compares the record with
+> the local files (no database connection) and prints `pending N`; `env:doctor`
+> probes the default stack live. Local versions the database does not record are
+> `pending`; versions the database records with no local file are `drift`, and an
+> ensure refuses to apply while both exist (`migration repair` or restore the
+> file). `env:status --json` and `env:doctor --json` carry a `migrations` object
+> (state, pending, remoteOnly, checkedAt, source), and `env:reset-db` rewrites
+> the record.
+>
 > **One environment per checkout.** One stack and one web server: a second
 > `ensure`/`serve` for a different stack or profile, or on the same app port, is
 > refused (exit 6) with the remedy. Run a second environment in its own

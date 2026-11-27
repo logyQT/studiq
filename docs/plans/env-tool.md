@@ -188,8 +188,10 @@ plain `down`; `down --all` and `reset-db` exit 6, while `status`/`ports`/`verify
 
 ## 8. Seeding
 
-Cold **stack** creation applies migrations + `supabase/seeds` automatically (the CLI does this); `env` never
-duplicates them. **`--seed` runs the existing seeder** (`scripts/qa-tenant.ts` / `scripts/e2e-seed.ts`);
+Cold **stack** creation applies migrations + `supabase/seeds` automatically (the CLI does this). A resumed stack
+does **not** follow a merge, so `ensure` probes the applied set and applies local versions the database is missing
+(#1186, [ADR-0017](../decisions/0017-env-migration-drift.md)); it still never duplicates the CLI's cold-start work.
+**`--seed` runs the existing seeder** (`scripts/qa-tenant.ts` / `scripts/e2e-seed.ts`);
 **`--no-seed` skips.** Profile defaults decide otherwise. The seeder is bound to this checkout's stack: `ensure`
 verifies the endpoint's `project_root` before writing and aborts otherwise. Never tenant-seed a stack this
 checkout does not own.

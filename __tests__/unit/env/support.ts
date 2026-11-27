@@ -126,6 +126,13 @@ export interface Harness {
   setStatusFixture(value: unknown): void;
   setRawStatus(text: string): void;
   setListFixture(value: unknown): void;
+  setMigrationListFixture(value: unknown, exitCode?: number): void;
+  /** What `migration list` answers after a successful `migration up`. */
+  setMigrationListAfterFixture(value: unknown): void;
+  /** The `migration up` answer, and the exit code that decides whether it worked. */
+  setMigrationUpFixture(value: unknown, exitCode?: number): void;
+  /** Write `supabase/migrations/<version>_fixture.sql` files under this harness. */
+  writeMigrationFiles(versions: readonly string[]): void;
   /** Make the next `times` `stack status` calls exit 1 before the fixture answers. */
   failStatusProbe(times: number): void;
   writeRegistryEntry(entry: Record<string, unknown>): void;
@@ -180,6 +187,26 @@ const FAKE_BUNX = [
   '  fi',
   '  exit 0',
   'fi',
+  'if [ "${1:-}" = "migration" ] && [ "${2:-}" = "list" ]; then',
+  '  if [ -n "${FAKE_MIGRATION_LIST_FILE:-}" ] && [ -f "$FAKE_MIGRATION_LIST_FILE" ]; then',
+  '    cat "$FAKE_MIGRATION_LIST_FILE"',
+  '    exit "${FAKE_MIGRATION_LIST_EXIT:-0}"',
+  '  fi',
+  '  printf \'{"migrations":[]}\'',
+  '  exit "${FAKE_MIGRATION_LIST_EXIT:-0}"',
+  'fi',
+  'if [ "${1:-}" = "migration" ] && [ "${2:-}" = "up" ]; then',
+  '  if [ -n "${FAKE_MIGRATION_UP_FILE:-}" ] && [ -f "$FAKE_MIGRATION_UP_FILE" ]; then',
+  '    cat "$FAKE_MIGRATION_UP_FILE"',
+  '  else',
+  '    printf \'{"applied":[],"message":"Migrations applied"}\'',
+  '  fi',
+  '  code="${FAKE_MIGRATION_UP_EXIT:-0}"',
+  '  if [ "$code" = "0" ] && [ -n "${FAKE_MIGRATION_LIST_AFTER_FILE:-}" ] && [ -f "$FAKE_MIGRATION_LIST_AFTER_FILE" ]; then',
+  '    cp "$FAKE_MIGRATION_LIST_AFTER_FILE" "$FAKE_MIGRATION_LIST_FILE"',
+  '  fi',
+  '  exit "$code"',
+  'fi',
   'if [ -n "${FAKE_SUPA_STDOUT:-}" ]; then printf \'%s\' "$FAKE_SUPA_STDOUT"; fi',
   'if [ -n "${FAKE_SUPA_APP_URL_FILE:-}" ]; then printf \'%s\\n\' "${APP_URL:-<unset>}" >> "$FAKE_SUPA_APP_URL_FILE"; fi',
   'exit "${FAKE_SUPA_EXIT:-0}"',
@@ -218,6 +245,11 @@ export function createHarness(): Harness {
   const statusFile = join(dir, 'stack-status.json');
   const listFile = join(dir, 'stack-list.json');
   const statusFailsFile = join(dir, 'stack-status-fails.txt');
+  const migrationListFile = join(dir, 'migration-list.json');
+  const migrationListAfterFile = join(dir, 'migration-list-after.json');
+  const migrationUpFile = join(dir, 'migration-up.json');
+  const migrationsDir = join(dir, 'supabase', 'migrations');
+  mkdirSync(migrationsDir, { recursive: true });
   const appUrlFile = join(dir, 'supa-app-url.txt');
   const closers: Array<() => Promise<void> | void> = [];
   const children = new Set<ChildProcess>();
@@ -292,6 +324,11 @@ export function createHarness(): Harness {
     FAKE_STACK_STATUS_FILE: statusFile,
     FAKE_STACK_LIST_FILE: listFile,
     FAKE_STACK_STATUS_FAILS_FILE: statusFailsFile,
+    FAKE_MIGRATION_LIST_FILE: migrationListFile,
+    FAKE_MIGRATION_LIST_AFTER_FILE: migrationListAfterFile,
+    FAKE_MIGRATION_UP_FILE: migrationUpFile,
+    // Hermetic: the local migration set is this harness's, never the checkout's.
+    STUDIQ_MIGRATIONS_DIR: migrationsDir,
     // Hermetic: a failing probe is retried, and the unit tests must not sit through the pauses.
     STUDIQ_STACK_PROBE_BACKOFF_MS: '0',
     FAKE_SUPA_APP_URL_FILE: appUrlFile,
@@ -345,6 +382,24 @@ export function createHarness(): Harness {
     },
     setListFixture(value) {
       writeFileSync(listFile, JSON.stringify(value));
+    },
+    setMigrationListFixture(value, exitCode = 0) {
+      writeFileSync(migrationListFile, JSON.stringify(value));
+      env.FAKE_MIGRATION_LIST_EXIT = String(exitCode);
+    },
+    setMigrationListAfterFixture(value) {
+      writeFileSync(migrationListAfterFile, JSON.stringify(value));
+    },
+    setMigrationUpFixture(value, exitCode = 0) {
+      writeFileSync(migrationUpFile, JSON.stringify(value));
+      env.FAKE_MIGRATION_UP_EXIT = String(exitCode);
+    },
+    writeMigrationFiles(versions) {
+      rmSync(migrationsDir, { recursive: true, force: true });
+      mkdirSync(migrationsDir, { recursive: true });
+      for (const version of versions) {
+        writeFileSync(join(migrationsDir, `${version}_fixture.sql`), 'select 1;\n');
+      }
     },
     failStatusProbe(times) {
       writeFileSync(statusFailsFile, String(times));

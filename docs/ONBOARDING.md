@@ -592,26 +592,17 @@ git commit -m "migration: migration_name"
 
 ```bash
 git pull
-bun run env:ensure --profile web                      # this branch's Supabase stack (+ web); does NOT migrate a running stack
-
-# Apply new migrations to the selected stack (default or SUPABASE_STACK)
-STACK=${SUPABASE_STACK:-$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?SUPABASE_STACK=//p' .env.local 2>/dev/null | tail -n1 | tr -d "'\"" | cut -d'#' -f1 | tr -d '[:space:]')}
-if [ -n "$STACK" ]; then
-  DB_URL=$(bun run env:supa status --stack "$STACK" --output-format json | jq -r .env.DB_URL)
-  # The local Postgres is plaintext, so `--remote` needs sslmode=disable; keep
-  # the URL's existing query params.
-  case "$DB_URL" in
-    *sslmode=*) ;;
-    *\?*) DB_URL="$DB_URL&sslmode=disable" ;;
-    *) DB_URL="$DB_URL?sslmode=disable" ;;
-  esac
-  bun run env:supa db push --remote="$DB_URL" --yes
-else
-  bun run env:supa db push
-fi
-
-bun run env:reset-db --yes                # (optional) reloads fresh seed data, this branch only
+bun run env:ensure --profile web   # this branch's stack (+ web); applies pending migrations
+bun run env:reset-db --yes         # (optional) reloads fresh seed data, this branch only
 ```
+
+`env:ensure` probes the stack's applied migrations before it seeds or serves, so a
+merge that adds migrations cannot leave the database behind the code (#1186).
+`env:status` prints `migrations pending N` from the recorded set without opening a
+database connection, and `env:doctor` probes the default stack live. If the
+database records a version with no local file (a branch switch), restore the file
+or drop the history entry with `bun run env:supa migration repair --status reverted
+<version>`; `env:ensure` refuses to apply anything until the two sides agree.
 
 Every worktree/branch gets its own stack and database automatically. If another
 developer/agent already runs the app on the same `APP_PORT`, change it in this

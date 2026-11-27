@@ -2,7 +2,8 @@ import type { ParsedCommand, RuntimeChoice } from '../atoms';
 import { EXIT_CONFLICT, EXIT_START_FAILED, EXIT_TIMEOUT, EnvFailure } from '../lib/exit';
 import { readContractLenient } from '../lib/contract';
 import { withCheckoutLock } from '../lib/locks';
-import { appendEnvLog, readStackState } from '../lib/state';
+import { appendEnvLog, readStackState, writeMigrationsState } from '../lib/state';
+import { localMigrationVersions } from '../lib/migrations';
 import { readListedStackRuntime, readStack, type StackRead } from '../lib/stack';
 import { resetDatabase, startStack } from '../lib/stack-lifecycle';
 import { assertOwnWorkdir, assertOwnedStack } from '../lib/ownership';
@@ -124,6 +125,15 @@ export async function runResetDb(parsed: ParsedCommand): Promise<number> {
       );
     }
 
+    // `db reset` applies every local migration and drops the history the record
+    // described, so the fresh set is the new claim `env status` reads.
+    writeMigrationsState({
+      stackId: stack.status.id,
+      stackName: cliStackName ?? 'default',
+      checkedAt: new Date().toISOString(),
+      versions: localMigrationVersions(),
+      remoteOnly: [],
+    });
     const state = readStackState();
     const snapshot = await collectSnapshot({
       contract,

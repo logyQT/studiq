@@ -119,6 +119,46 @@ export function removeBuildState(): void {
   rmSync(BUILD_FILE, { force: true });
 }
 
+/**
+ * The migration set this checkout last proved applied on one stack.
+ *
+ * A claim, like `.dev/build.json`: `env status` reports it without opening a
+ * database connection, and `env ensure` re-probes whenever the local migration
+ * files no longer match it (#1186). `stackId` binds the claim to one stack, so a
+ * recreated stack never inherits it.
+ */
+export interface MigrationsState {
+  stackId: string;
+  stackName: string;
+  checkedAt: string;
+  /** Local versions proven present in the database. */
+  versions: string[];
+  /** Versions the database had with no local file, at the last probe. */
+  remoteOnly: string[];
+}
+
+const MIGRATIONS_FILE = join(DEV_DIR, 'migrations.json');
+
+export function readMigrationsState(): MigrationsState | null {
+  const parsed = readJson(MIGRATIONS_FILE);
+  if (!parsed || typeof parsed.stackId !== 'string' || !Array.isArray(parsed.versions)) {
+    return null;
+  }
+  return {
+    stackId: parsed.stackId,
+    stackName: typeof parsed.stackName === 'string' ? parsed.stackName : '',
+    checkedAt: typeof parsed.checkedAt === 'string' ? parsed.checkedAt : '',
+    versions: parsed.versions.filter((version): version is string => typeof version === 'string'),
+    remoteOnly: Array.isArray(parsed.remoteOnly)
+      ? parsed.remoteOnly.filter((version): version is string => typeof version === 'string')
+      : [],
+  };
+}
+
+export function writeMigrationsState(state: MigrationsState): void {
+  atomicWrite(MIGRATIONS_FILE, `${JSON.stringify(state, null, 2)}\n`);
+}
+
 /** Where `apps/web`'s production build lands. */
 export function buildArtifactDir(): string {
   return join(REPO_ROOT, 'apps', 'web', '.next');
