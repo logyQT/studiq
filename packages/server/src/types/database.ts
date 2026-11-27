@@ -2634,6 +2634,7 @@ export type Database = {
       actor_may_assign_org_role: { Args: { p_actor: string; p_role_id: string }; Returns: boolean };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
+      assign_plan_to_org: { Args: { p_org_id: string; p_plan_key: string }; Returns: undefined };
       apply_entitlement_fenced: {
         Args: {
           p_event_created: number;
