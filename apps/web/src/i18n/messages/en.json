@@ -3180,6 +3180,7 @@
     "model_answer": "Model answer: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "This question is graded automatically. You cannot change its points.",
     "grade_failed": "Grade failed",
     "unknown": "Unknown",
     "back": "Back to Results",

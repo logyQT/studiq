@@ -3161,6 +3161,7 @@
     "model_answer": "Odpowiedź wzorcowa: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "Pytanie oceniane automatycznie. Punktów nie można zmienić.",
     "grade_failed": "Błąd oceniania",
     "unknown": "Nieznany",
     "back": "Powrót do wyników",

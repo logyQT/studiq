@@ -74,6 +74,7 @@ const COPY = {
   perQuestionPoints: 'Punkty',
   perQuestionGraded: 'Ocenione: 1 pkt',
   perQuestionPending: '0 uczniów oczekuje na ocenę',
+  perQuestionAuto: 'Pytanie oceniane automatycznie. Punktów nie można zmienić.',
   gradeFailed: 'Błąd oceniania',
   errorBoundary: 'Oops! Something went wrong',
 } as const;
@@ -600,6 +601,11 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await expect(content(page), 'the card prints the option text, never its id').not.toContainText(
       correctOptionId,
     );
+
+    // ── An auto-graded item takes no manual grade (#1301) ────────────────────
+    await expect(content(page).getByText(COPY.perQuestionAuto, { exact: true })).toBeVisible();
+    await expect(choiceCard.locator('input, textarea'), 'no grading fields').toHaveCount(0);
+    await expect(choiceCard.getByRole('button', { name: COPY.save, exact: true })).toHaveCount(0);
 
     // ── A question the student skipped still says „Brak odpowiedzi” ──────────
     const skippedPath = `/edu/assignments/${assignment.id}/results/question/${skippedQuestion.id}`;
