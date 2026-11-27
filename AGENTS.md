@@ -187,9 +187,21 @@ output worth reading. Everything reached through `bun run …` fails before
 - **Exit codes on the build path**: `4` build failed — and `env:serve` refusing a
   non-current artifact also exits `4`, because "nothing servable" is a start
   failure, not a conflict; `5` timed out, `6` a **build-admission** refusal (no
-  grant, a running web server, another checkout's stack), `7` waited out the slot
+  grant, a running web server, another checkout's stack) or a process group that
+  the cleanup could not confirm ended (below), `7` waited out the slot
   budget, `8` the `supabase stack status` probe never answered (three attempts): the stack's state is **unknown**, not absent, so retry and do not restart or reseed it (`env:build`, `env:serve` and `env:run` say `could not read the Supabase stack status`, never `no running Supabase stack`); `2` is bad usage. A failed build's re-printed tail never contains Bun's
   `Exited with code N` lifecycle line: it says `code 0` next to a compiler error.
+- **Exit `6` after a process group cleanup.** The system can still answer `EPERM`
+  for a build's process group after `SIGKILL`, so a process can possibly still
+  write to `.next`. This happens in the cleanup after the command's own build,
+  which then keeps its build slot (if it claimed one), and in the reclaim of a
+  stale slot, where the new build does not start. A later reclaim tries to stop
+  the group only while its recorded identity still matches: if the group still
+  answers `EPERM`, no new build starts; if the identity does not match, the
+  reclaim takes the slot and does not signal the group. When the group can
+  possibly write to this checkout's `.next`, `env:ensure` does not restore the
+  previous build and starts no web server; it keeps the backup, and the message
+  names it.
 - **A queue is not a hang.** A build waiting for a slot prints
   `build: waiting for a slot (1 of 1 busy, 1 waiting), 0:42 elapsed, 29:18 left`
   every 30 s. The wait is capped at 30 minutes and then exits `7`.
