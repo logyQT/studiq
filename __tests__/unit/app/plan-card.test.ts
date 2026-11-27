@@ -255,7 +255,6 @@ describe('PlanCard action', () => {
 });
 
 describe('PlanCard layout', () => {
-
   it('pushes the action to the bottom of every card', () => {
     const markup = render({ hasActivePlan: true });
     const content = /<div data-slot="card-content" class="([^"]*)"/.exec(markup)?.[1] ?? '';
@@ -268,7 +267,7 @@ describe('PlanCard layout', () => {
   });
 
   it('wraps the price and its period instead of one unbreakable line', () => {
-    const markup = render({ planKey: 'ace', hasActivePlan: false });
+    const markup = render({ planKey: 'pro', hasActivePlan: false });
     const row = /<div class="([^"]*)"><span class="text-4xl/.exec(markup)?.[1] ?? '';
     const tokens = toneTokens(row);
 
