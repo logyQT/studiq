@@ -115,14 +115,22 @@ const saved = (teacher_points: number | null) => ({ teacher_points, teacher_feed
 
 describe('awaitsGrade (#1303)', () => {
   it('waits for a saved answer that has no points yet', () => {
-    expect(awaitsGrade(saved(null))).toBe(true);
+    expect(awaitsGrade(saved(null), false)).toBe(true);
   });
 
-  it('does not wait for a skipped question, which has no answer row', () => {
-    expect(awaitsGrade(undefined)).toBe(false);
+  it('does not wait for a skipped question, which has no answer row and no photo', () => {
+    expect(awaitsGrade(undefined, false)).toBe(false);
   });
 
-  it('does not wait once points are given, zero included', () => {
-    expect([awaitsGrade(saved(0)), awaitsGrade(saved(2))]).toEqual([false, false]);
+  it('waits for a question answered with a photo only, which has no answer row', () => {
+    expect(awaitsGrade(undefined, true)).toBe(true);
+  });
+
+  it('does not wait once points are given, zero included, photo or not', () => {
+    expect([
+      awaitsGrade(saved(0), false),
+      awaitsGrade(saved(2), false),
+      awaitsGrade(saved(0), true),
+    ]).toEqual([false, false, false]);
   });
 });

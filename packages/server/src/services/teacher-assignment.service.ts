@@ -126,7 +126,7 @@ export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
 interface AttemptGradingState {
   /** Nothing left to grade: no served open item is waiting for `teacher_points`. */
   graded: boolean;
-  /** Served open items whose answer row exists and still waits for `teacher_points`. */
+  /** Served open items that still wait for `teacher_points`: an answer or a photo. */
   pending_grades: number;
 }
 
@@ -156,14 +156,17 @@ function autoGradedItems(snapshots: ReadonlyMap<string, QuestionSnapshot>): Set<
   );
 }
 
-/** The served items of one attempt, from its `quiz_attempt_questions` embed. */
-function servedItemIds(rows: ReadonlyArray<{ question_id: string | null }>): Set<string> {
+/**
+ * The questions that the rows of one embed name: `quiz_attempt_questions` gives the served items
+ * of an attempt, `assignment_answer_images` the items it has a photo for.
+ */
+function questionIdsOf(rows: ReadonlyArray<{ question_id: string | null }>): Set<string> {
   return new Set(rows.flatMap((row) => (row.question_id ? [row.question_id] : [])));
 }
 
 /**
  * question_id → the points a teacher awarded, `null` while the row waits for a grade, absent when
- * the student skipped the item. Legacy rows may repeat one question (#1065), and the highest
+ * the item has no answer row (skipped, or answered with a photo only). Legacy rows may repeat one question (#1065), and the highest
  * award is the one that counts.
  */
 function gradedAnswerPoints(
@@ -184,8 +187,9 @@ function gradedAnswerPoints(
 /**
  * An attempt is graded once it is submitted and nothing is left to grade: every served item is
  * auto-graded (choice, true-false) or its open answer carries `teacher_points` (#1069). A
- * **skipped** open item has no answer row, so it does not hold the attempt open — the student left
- * nothing to grade. A served item no longer published on the assignment is not pending either, the
+ * **skipped** open item has neither an answer row nor a photo, so it does not hold the attempt
+ * open — the student left nothing to grade. A photo with no row does hold it (#1303): the photo
+ * is saved by its own upload, and the submission marks such an item skipped. A served item no longer published on the assignment is not pending either, the
  * same rule the score denominator applies (#1298).
  */
 function deriveGradingState(
@@ -193,11 +197,16 @@ function deriveGradingState(
   served: ReadonlySet<string>,
   manualItems: ReadonlySet<string>,
   answers: ReadonlyMap<string, number | null>,
+  photoItems: ReadonlySet<string>,
 ): AttemptGradingState {
   let pendingGrades = 0;
   for (const questionId of served) {
     if (!manualItems.has(questionId)) continue;
-    if (answers.get(questionId) === null) pendingGrades += 1;
+    // A row without points, or a submitted photo that has no row at all.
+    const points = answers.get(questionId);
+    if (points === null || (points === undefined && completed && photoItems.has(questionId))) {
+      pendingGrades += 1;
+    }
   }
   return { graded: completed && pendingGrades === 0, pending_grades: pendingGrades };
 }
@@ -1399,9 +1408,10 @@ export class TeacherAssignmentService {
           // Derived per attempt, from the items it was actually served (#1069).
           ...deriveGradingState(
             attempt.completed_at !== null,
-            servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+            questionIdsOf(dbRows(attempt.quiz_attempt_questions)),
             manualItems,
             gradedAnswerPoints(answers),
+            questionIdsOf(dbRows(attempt.assignment_answer_images)),
           ),
         };
       }),
@@ -1449,9 +1459,10 @@ export class TeacherAssignmentService {
       // The grading header and the results list derive the status the same way (#1069).
       ...deriveGradingState(
         attempt.completed_at !== null,
-        servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+        questionIdsOf(dbRows(attempt.quiz_attempt_questions)),
         manualGradeItems(snapshots.data),
         gradedAnswerPoints(dbRows(attempt.quiz_answers)),
+        questionIdsOf(dbRows(attempt.assignment_answer_images)),
       ),
       quiz_attempt_questions: dbRows(attempt.quiz_attempt_questions).map((q) => {
         const frozen = q.question_id ? snapshots.data.get(q.question_id) : undefined;
@@ -2029,7 +2040,7 @@ export class TeacherAssignmentService {
     let query = supabase
       .from('quiz_attempts')
       .select(
-        'id, score, total_questions, total_points, completed_at, user:user_id(id, email, full_name), quiz_attempt_questions(question_id), quiz_answers:student_answers(question_id, teacher_points)',
+        'id, score, total_questions, total_points, completed_at, user:user_id(id, email, full_name), quiz_attempt_questions(question_id), quiz_answers:student_answers(question_id, teacher_points), assignment_answer_images(question_id)',
       )
       .eq('assignment_id', id)
       .order('started_at', { ascending: false });
@@ -2052,9 +2063,10 @@ export class TeacherAssignmentService {
       const user = joinOne(attempt.user);
       const { graded } = deriveGradingState(
         attempt.completed_at !== null,
-        servedItemIds(dbRows(attempt.quiz_attempt_questions)),
+        questionIdsOf(dbRows(attempt.quiz_attempt_questions)),
         manualItems,
         gradedAnswerPoints(dbRows(attempt.quiz_answers)),
+        questionIdsOf(dbRows(attempt.assignment_answer_images)),
       );
       return {
         studentName: user?.full_name ?? null,

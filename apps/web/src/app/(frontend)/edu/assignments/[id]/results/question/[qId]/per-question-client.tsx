@@ -14,6 +14,8 @@ interface ResultsData {
   user_id: string;
   score: number;
   total_questions: number;
+  /** Null while the attempt is running: nothing of it can be graded yet. */
+  completed_at: string | null;
   user: {
     id: string;
     full_name: string | null;
@@ -100,7 +102,15 @@ export default function PerQuestionGradingClient() {
   }
 
   const isAutoGraded = autoGradedItemIds.includes(qId);
-  const pending = attempts?.filter((attempt) => awaitsGrade(answerOf(attempt))) ?? [];
+  const pending =
+    attempts?.filter(
+      (attempt) =>
+        !!attempt.completed_at &&
+        awaitsGrade(
+          answerOf(attempt),
+          (attempt.assignment_answer_images ?? []).some((image) => image.question_id === qId),
+        ),
+    ) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">

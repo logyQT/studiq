@@ -33,10 +33,10 @@ export function exceedsGradeMax(points: number | null, max: number | null | unde
 }
 
 /**
- * Whether one answer still waits for a teacher (#1303), the rule of the results list (#1069): the
- * answer row exists and has no points. A skipped question has no row, so nothing waits.
+ * Whether one question of a submitted attempt still waits for a teacher (#1303), the rule of the
+ * results list: its answer row has no points, or it has a photo and no row at all. A photo-only
+ * answer is submitted as skipped, so it has no row. A question with neither was skipped.
  */
-export function awaitsGrade(saved: SavedGrade | undefined): boolean {
-  // Strictly `null`: with no row the chain gives `undefined`, which does not wait.
-  return saved?.teacher_points === null;
+export function awaitsGrade(saved: SavedGrade | undefined, hasPhoto: boolean): boolean {
+  return saved === undefined ? hasPhoto : saved.teacher_points === null;
 }
