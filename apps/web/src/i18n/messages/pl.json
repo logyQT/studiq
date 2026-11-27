@@ -3216,6 +3216,11 @@
     "closed_on": "Zamknięto: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Zaplanowana",
+    "closed_badge": "Zamknięta",
+    "opens": "Dostępna od",
+    "opens_in": "Dostępna za: {countdown}",
+    "closed_message": "Ta kartkówka jest zamknięta.",
     "not_found": "Nie znaleziono kartkówki",
     "back": "Powrót",
     "questions": "Pytania",
