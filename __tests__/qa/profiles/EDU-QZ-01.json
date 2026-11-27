@@ -1,5 +1,27 @@
 {
   "profile": "content",
   "plan": "hub",
-  "personalPlan": "plus"
+  "personalPlan": "plus",
+  "members": [
+    {
+      "key": "manager",
+      "accountType": "manager",
+      "orgRole": "admin"
+    },
+    {
+      "key": "teacher",
+      "accountType": "educator",
+      "orgRole": "teacher"
+    },
+    {
+      "key": "teacher2",
+      "accountType": "educator",
+      "orgRole": "teacher"
+    },
+    {
+      "key": "student",
+      "accountType": "student",
+      "orgRole": "member"
+    }
+  ]
 }

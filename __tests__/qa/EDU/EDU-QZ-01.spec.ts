@@ -14,11 +14,14 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts EDU-QZ-01 --fresh
  *
- * gives the org `qa-edu-qz-01-<suffix>` with a manager, an educator and a student, plus
- * the default group `G1`; the spec logs in as `tenant.users.teacher` with the tenant org
- * as the active org. The case's legacy prerequisite account (`teacher-classroom@dev.local`,
- * password `pass`) is never used. Nothing global is read or written: no admin setting,
- * feature flag, plan, platform stat or singleton row, and no other worker's tenant.
+ * gives the org `qa-edu-qz-01-<suffix>` with a manager, two educators (`teacher` and
+ * `teacher2`) and a student, plus the default group `G1`; the spec logs in as
+ * `tenant.users.teacher` with the tenant org as the active org. Every non-manager account
+ * holds the personal Plus plan, which is where `quiz.templates` lives since Hub became
+ * capacity only (#1493); the manager holds no personal plan (ADR-0007). The case's legacy
+ * prerequisite account (`teacher-classroom@dev.local`, password `pass`) is never used.
+ * Nothing global is read or written: no admin setting, feature flag, plan, platform stat or
+ * singleton row, and no other worker's tenant.
  *
  * Retry safety (CI seeds once and retries against the same tenant): the case's
  * „Quiz próbny” carries the run suffix, and every assertion addresses the quiz by the id
@@ -34,10 +37,17 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * 4. With an empty (or whitespace-only) name „Utwórz quiz” is disabled and neither a click
  *    nor Enter creates anything; the server rejects a blank name with 422 as well.
  * 5. „Anuluj” leaves the form without creating a quiz.
- * 6. The list is own-only (2b-6): the Teacher role holds `quiz.read` at `own`, so a quiz
- *    another member of the same organization created — the spec mints one as the tenant's
- *    org admin, then deletes it again — does not appear in `GET /api/v1/teacher/quizzes`
- *    for the educator, and every listed row carries the educator's own `created_by`.
+ * 6. The list is own-only (2b-6): the Teacher role's `quiz.read` reaches only the caller's
+ *    own rows (a quiz has no class share link), so a quiz another member of the same
+ *    organization created — the spec mints one as the tenant's second educator
+ *    (`users.teacher2`, who holds the personal Plus plan's `quiz.templates`), then deletes
+ *    it again — does not appear in `GET /api/v1/teacher/quizzes` for the first educator,
+ *    and every listed row carries the first educator's own `created_by`.
+ *
+ * Mutation (proves the own-only check can fail): the quiz list's own-scope branch in
+ * `quiz-teacher.service.ts` (`scope === 'organization' ? query : query.eq('created_by', …)`)
+ * replaced by the bare organization query. Result: „the educator’s list carries only own
+ * quizzes” → `Expected: true, Received: false`.
  */
 
 const CASE = 'EDU-QZ-01';
@@ -179,21 +189,25 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     await expect(card.getByText(COPY.zeroQuestions, { exact: true })).toBeVisible();
 
     // --- The list is own-only (2b-6) ------------------------------------------
-    // The Teacher role holds `quiz.read` at `own`, so a quiz another member of the
-    // same organization created must stay out of the educator's list. The tenant's
-    // org admin holds `quiz.create` at `organization` and mints one; the spec
-    // deletes it again as its creator, so the tenant ends as it started.
+    // The Teacher role's `quiz.read` reaches only the caller's own rows (a quiz has
+    // no class share link), so a quiz another member of the same organization
+    // created must stay out of the first educator's list. The tenant's second
+    // educator holds the personal Plus plan's `quiz.templates` gate and mints one;
+    // the spec deletes it again as its creator, so the tenant ends as it started.
+    // A manager cannot mint it: a manager is an org buyer and holds no personal plan.
     await page.context().clearCookies();
-    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    await loginAs(page, tenant, 'teacher2', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
     const foreignResponse = await page.request.post(QUIZZES_URL, {
       data: { name: `EDU-QZ-01 foreign ${RUN_SUFFIX}` },
     });
     expect(
       foreignResponse.status(),
-      `POST ${QUIZZES_URL} as the org admin → ${await foreignResponse.text()}`,
+      `POST ${QUIZZES_URL} as the second educator → ${await foreignResponse.text()}`,
     ).toBe(201);
     const foreignQuiz = (await json<ApiEnvelope<QuizRow>>(foreignResponse)).data;
-    expect(foreignQuiz.created_by, 'the admin’s quiz is not the educator’s').not.toBe(teacher.id);
+    expect(foreignQuiz.created_by, 'the second educator’s quiz is not the first’s').not.toBe(
+      teacher.id,
+    );
 
     await page.context().clearCookies();
     await loginAs(page, tenant, 'teacher', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
@@ -208,13 +222,13 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     ).toContain(quiz.id);
     expect(
       ownList.map((row) => row.id),
-      'the org admin’s quiz stays out of the own-scope list',
+      'the second educator’s quiz stays out of the own-scope list',
     ).not.toContain(foreignQuiz.id);
 
     await page.context().clearCookies();
-    await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
+    await loginAs(page, tenant, 'teacher2', { locale: 'pl', waitFor: /\/edu(\/|$)/ });
     const removed = await page.request.delete(`${QUIZZES_URL}/${foreignQuiz.id}`);
-    expect(removed.status(), 'DELETE the admin’s quiz as its creator').toBe(200);
+    expect(removed.status(), 'DELETE the second educator’s quiz as its creator').toBe(200);
 
     expect(pageErrors, 'uncaught page errors during the walk').toEqual([]);
   });
