@@ -32,7 +32,7 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * Acceptance points (walked on the shared app, Polish UI):
  * 1. The results table lists the submitted attempt with „X/Y”, status „Przesłane”
  *    and an „Oceń” link per student.
- * 2. „Oceń ucznia” shows „Wynik: X/Y”, the closed answers labelled
+ * 2. „Oceń pracę” shows „Wynik: X/Y”, the closed answers labelled
  *    „Poprawna” / „Niepoprawna” with the chosen and the correct answer **text**
  *    (not their UUID, and not the explanation in place of the answer), the open
  *    answer text and „Zobacz przesłane zdjęcie” for the uploaded photo.
@@ -53,7 +53,7 @@ const CASE = 'EDU-ASG-08';
 
 /** Polish copy the case quotes, as rendered by the current product. */
 const COPY = {
-  gradingTitle: 'Oceń ucznia',
+  gradingTitle: 'Oceń pracę',
   backToResults: 'Powrót do wyników',
   graded: 'Ocenione',
   submitted: 'Przesłane',
@@ -374,7 +374,7 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
       new RegExp(`/edu/assignments/${assignment.id}/results/${attemptId}$`),
     );
 
-    // ── Step 2: „Oceń ucznia” shows the answers and the uploaded photo ───────
+    // ── Step 2: „Oceń pracę” shows the answers and the uploaded photo ───────
     await expect(page.getByRole('heading', { name: COPY.gradingTitle })).toBeVisible();
     await expect(content(page).getByText('Wynik: 1/2', { exact: true })).toBeVisible();
 

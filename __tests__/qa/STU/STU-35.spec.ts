@@ -65,6 +65,7 @@ const COPY = {
   previous: 'Poprzednie',
   next: 'Następne',
   submit: 'Wyślij',
+  confirmSubmit: 'Wyślij odpowiedzi',
   uploading: 'Przesyłanie...',
   uploadPhoto: 'Prześlij zdjęcie',
   answerPlaceholder: 'Wpisz swoją odpowiedź...',
@@ -445,6 +446,18 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     expect(startedBody.data.id, 'the start response returns the same attempt').toBe(attemptId);
     await expect(page.getByText('Rozwiązywanie kartkówki', { exact: true })).toBeVisible();
 
+    // --- „Wyślij” with nothing answered lists the questions (#1353) ----------
+    for (let index = 1; index < 3; index += 1) {
+      await page.getByRole('button', { name: COPY.next, exact: true }).click();
+    }
+    await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    const unanswered = page.getByRole('alertdialog');
+    await expect(unanswered.getByRole('button', { name: /^Pytanie \d$/ })).toHaveCount(3);
+    await unanswered.getByRole('button', { name: 'Pytanie 1', exact: true }).click();
+    await expect(unanswered).toHaveCount(0);
+    await expect(page.getByText('1 / 3', { exact: true }), 'the jump opens it').toBeVisible();
+    await expect(page.locator('[data-question-card]'), 'the focus follows').toBeFocused();
+
     // --- Steps 2 + 4: answer each question, navigating back and forth -------
     const seen = new Set<string>();
     for (let index = 0; index < 3; index += 1) {
@@ -504,6 +517,10 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
         response.url().endsWith(`/api/v1/quiz/${attemptId}`),
     );
     await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: COPY.confirmSubmit, exact: true })
+      .click();
     const submitted = await submitResponse;
     expect(submitted.status(), `POST /api/v1/quiz/${attemptId}`).toBe(200);
 
