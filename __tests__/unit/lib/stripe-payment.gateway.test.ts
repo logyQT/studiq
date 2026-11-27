@@ -160,7 +160,7 @@ function previewInvoice(overrides: Record<string, unknown> = {}) {
           id: 'il_credit',
           pricing: {
             type: 'price_details',
-            price_details: { price: 'price_spark', product: 'prod_1' },
+            price_details: { price: 'price_plus', product: 'prod_1' },
           },
           period: { start: 1_791_000_000, end: 1_800_000_000 },
         },
@@ -168,7 +168,7 @@ function previewInvoice(overrides: Record<string, unknown> = {}) {
           id: 'il_target',
           pricing: {
             type: 'price_details',
-            price_details: { price: 'price_ace', product: 'prod_1' },
+            price_details: { price: 'price_pro', product: 'prod_1' },
           },
           period: { start: 1_800_000_000, end: 1_802_592_000 },
         },
@@ -1207,9 +1207,9 @@ describe('StripePaymentGateway', () => {
       owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
-      currentPlanKey: 'spark',
-      targetPlanKey: 'ace',
-      targetPriceId: 'price_ace',
+      currentPlanKey: 'plus',
+      targetPlanKey: 'pro',
+      targetPriceId: 'price_pro',
       direction: 'upgrade' as const,
       resume: false,
       pendingPlanKey: null,
@@ -1224,8 +1224,8 @@ describe('StripePaymentGateway', () => {
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 3999,
           currency: 'PLN',
           effectiveAt: '2027-01-15T08:00:00.000Z',
@@ -1238,7 +1238,7 @@ describe('StripePaymentGateway', () => {
         customer: 'cus_1',
         subscription: 'sub_1',
         subscription_details: {
-          items: [{ id: 'si_1', price: 'price_ace' }],
+          items: [{ id: 'si_1', price: 'price_pro' }],
           proration_behavior: 'always_invoice',
           billing_cycle_anchor: { type: 'now' },
           cancel_at_period_end: false,
@@ -1255,18 +1255,18 @@ describe('StripePaymentGateway', () => {
       );
       vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(previewInvoice());
 
-      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'free' });
 
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 3999,
           currency: 'PLN',
           effectiveAt: '2027-01-15T08:00:00.000Z',
           resumesAtPeriodEnd: false,
-          replacesPendingPlanKey: 'spark',
+          replacesPendingPlanKey: 'free',
           blockedBySchedule: false,
         }),
       );
@@ -1274,7 +1274,7 @@ describe('StripePaymentGateway', () => {
         customer: 'cus_1',
         subscription: 'sub_1',
         subscription_details: {
-          items: [{ id: 'si_1', price: 'price_ace' }],
+          items: [{ id: 'si_1', price: 'price_pro' }],
           proration_behavior: 'always_invoice',
           billing_cycle_anchor: { type: 'now' },
         },
@@ -1291,18 +1291,18 @@ describe('StripePaymentGateway', () => {
           'The subscription is managed by the subscription schedule `sub_sched_1`, and updating any cancelation behavior is not allowed.',
       });
 
-      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'free' });
 
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 0,
           currency: 'PLN',
           effectiveAt: '2027-02-14T08:00:00.000Z',
           resumesAtPeriodEnd: false,
-          replacesPendingPlanKey: 'spark',
+          replacesPendingPlanKey: 'free',
           blockedBySchedule: true,
         }),
       );
@@ -1319,8 +1319,8 @@ describe('StripePaymentGateway', () => {
       expect(result).toEqual(
         success({
           direction: 'downgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 0,
           currency: 'PLN',
           effectiveAt: '2027-02-14T08:00:00.000Z',
@@ -1345,7 +1345,7 @@ describe('StripePaymentGateway', () => {
       expect(client.invoices.createPreview).toHaveBeenCalledWith(
         expect.objectContaining({
           subscription_details: {
-            items: [{ id: 'si_1', price: 'price_ace' }],
+            items: [{ id: 'si_1', price: 'price_pro' }],
             proration_behavior: 'always_invoice',
             billing_cycle_anchor: { type: 'now' },
             cancel_at_period_end: false,
