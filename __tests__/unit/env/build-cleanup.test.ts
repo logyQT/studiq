@@ -426,6 +426,16 @@ describe('spawnBuild always ends (#1518)', () => {
   }, 3_000);
 });
 
+/** Ends a group a test started. `0` would name the test runner's own group. */
+function killLeftover(pgid: number): void {
+  if (pgid <= 1) return;
+  try {
+    process.kill(-pgid, 'SIGKILL');
+  } catch {
+    /* the group already ended */
+  }
+}
+
 describe('the progress line of a build (#1525)', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -452,8 +462,38 @@ describe('the progress line of a build (#1525)', () => {
 
       expect(stderr()).toContain('0:30 elapsed, 1:00 left');
     } finally {
-      process.kill(-group, 'SIGKILL');
+      killLeftover(group);
       await outcome;
+    }
+  });
+
+  it('gives the default limit in minutes', async () => {
+    // The limit is fake too: nothing waits 30 minutes. The failing cleanup ends the build.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    const stderr = captureStderr();
+    let group = 0;
+    const slot = {
+      setProcessGroup: (pgid: number) => {
+        group = pgid;
+      },
+      heartbeat: () => {},
+    };
+    const rejected = expect(
+      build.spawnBuild(slot, options, {
+        command: nodeCommand('setTimeout(() => {}, 30_000)'),
+        killGroup: failingCleanup,
+      }),
+    ).rejects.toBe(cleanupError);
+
+    try {
+      vi.advanceTimersByTime(30 * 60_000);
+
+      expect(stderr()).toContain("build: exceeded 30 minutes; killing the build's process group");
+      await rejected;
+    } finally {
+      killLeftover(group);
     }
   });
 });

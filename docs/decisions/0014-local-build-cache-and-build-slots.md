@@ -493,8 +493,13 @@ differ in, so the seed adds nothing a rebuild does not already change.
      build-cap expiry kills the group, invalidates `.next` (decision 7) and
      exits nonzero. If the build's output pipes are still open 10 s after that
      cleanup, the build ends anyway and frees its slot: a process that left the
-     group can hold them, is not signalled, and can still write to `.next`. The 60-minute, 30-minute wait, 30-minute build and 30-second
-     progress figures are policy constants, not measurements.
+     group can hold them, is not signalled, and can still write to `.next`. The
+     slot can be freed because its record names only the build's group, so a
+     reclaim could not stop that process either. The consequence: `env:ensure`
+     treats this as a timed-out build, so it restores the previous build and
+     restarts the previous web server, if one was running, while that process
+     can still write to `.next`. The 60-minute, 30-minute wait, 30-minute build
+     and 30-second progress figures are policy constants, not measurements.
    - **Queue contract.** There is no FIFO guarantee: directory slots have no
      ordering, so no position is promised. Waiters register a directory under
      `<registry>/build-slots/waiters/` (same identity, reclaimed by the same
