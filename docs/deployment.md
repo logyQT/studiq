@@ -647,6 +647,8 @@ bun start
 vercel --prod
 ```
 
+The production admin server must start through `bun run env:run -- bun run start:admin` (or an equivalent that exports this checkout's stack contract): a bare `bun run start:admin` has no `NEXT_PUBLIC_SUPABASE_URL`/key in its environment and answers 500 with `supabaseKey is required`.
+
 ## Database Migrations
 
 Push migrations to production Supabase (CLI v3: local is the default target, so
