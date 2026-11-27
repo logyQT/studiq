@@ -1,10 +1,16 @@
 'use client';
 
 import {
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -12,12 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderOpen, Shield, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { QueryError } from '@/app/(frontend)/components/query-error';
-import { apiGet } from '@/lib/api';
+import { ApiError, apiGet, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 type Org = {
@@ -54,7 +61,6 @@ export default function OrgsPage() {
     queryKey: queryKeys.subscriptionPlans.all,
     queryFn: () => apiGet<PlanOption[]>('/subscription-plans'),
   });
-  const planNames = new Map(plans.map((plan) => [plan.key, plan.name]));
 
   return (
     <div className="p-8 space-y-6">
@@ -113,13 +119,8 @@ export default function OrgsPage() {
                         {org.role_count}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {planNames.get(org.plan) ?? org.plan}
-                      {planNames.has(org.plan) && (
-                        <span className="ml-1 font-mono text-xs text-muted-foreground">
-                          {org.plan}
-                        </span>
-                      )}
+                    <TableCell>
+                      <OrgPlanEditor org={org} plans={plans} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(org.created_at).toLocaleDateString()}
@@ -138,6 +139,73 @@ export default function OrgsPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * The plan picker (B3 follow-up). It sets `organizations.plan` through
+ * `change_org_plan`, which is the only writer, so an unlisted plan the
+ * organization is not assigned to is refused by the database and reported as a
+ * state rule the operator can fix, never as a stack trace.
+ */
+function OrgPlanEditor({ org, plans }: { org: Org; plans: PlanOption[] }) {
+  const t = useTranslations('Orgs');
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: (plan: string) => apiPut(`/organizations/${org.id}/plan`, { plan }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+    },
+    onError: (err: Error) => {
+      if (err instanceof ApiError && err.code === 'CONFLICT') {
+        setError(t('plan_error_unassigned'));
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'NOT_FOUND') {
+        setError(t('plan_error_unknown'));
+        return;
+      }
+      setError(t('plan_error_failed', { code: err.message }));
+    },
+  });
+
+  const value = draft ?? org.plan;
+  // A stale catalogue must not blank the current plan: keep its key as an
+  // option until the list catches up.
+  const options = plans.some((plan) => plan.key === org.plan)
+    ? plans
+    : [{ key: org.plan, name: org.plan }, ...plans];
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <Select value={value} onValueChange={setDraft}>
+          <SelectTrigger className="h-8 w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((plan) => (
+              <SelectItem key={plan.key} value={plan.key}>
+                {plan.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={value === org.plan || mutation.isPending}
+          onClick={() => mutation.mutate(value)}
+        >
+          {t('plan_move')}
+        </Button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

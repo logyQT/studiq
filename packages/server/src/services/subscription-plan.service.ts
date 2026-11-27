@@ -439,9 +439,14 @@ export class SubscriptionPlanService {
   }
 
   /**
-   * Pin an unlisted plan to an organization (B3). The same pair twice is a
-   * `CONFLICT`; a plan or organization that does not exist is a `NOT_FOUND`,
-   * because both foreign keys answer `23503`.
+   * Pin an unlisted plan to an organization and move the organization onto it
+   * in one transaction (B3). `assign_plan_to_org` owns both writes, so a linked
+   * plan is never left granting nothing. A second call is a no-op: the pin
+   * already exists and the move is the same.
+   *
+   * A plan or organization that does not exist is `NOT_FOUND` (the function
+   * raises `P0002`). `42501` means the plan is unlisted and the pin did not
+   * land; that is reported as `CONFLICT`, the same class as the unpin refusal.
    */
   async assignOrganization(
     planKey: string,
@@ -449,13 +454,14 @@ export class SubscriptionPlanService {
   ): Promise<ServiceResult<PlanAssignment>> {
     const supabase = await this.clientFactory();
 
-    const { error } = await supabase
-      .from('plan_assignments')
-      .insert({ plan_key: planKey, organization_id: organizationId });
+    const { error } = await supabase.rpc('assign_plan_to_org', {
+      p_plan_key: planKey,
+      p_org_id: organizationId,
+    });
 
     if (error) {
-      if (error.code === '23505') return failure('CONFLICT');
-      if (error.code === '23503') return failure('NOT_FOUND');
+      if (error.code === 'P0002') return failure('NOT_FOUND');
+      if (error.code === '42501') return failure('CONFLICT');
       return toDbFailure(error);
     }
 
@@ -467,6 +473,34 @@ export class SubscriptionPlanService {
 
     if (orgError) return toDbFailure(orgError);
     return success({ organizationId, name: org?.name ?? organizationId });
+  }
+
+  /**
+   * Move an organization to a plan through the one writer, `change_org_plan`
+   * (B3). The database refuses an unlisted plan the organization is not pinned
+   * to (`42501`); that is `CONFLICT`, because the operator can fix it by
+   * assigning the plan first. The caller is the admin service role, so the
+   * refusal is a state rule, not a missing permission. An unknown plan or
+   * organization is `NOT_FOUND` (`P0002`).
+   */
+  async setOrganizationPlan(
+    organizationId: string,
+    planKey: string,
+  ): Promise<ServiceResult<{ plan: string }>> {
+    const supabase = await this.clientFactory();
+
+    const { error } = await supabase.rpc('change_org_plan', {
+      p_org_id: organizationId,
+      p_plan: planKey,
+    });
+
+    if (error) {
+      if (error.code === '42501') return failure('CONFLICT');
+      if (error.code === 'P0002') return failure('NOT_FOUND');
+      return toDbFailure(error);
+    }
+
+    return success({ plan: planKey });
   }
 
   /**

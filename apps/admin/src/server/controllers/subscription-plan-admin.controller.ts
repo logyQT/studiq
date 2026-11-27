@@ -3,10 +3,12 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure, success, type ServiceResult } from '@studiq/server/lib/service-result';
+import { OrganizationIdParamsSchema } from '@studiq/server/models/organization.model';
 import {
   AssignPlanOrganizationSchema,
   CreateSubscriptionPlanSchema,
   PlanAssignmentParamsSchema,
+  SetOrganizationPlanSchema,
   SubscriptionPlanIdParamsSchema,
   UpdateSubscriptionPlanSchema,
 } from '@studiq/server/models/subscription-plan.model';
@@ -155,6 +157,35 @@ export class SubscriptionPlanAdminController {
     const result = await this.subscriptionPlanService.unassignOrganization(
       plan.data.key,
       parsed.data.organizationId,
+    );
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  /**
+   * The `/orgs` plan picker. It moves the organization through
+   * `change_org_plan`, so an unlisted plan the organization is not pinned to is
+   * refused with `CONFLICT` and an unknown plan with `NOT_FOUND`.
+   */
+  async setOrganizationPlan(id: string, body: unknown): Promise<ControllerResponse> {
+    const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+
+    const parsed = SetOrganizationPlanSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+        details: parsed.error.issues,
+      };
+    }
+
+    const result = await this.subscriptionPlanService.setOrganizationPlan(
+      parsedId.data.id,
+      parsed.data.plan,
     );
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);

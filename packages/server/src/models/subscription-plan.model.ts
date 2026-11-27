@@ -138,8 +138,17 @@ export const PlanAssignmentParamsSchema = registry.register(
   }),
 );
 
+/** The plan an organization moves to, from the `/orgs` plan picker (B3). */
+export const SetOrganizationPlanSchema = registry.register(
+  'SetOrganizationPlanRequest',
+  z.object({
+    plan: KEY_FIELD,
+  }),
+);
+
 export type CreateSubscriptionPlanInput = z.infer<typeof CreateSubscriptionPlanSchema>;
 export type UpdateSubscriptionPlanInput = z.infer<typeof UpdateSubscriptionPlanSchema>;
 export type SubscriptionPlanIdParams = z.infer<typeof SubscriptionPlanIdParamsSchema>;
 export type AssignPlanOrganizationInput = z.infer<typeof AssignPlanOrganizationSchema>;
 export type PlanAssignmentParams = z.infer<typeof PlanAssignmentParamsSchema>;
+export type SetOrganizationPlanInput = z.infer<typeof SetOrganizationPlanSchema>;
