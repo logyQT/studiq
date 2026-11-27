@@ -307,7 +307,12 @@ Scope resolution:
 > resolves a surviving such row to `null`, the role editor and the save schema
 > refuse the grant, and `20261127150000_no_group_content_writes.sql` deletes the
 > rows that exist. An edit share would need its own permission — it is future work
-> with no issue. A content `group` **read** is any member of the class the row is
+> with no issue. Twelve content writes keep `group` by design: the four `*.create`
+> keys (`deck`, `topic`, `question`, `question_bank`) target no existing row; the
+> five `assignment.*` keys (`create`, `update`, `delete`, `publish`, `grade`)
+> address the group a run is aimed at; and the three `quiz.*` keys (`create`,
+> `update`, `delete`) govern a class assessment's own lifecycle, not an edit of
+> shared content. A content `group` **read** is any member of the class the row is
 > shared to, which is what `can()` resolves through the share link; this settles
 > the phase 6e wording ("the classes the caller teaches") for content reads. An
 > `organization` grant is the Admin role's deliberate org-wide authority, not

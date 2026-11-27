@@ -8,9 +8,9 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 // source of truth and every writer — the role editor, a template copy, a future
 // migration, a hand-written statement — meets it.
 //
-// The positive control is the second test: a trigger that refused every `group`
-// scope would make the reader case below fail, so the two together pin the scope
-// and not only the refusal.
+// The positive controls are the last two tests: a trigger that refused every
+// `group` scope, or that fired only on INSERT, would make the reader case or the
+// UPDATE case below fail, so the three together pin the scope and both arms.
 
 describe('org_role_permissions content-write scope guard', () => {
   const service: SupabaseClient<Database> = createServiceClient();
@@ -56,6 +56,47 @@ describe('org_role_permissions content-write scope guard', () => {
       expect(error?.code, `${key} at group`).toBe('22023');
       expect(error?.message, `${key} at group`).toMatch(/not allowed/);
     }
+  });
+
+  it('an update of a content write to group is refused, organization passes', async () => {
+    // The trigger fires on `update of permission_key, scope` too: a row inserted
+    // at `own` is legal, so only the UPDATE arm can refuse the group write.
+    const { error: insertError } = await service.from('org_role_permissions').insert({
+      org_role_id: customRoleId,
+      permission_key: 'deck.update',
+      scope: 'own',
+    });
+    expect(insertError).toBeNull();
+
+    const { error: groupError } = await service
+      .from('org_role_permissions')
+      .update({ scope: 'group' })
+      .eq('org_role_id', customRoleId)
+      .eq('permission_key', 'deck.update');
+    expect(groupError?.code).toBe('22023');
+    expect(groupError?.message).toMatch(/not allowed/);
+
+    const { error: orgError } = await service
+      .from('org_role_permissions')
+      .update({ scope: 'organization' })
+      .eq('org_role_id', customRoleId)
+      .eq('permission_key', 'deck.update');
+    expect(orgError).toBeNull();
+
+    const { data, error: readError } = await service
+      .from('org_role_permissions')
+      .select('permission_key, scope')
+      .eq('org_role_id', customRoleId)
+      .eq('permission_key', 'deck.update');
+    expect(readError).toBeNull();
+    expect(data).toEqual([{ permission_key: 'deck.update', scope: 'organization' }]);
+
+    const { error: cleanupError } = await service
+      .from('org_role_permissions')
+      .delete()
+      .eq('org_role_id', customRoleId)
+      .eq('permission_key', 'deck.update');
+    expect(cleanupError).toBeNull();
   });
 
   it('an allowed group read still inserts', async () => {

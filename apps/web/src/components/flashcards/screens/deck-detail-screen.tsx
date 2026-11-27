@@ -621,24 +621,17 @@ export function DeckDetailScreen({
                   </DropdownMenuItem>
                 </>
               )}
-              {permission('deck.update', {
-                createdBy: currentDeck?.created_by,
-                orgId: currentDeck?.organization_id,
-              }) && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => toggleSuspendMutation.mutate(!currentDeck?.suspended)}
-                  >
-                    {currentDeck?.suspended ? (
-                      <Eye className="h-4 w-4 mr-2" />
-                    ) : (
-                      <EyeOff className="h-4 w-4 mr-2" />
-                    )}
-                    {currentDeck?.suspended ? t('unsuspend_deck') : t('suspend_deck')}
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => toggleSuspendMutation.mutate(!currentDeck?.suspended)}
+              >
+                {currentDeck?.suspended ? (
+                  <Eye className="h-4 w-4 mr-2" />
+                ) : (
+                  <EyeOff className="h-4 w-4 mr-2" />
+                )}
+                {currentDeck?.suspended ? t('unsuspend_deck') : t('suspend_deck')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   const params = deckId ? `?deckId=${deckId}` : '';

@@ -11,7 +11,7 @@
 
 1. Nauczyciel tworzy talię i udostępnia ją grupie G1.
 2. Student — członek G1 z rolą własną, która ma tylko odczyt — otwiera listę talii i
-   udostępnioną talię.
+   udostępnioną talię. Sprawdza menu talii, zawiesza talię i przywraca ją.
 3. Student próbuje zmienić talię i jej fiszki: `PUT` talii, `DELETE` talii, `POST`
    fiszki do talii i `PUT` fiszki.
 4. Manager otwiera edytor ról dla roli studenta i sprawdza wiersz „Edytuj talię”.
@@ -21,13 +21,19 @@
 
 ## Expected result
 
-- Krok 2: student widzi udostępnioną talię i jej fiszki. Nie widzi osobistej talii
-  nauczyciela. W menu talii nie ma „Edytuj”, „Usuń” ani „Zawieś talię”, a w talii
-  nie ma przycisku „Nowa Fiszka”.
-- Krok 3: API odmawia każdym zapisem kodem 403. Odczyt talii i fiszek działa (200).
-- Krok 4: wiersz „Edytuj talię” ma tylko „Własne” i „Organizacja” — brak opcji
-  „Grupa”. Zapis z `deck.update: group` odpowiada 422, a odczyt roli nadal nie
-  zawiera `deck.update`.
+- Krok 2 (kontrola): student widzi udostępnioną talię i jej fiszki. Nie widzi
+  osobistej talii nauczyciela. W menu talii nie ma „Edytuj” ani „Usuń”, a w talii
+  nie ma przycisku „Nowa Fiszka”. „Zawieś talię” jest dostępne i działa: pojawia
+  się komunikat „Ta talia jest zawieszona…”, a „Przywróć talię” wraca do stanu
+  wyjściowego. Zawieszenie to preferencja użytkownika, nie zapis treści, więc
+  serwer wymaga tylko odczytu.
+- Krok 3 (kontrola): API odmawia każdym zapisem kodem 403. Odczyt talii i fiszek
+  działa (200). Ten krok nie dowodzi zakazu „Grupa”: rola studenta ma wyłącznie
+  odczyty, więc odmowa wynika z braku uprawnienia, a nie z zakresu.
+- Krok 4 (asercja rozstrzygająca): wiersz „Edytuj talię” ma tylko „Własne” i
+  „Organizacja” — brak opcji „Grupa”. Zapis z `deck.update: group` odpowiada 422,
+  a odczyt roli nadal nie zawiera `deck.update`. Ten krok zawodzi, gdy zakaz
+  „Grupa” dla zapisów treści zostanie cofnięty.
 - Krok 5: manager widzi „Edytuj” i „Usuń”, a `PUT` talii odpowiada 200 i zmienia
   nazwę. Uprawnienie `organization` roli Admina to świadoma władza w całej
   organizacji, nie udostępnianie.

@@ -479,7 +479,9 @@ export function evaluateScope(
       return resource.activeOrgId != null && resource.orgId === resource.activeOrgId;
   }
 
-  // Unreachable: the switch is exhaustive over `PermissionScope`. The linter's
-  // `consistent-return` needs an explicit tail.
+  // The switch covers every `PermissionScope`; the binding turns a new member
+  // into a compile error instead of a silent fall-through.
+  const unhandled: never = scope;
+  void unhandled;
   return false;
 }

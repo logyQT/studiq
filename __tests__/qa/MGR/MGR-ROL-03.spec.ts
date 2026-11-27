@@ -86,8 +86,10 @@ const ACTIONS = ['read', 'create', 'update', 'delete'] as const;
 /**
  * The closed catalog the editor renders (ADR-0015 §4.1): one row per key, grouped
  * into ten sections. The arithmetic behind the counts is the catalog itself —
- * content 31 keys (eight reads × 3 scopes + 23 writes × 2), group 3 × 3 +
- * `group.invite` 2, org 9 × 1. The 11 content-write `Grupa` radios are gone (#961).
+ * 102 radios = 23 keys at all three scopes (69) + the eleven banned content
+ * writes at own and organization only (22) + `group.invite` at group and
+ * organization (2) + the nine `org.*` keys at organization only (9). The 11
+ * content-write `Grupa` radios are gone (#961).
  */
 const CATALOG_KEYS = Object.keys(PERMISSIONS);
 const CATALOG_ROWS = 44;
@@ -519,7 +521,7 @@ async function saveRoleScope(page: Page, context: CaseContext, scope: Scope): Pr
   const dialog = await openPermissionEditor(page, ROLE_NAME);
 
   // The editor renders the closed catalog: ten sections, 44 rows, one scope option
-  // per key's `allowed_scopes` (113 radios in total).
+  // per key's `allowed_scopes` (102 radios in total).
   await expect(dialog.locator('[data-perm-row]')).toHaveCount(CATALOG_ROWS);
   await expect(dialog.locator('input[data-perm-radio="true"]')).toHaveCount(CATALOG_RADIOS);
   for (const title of CATALOG_SECTIONS) {

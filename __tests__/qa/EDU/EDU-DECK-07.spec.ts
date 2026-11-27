@@ -22,15 +22,17 @@ import { loadTenant, loginAs, type QaRole, type QaTenant } from '#test/qa/fixtur
  *   - the teacher's group deck (one card) and a personal deck.
  *
  * Walk (2026-11-27, `fix/961-group-scope`): with the catalog change in place the
- * student's payload carries no content write, so the deck menu offers only
- * „Eksportuj” — no „Edytuj”, no „Usuń”, no „Zawieś talię” — and the deck has no
- * „Nowa Fiszka”. The manager's menu on the teacher's deck offers „Edytuj” and
- * „Usuń”, and the role editor's „Edytuj talię” row renders only „Własne” and
- * „Organizacja”.
+ * student's payload carries no content write, so the deck menu offers no
+ * „Edytuj” and no „Usuń”; it still offers „Zawieś talię”, because suspension is
+ * a per-user preference the server gates on read. The deck has no „Nowa Fiszka”.
+ * The manager's menu on the teacher's deck offers „Edytuj” and „Usuń”, and the
+ * role editor's „Edytuj talię” row renders only „Własne” and „Organizacja”.
  *
  * Mutation (proves this spec can fail): remove `orgId` from the deck-detail
  * `deck.update` gate in `deck-detail-screen.tsx`; step 5's „Edytuj” assertion
- * goes red for the Admin. Restoring it turns the spec green again.
+ * goes red for the Admin. Put the `deck.update` gate back around the suspend
+ * item; step 2's suspend assertion goes red for the member. Restoring either
+ * turns the spec green again.
  */
 
 const CASE = 'EDU-DECK-07';
@@ -47,6 +49,9 @@ const COPY = {
   edit: 'Edytuj',
   delete: 'Usuń',
   suspend: 'Zawieś talię',
+  unsuspend: 'Przywróć talię',
+  suspendedNotice:
+    'Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.',
   export: 'Eksportuj',
   newFlashcard: 'Nowa Fiszka',
   roleEditor: (name: string) => `Uprawnienia roli ${name}`,
@@ -54,6 +59,18 @@ const COPY = {
 } as const;
 
 type Scope = 'own' | 'group' | 'organization';
+
+/**
+ * The radios the editor renders, per scope: 34 keys allow `own`, 24 allow
+ * `group`, and all 44 allow `organization`. Hardcoded, not derived from
+ * `PERMISSIONS`: the editor renders that same catalog, so a count computed from
+ * it would agree with the implementation by construction.
+ */
+const SCOPE_RADIOS: Record<Scope, number> = {
+  own: 34,
+  group: 24,
+  organization: 44,
+};
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -106,12 +123,6 @@ const READ_ONLY_GRANTS: Record<string, Scope> = {
   'deck.read': 'group',
   'flashcard.read': 'group',
 };
-
-/** How many catalog keys allow a scope — the number of radios that render its label. */
-function scopeRadioCount(scope: Scope): number {
-  return Object.values(PERMISSIONS).filter((definition) => definition.allowedScopes.includes(scope))
-    .length;
-}
 
 async function getData<T>(page: Page, url: string): Promise<T> {
   const response = await page.request.get(url);
@@ -306,13 +317,34 @@ test.describe('@case:EDU-DECK-07 @area:EDU @prio:P1 a group share is a view shar
     await expect(visibleText(page, CARD.front), 'the shared card is readable').toHaveCount(1);
 
     await openDeckMenu(page);
-    for (const item of [COPY.edit, COPY.delete, COPY.suspend]) {
+    for (const item of [COPY.edit, COPY.delete]) {
       await expect(
         page.getByRole('menuitem', { name: item, exact: true }),
         `the member's deck menu offers no „${item}”`,
       ).toHaveCount(0);
     }
     await expect(page.getByRole('button', { name: COPY.newFlashcard, exact: true })).toHaveCount(0);
+
+    // Suspension is a per-user preference: the server gates a suspend-only body on
+    // `DECK_READ` (`flashcard-deck.service.ts`), so a reader may suspend the deck it
+    // shares, and the list menu leaves the item ungated. A `deck.update` gate here
+    // would hide an action the API allows.
+    await page.getByRole('menuitem', { name: COPY.suspend, exact: true }).click();
+    await expect(
+      page.getByText(COPY.suspendedNotice),
+      'the member suspends the shared deck and the server reports it suspended',
+    ).toBeVisible();
+
+    await openDeckMenu(page);
+    await expect(
+      page.getByRole('menuitem', { name: COPY.unsuspend, exact: true }),
+      'the menu offers to restore the deck the member suspended',
+    ).toBeVisible();
+    await page.getByRole('menuitem', { name: COPY.unsuspend, exact: true }).click();
+    await expect(
+      page.getByText(COPY.suspendedNotice),
+      'the deck is restored before the rest of the walk',
+    ).toHaveCount(0);
 
     // ── Step 3: the API refuses every write ────────────────────────────────────
     for (const [method, url, body] of [
@@ -346,8 +378,8 @@ test.describe('@case:EDU-DECK-07 @area:EDU @prio:P1 a group share is a view shar
           name: { own: 'Własne', group: COPY.scopeGroup, organization: 'Organizacja' }[scope],
           exact: true,
         }),
-        `the catalog renders ${scopeRadioCount(scope)} „${scope}” radios`,
-      ).toHaveCount(scopeRadioCount(scope));
+        `the editor renders ${SCOPE_RADIOS[scope]} „${scope}” radios`,
+      ).toHaveCount(SCOPE_RADIOS[scope]);
     }
 
     const deckUpdateRow = dialog.locator('[data-perm-row="deck.update"]');
