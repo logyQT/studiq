@@ -18,6 +18,7 @@ import {
 } from '@/app/(frontend)/pricing/_components/pricing-audience';
 import { PricingFaq } from '@/app/(frontend)/pricing/_components/pricing-faq';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
+import { SalesCta } from '@/components/pricing/sales-cta';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
@@ -229,6 +230,8 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
                     {section.plans.length > 1 ? (
                       <ComparisonTable plans={section.plans} kind={section.kind} />
                     ) : null}
+                    {/* Custom setup is a conversation, not one of the four tiers. */}
+                    {section.kind === 'organization' ? <SalesCta /> : null}
                   </>
                 )}
               </div>
@@ -239,17 +242,19 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
         <PricingFaq audience={audience} />
       </div>
 
-      {user ? null : (
+      {user || organization ? null : (
         // A signed-in reader's action is the checkout in the row they want; a
-        // second call to sign up is a dead end. The band stays quiet so the
-        // recommended row keeps the page's one `signal` fill.
+        // second call to sign up is a dead end. The organization ladder already
+        // carries the custom-setup CTA, so only the individual ladder closes
+        // with a band. The band stays quiet so the recommended row keeps the
+        // page's one `signal` fill.
         <section className="border-t border-border py-16 md:py-20">
           <div className="mx-auto flex max-w-content flex-col gap-6 px-content md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="max-w-xl font-display text-h2 font-semibold text-balance">
-              {organization ? t('close_org_line') : t('close_individual_line')}
+              {t('close_individual_line')}
             </h2>
-            <CtaButton href={organization ? '/contact' : '/register'} tone="quiet">
-              {organization ? t('close_org_cta') : t('cta_free')}
+            <CtaButton href="/register" tone="quiet">
+              {t('cta_free')}
             </CtaButton>
           </div>
         </section>

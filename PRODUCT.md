@@ -37,7 +37,7 @@ Two ladders, each self-serve through Stripe from `/pricing`:
 | Ladder      | Account type          | Free tier | Paid tiers                               |
 | ----------- | --------------------- | --------- | ---------------------------------------- |
 | Individual  | `STUDENT`, `EDUCATOR` | `free`    | `plus` 19.99 · `pro` 39.99 · `max` 79.99 |
-| Institution | `MANAGER`             | `launch`  | `hub` 299 · `campus` 699                 |
+| Institution | `MANAGER`             | `launch`  | `team` 99 · `hub` 299 · `campus` 699     |
 
 A manager is an organization buyer and holds no personal plan (ADR-0007): the
 individual ladder is not theirs to purchase, and they buy an institution plan
@@ -167,12 +167,13 @@ marketing premium card and `/features`, and subphase 4C covers learning paths, r
 and adaptive difficulty — not exam simulation. It is gone from all three surfaces and its
 keys with it; it returns only when the roadmap has a row for it.
 
-**Closed by B2 (#1493).** The landing org card priced from `team` (99 zł) and listed
-"Everything in Premium", while the cheaper individual plans carried the features. The
-organization ladder is now capacity only — Launch / Hub / Campus, with no `ai.chat`,
-`quiz.templates`, `stats.insights` or `branding` on any org plan — so the card prices from
-`hub` (299 zł) and lists capacity, roles and groups. A member's own personal plan adds the
-paid surfaces inside the organization, and organization licences are #1511.
+**Organization ladder (2026-11-27).** The institution ladder is four purchasable tiers,
+differentiated on capacity and cumulative features: Launch (free, 5 members / 3 groups, flashcards
+and quizzes), Team (99 zł, 25 / 10, adds the saved quiz library), Hub (299 zł, 100 / 40, adds
+insights) and Campus (699 zł, 1 000 / 100, adds branding). The landing org card prices from the
+cheapest paid tier (`team`). Custom setup — own limits, SSO, invoicing, onboarding — is a separate
+"talk to sales" band on `/pricing?audience=organization` and `/manage/upgrade`, never a priced card.
+No organization plan carries the AI assistant; it comes from a member's personal plan.
 
 ## Voice
 

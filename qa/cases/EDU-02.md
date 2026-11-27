@@ -9,8 +9,8 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only; the members' `ai.chat` comes from their personal Plus plan
-(`personalPlan: "plus"`). `branding` is no longer asserted: no organization plan carries it.
+No organization plan carries `ai.chat`, so the members' `ai.chat` comes from their personal Plus plan
+(`personalPlan: "plus"`). `branding` is not asserted: it is the Campus tier and this tenant is on Hub.
 
 ## Prerequisite (verbatim)
 
@@ -55,7 +55,7 @@ Every org/user/group id is `tenantId(key, entity)`; nothing global is written.
   „Zapytaj Q” composer. The intended behaviour of the menu item is therefore a working
   page, not the predicted 404, and the spec asserts exactly that.
 - The same change gated „Asystent Q” behind the `ai.chat` feature, so the fixture
-  uses an organization plan that grants it (Hub).
+  gives the members a personal Plus plan that grants it (`personalPlan: "plus"`).
 - Since 2b-2 the sidebar item is gated on the `group.read` permission, because that
   is what `GET /organization/groups` asks for: the `member` role keeps „Grupy” and
   reaches a read-only list, and every write control inside stays governed by

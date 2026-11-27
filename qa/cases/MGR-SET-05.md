@@ -7,13 +7,12 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
-## Amendment (2026-11-26, B2 #1493)
+## Amendment (2026-11-27, organization ladder)
 
-No organization plan carries `branding` since #1493, so a plan change can no longer withdraw it.
-The case still runs the real Hub → Launch → Hub webhook path, but the expected result changed:
-the lock card and the unpainted stored logo are present on **every** tier, the stored
-`logo_url`/`brand_color` never change, and re-buying Hub does not restore the controls because no
-plan grants the feature.
+`branding` is the Campus feature, so Hub and Launch do not carry it. The case still runs the real
+Hub → Launch → Hub webhook path: the lock card and the unpainted stored logo are present on both
+tiers, the stored `logo_url`/`brand_color` never change, and re-buying Hub does not restore the
+controls because Campus, not Hub, is the tier that grants the feature.
 
 ## Prerequisite (verbatim)
 
@@ -42,10 +41,11 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
-  organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
-  z profilem `all` dostaje `branding`; `/api/v1/me/entitlements` zwraca tę funkcję, a
-  `/manage/settings` pokazuje kontrolki logo i koloru marki.
+  tenanta na plan Hub. Drabinka jest kumulatywna, ale `branding` ma tylko Campus: rola
+  `admin` z profilem `all` dostaje przecięcie z pułapem Hubu, więc
+  `/api/v1/me/entitlements` nie zawiera `branding`, a `/manage/settings` pokazuje kartę
+  blokady. Wartości logo i koloru, które zostawiłaby organizacja na Campusie, spec zapisuje
+  bezpośrednio w wierszu **swojej** organizacji (fixture), bo bramka ukrywa uploader.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.
 - Klucz tenanta: `MGR-SET-05.md::MGR-SET-05#<run>::qa-shared` —
@@ -56,29 +56,32 @@ bun scripts/qa-tenant.ts MGR-SET-05 --fresh
 - Krok 1 przypadku (zmiana planu organizacji): zmiana uprawnienia **tej samej**
   organizacji przez webhook symulowanej płatności (`POST /api/v1/stripe/webhook` →
   `MockStripeService.handleWebhook` → `change_org_plan`) — dokładnie ta sama ścieżka, przez
-  którą przechodzi realna zmiana planu. Obniżenie do `launch` (darmowy plan managera bez
-  funkcji `branding`) odbiera branding roli `admin`; na końcu spec wraca do `hub` w obrębie
-  tego samego tenanta, żeby udowodnić, że plik logo nie zniknął, a jedynie wyświetlanie
+  którą przechodzi realna zmiana planu. Obniżenie do `launch` nie zmienia bramki: Hub i
+  Launch nie mają `branding` (ma je tylko Campus), więc karta blokady zostaje na obu
+  planach. Na końcu spec wraca do `hub` w obrębie
+  tego samego tenanta, żeby udowodnić, że plik logo nie zniknął, a wyświetlanie
   jest bramkowane planem.
 - Izolacja: test czyta i zapisuje wyłącznie logo, plan oraz historię płatności swojej
   organizacji; nie dotyka flag funkcji, katalogu planów, ustawień admina, statystyk
   platformy ani wierszy singletonowych.
 
-## Observed (ręczny przebieg, 2026-10-28, qa-env-7)
+## Observed (ręczny przebieg, 2026-10-28, qa-env-7; plan names from the pre-#1493 matrix — Campus carries branding today)
 
-- Hub + wgrany PNG: przełącznik organizacji pokazuje logo (`img` 32×32, `alt=""`,
+- Plan z brandingiem (wtedy Hub; dziś **Campus**) + wgrany PNG: przełącznik organizacji pokazuje
+  logo (`img` 32×32, `alt=""`,
   `src` = publiczny URL z `org-logos/…`), `/manage/settings` pokazuje podgląd 48×48,
   przycisk „Wgraj logo" i „Kolor marki"; `/api/v1/me/entitlements` zawiera `branding`.
-- Po obniżeniu do `launch` (webhook 200): `/api/v1/me/entitlements` nie zawiera już `branding`,
-  `/api/v1/me/plan` zwraca `launch` / „StudiQ Launch", `organizations.logo_url` pozostaje
+- Na planie bez brandingu (wtedy `launch`; dziś **Hub**, stan tego tenanta):
+  `/api/v1/me/entitlements` nie zawiera `branding`,
+  `/api/v1/me/plan` zwraca plan tenanta, `organizations.logo_url` pozostaje
   bez zmian, a publiczny URL pliku nadal zwraca 200.
 - Po odświeżeniu `/manage`: przełącznik (zarówno trigger, jak i pozycja w rozwijanym menu)
   pokazuje awatar `/api/v1/avatar/org/<id>` zamiast logo; logo nie jest renderowane nigdzie
   na stronie.
-- `/manage/settings`: karta blokady „Własny branding" z opisem „Ulepsz plan, aby uzyskać
-  dostęp do własnego brandingu" i przyciskiem „Zobacz plany"; brak `input[type=file]`,
+- `/manage/settings`: karta blokady „Własny branding" z opisem „Własny branding jest dostępny
+  w planie Campus." i przyciskiem „Zobacz plany"; brak `input[type=file]`,
   brak „Wgraj logo", brak „Kolor marki" i brak podglądu logo. Karta subskrypcji pokazuje
-  „StudiQ Launch".
+  plan tenanta.
 - Po powrocie na Hub (webhook `hub`): logo wraca w przełączniku i jako podgląd 48×48
   w Ustawieniach, bez ponownego wgrywania — plik i `logo_url` przetrwały obniżenie planu.
 

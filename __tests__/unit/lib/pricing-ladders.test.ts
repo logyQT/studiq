@@ -61,13 +61,18 @@ const catalogue = [
     features: ['flashcards', 'quiz'],
     limits: { max_students: 5, max_groups: 3 },
   }),
-  plan('hub', 'organization', 6, {
-    features: ['flashcards', 'quiz'],
-    limits: { max_students: 50, max_groups: 20 },
+  plan('team', 'organization', 6, {
+    features: ['flashcards', 'quiz', 'quiz.templates'],
+    limits: { max_students: 25, max_groups: 10 },
+    priceMonthly: 9900,
+  }),
+  plan('hub', 'organization', 7, {
+    features: ['flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: { max_students: 100, max_groups: 40 },
     priceMonthly: 29900,
   }),
-  plan('campus', 'organization', 7, {
-    features: ['flashcards', 'quiz'],
+  plan('campus', 'organization', 8, {
+    features: ['branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: { max_students: 1000, max_groups: 100 },
     priceMonthly: 69900,
   }),
@@ -78,7 +83,7 @@ describe('getPlanLadders', () => {
     const ladders = getPlanLadders(catalogue);
 
     expect(ladders.individual.map((p) => p.key)).toEqual(['free', 'plus', 'pro', 'max']);
-    expect(ladders.organization.map((p) => p.key)).toEqual(['launch', 'hub', 'campus']);
+    expect(ladders.organization.map((p) => p.key)).toEqual(['launch', 'team', 'hub', 'campus']);
   });
 
   it('sorts by the catalogue order rather than the order the API returned', () => {
@@ -124,9 +129,9 @@ describe('ctaMessageKey', () => {
     expect(ctaMessageKey(plan('plus', 'personal', 2, { priceMonthly: 1999 }))).toBe('cta_plus');
   });
 
-  it('gives a sales-led plan the conversation the page already offers', () => {
-    expect(ctaMessageKey(plan('campus', 'organization', 7, { priceMonthly: 69900 }))).toBe(
-      'cta_contact',
+  it('names an organization tier instead of borrowing the contact label', () => {
+    expect(ctaMessageKey(plan('campus', 'organization', 8, { priceMonthly: 69900 }))).toBe(
+      'cta_campus',
     );
   });
 
@@ -167,6 +172,20 @@ describe('splitFeatureRows', () => {
 
     expect(rows.common).toEqual(['flashcards']);
     expect(rows.differing).toEqual(['branding']);
+  });
+
+  it('gives the four organization tiers four different feature lists', () => {
+    // Capacity alone cannot carry the ladder: the operator sells a cumulative
+    // feature per tier, so no two cards print the same list.
+    const organization = getPlanLadders(catalogue).organization;
+
+    const lists = organization.map((row) => row.features.toSorted().join(','));
+    expect(new Set(lists).size).toBe(organization.length);
+    expect(splitFeatureRows(organization).differing).toEqual([
+      'branding',
+      'quiz.templates',
+      'stats.insights',
+    ]);
   });
 });
 

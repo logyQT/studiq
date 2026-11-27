@@ -9,8 +9,8 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-`/manage/upgrade` lists the three organization plans — Launch / Hub / Campus. `team` is retired;
-one card per catalogue row remains the assertion.
+`/manage/upgrade` lists the four organization plans — Launch / Team / Hub / Campus. One card per
+catalogue row remains the assertion.
 
 ## Prerequisite (verbatim)
 
@@ -62,7 +62,7 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
   a negative assertion instead of a positive one.
 - „Wybierz plan” → `/manage/upgrade`: heading „Rozwiń swój plan” + subtitle „Wybierz
   plan odpowiedni dla Twoich potrzeb”, one card per plan from
-  `/api/v1/subscription-plans?scope=organization` (StudiQ Launch / Hub / Campus), each
+  `/api/v1/subscription-plans?scope=organization` (StudiQ Launch / Team / Hub / Campus), each
   with its price, feature list and a CTA. Nothing is clicked there: the CTAs start a
   simulated checkout.
 - „Konto” → `/manage/account`: heading „Konto”, cards „Zdjęcie profilowe”, „Nazwa”

@@ -28,21 +28,53 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   };
 }
 
-const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+const LADDER = [
   { key: 'free', name: 'StudiQ Free', priceMonthly: 0 },
   { key: 'plus', name: 'StudiQ Plus', priceMonthly: 1999 },
   { key: 'pro', name: 'StudiQ Pro', priceMonthly: 3999 },
   { key: 'max', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
-/** The organization ladder: a free tier, the recommended Hub and sales-led Campus. */
-const ORGANIZATION_LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
-  { key: 'launch', name: 'StudiQ Launch', priceMonthly: 0 },
-  { key: 'hub', name: 'StudiQ Hub', priceMonthly: 29900 },
-  { key: 'campus', name: 'StudiQ Campus', priceMonthly: 69900 },
+/** The organization ladder: a free tier, Team, the recommended Hub and Campus. */
+const ORGANIZATION_LADDER = [
+  {
+    key: 'launch',
+    name: 'StudiQ Launch',
+    priceMonthly: 0,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz'],
+    limits: { max_students: 5, max_groups: 3 },
+  },
+  {
+    key: 'team',
+    name: 'StudiQ Team',
+    priceMonthly: 9900,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz', 'quiz.templates'],
+    limits: { max_students: 25, max_groups: 10 },
+  },
+  {
+    key: 'hub',
+    name: 'StudiQ Hub',
+    priceMonthly: 29900,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: { max_students: 100, max_groups: 40 },
+  },
+  {
+    key: 'campus',
+    name: 'StudiQ Campus',
+    priceMonthly: 69900,
+    scope: 'organization' as const,
+    features: ['branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: { max_students: 1000, max_groups: 100 },
+  },
 ];
 
-const ALL_PLANS = [...LADDER, ...ORGANIZATION_LADDER];
+type PlanFixture = Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'> &
+  Partial<Pick<PlanInfo, 'scope' | 'features' | 'limits'>>;
+
+const ALL_PLANS: PlanFixture[] = [...LADDER, ...ORGANIZATION_LADDER];
 
 interface RowOptions {
   planKey?: string;
@@ -68,7 +100,7 @@ function rowElement({
 }
 
 function ladderMarkup(
-  ladder: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>>,
+  ladder: PlanFixture[],
   {
     isCurrentKey,
     hasActivePlan = false,
@@ -197,16 +229,15 @@ describe('PlanRow action', () => {
     expect(markup).toContain(t('cta_change_plan'));
   });
 
-  it('keeps the Campus contact action quiet and Hub the ladder’s only signal', () => {
+  it('keeps every organization row a checkout and Hub the ladder’s only signal', () => {
     const markup = ladderMarkup(ORGANIZATION_LADDER);
     const links = linkClasses(markup);
-    const contact = links.get('/contact');
 
-    // Campus is a conversation, not a checkout: the sales link never takes the
-    // recommended plan's fill, even beside it.
-    expect(contact).toBeDefined();
-    expect(toneTokens(contact ?? '')).toContain('border-input');
-    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+    // Campus is purchasable: no plan row is a conversation any more, and the
+    // custom-setup CTA is a separate band, not a row action.
+    expect(links.get('/contact')).toBeUndefined();
+    expect(markup).toContain(t('cta_team'));
+    expect(markup).toContain(t('cta_campus'));
 
     // The one signal is Hub's checkout button; no link carries the fill.
     const classes = actionClasses(markup);
@@ -215,14 +246,34 @@ describe('PlanRow action', () => {
     expect([...links.values()].filter((c) => toneTokens(c).includes('bg-signal'))).toHaveLength(0);
   });
 
-  it('keeps the contact action quiet for a subscriber', () => {
-    const contact = linkClasses(ladderMarkup(ORGANIZATION_LADDER, { hasActivePlan: true })).get(
-      '/contact',
-    );
+  it('sends an organization subscriber to the billing change-plan page', () => {
+    const markup = ladderMarkup(ORGANIZATION_LADDER, { hasActivePlan: true });
 
-    expect(contact).toBeDefined();
-    expect(toneTokens(contact ?? '')).toContain('border-input');
-    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+    expect(linkClasses(markup).get('/app/billing')).toBeDefined();
+    expect(markup).not.toContain(t('cta_campus'));
+  });
+
+  it('prints the organization capacity on its row only', () => {
+    const org = ladderMarkup(ORGANIZATION_LADDER);
+    expect(org).toContain('do 25 uczniów');
+    expect(org).toContain('do 10 grup');
+
+    // A personal row never prints seats, even if the plan carries a stray row.
+    const personal = renderToStaticMarkup(
+      createElement(
+        NextIntlClientProvider,
+        { locale, messages: pl, timeZone: 'UTC' },
+        createElement(PlanRow, {
+          plan: plan({ limits: { max_students: 5, max_groups: 3 } }),
+          isCurrent: false,
+          signedIn: true,
+          hasActivePlan: false,
+          billingHref: '/app/billing',
+        }),
+      ),
+    );
+    expect(personal).not.toContain('uczniów');
+    expect(personal).not.toContain('grup');
   });
 
   it('shares one control class and one signal fill across the whole ladder', () => {

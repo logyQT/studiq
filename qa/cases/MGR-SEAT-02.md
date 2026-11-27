@@ -11,11 +11,12 @@
 
 Seats are frozen at the UI: `/manage/seats` keeps the pools/assignments tables and every `GET`, but
 hides the purchase, assign and release controls. The API routes stay as the data path for #1511,
-so this case drives the assignment through them. Because the organization ceiling is baseline
-only, a seat raises the member's effective plan and user-scope **limits** but adds no paid
-entitlement; the portable surfaces come from the member's personal Plus plan
-(`personalPlan: "plus"`). A manager holds no personal plan (ADR-0007), so the
-seeder applies Plus to every non-manager member only.
+so this case drives the assignment through them. The organization ladder is cumulative: the Hub
+ceiling carries `quiz.templates` and `stats.insights`, while a `member` role resolves only the
+learner profile (`flashcards`, `quiz`), and a seat intersects that ceiling. A Max seat therefore
+adds `stats.insights` and raises the user-scope **limits**; the portable `ai.chat` comes from the
+member's personal Plus plan (`personalPlan: "plus"`). A manager holds no personal plan (ADR-0007),
+so the seeder applies Plus to every non-manager member only.
 
 ## Prerequisite (verbatim)
 
@@ -45,7 +46,7 @@ seeded tenant instead:
   `tenantId(key, entity)`; the e-mails are `qa+<shorthash>+<role>@test.local`.
 - **Profile**: `__tests__/qa/profiles/MGR-SEAT-02.json` declares
   `{"profile": "content", "plan": "hub", "personalPlan": "plus"}` — the tenant's
-  organization sits on the capacity-only **hub** plan and every non-manager
+  organization sits on the cumulative **hub** plan and every non-manager
   member's personal **Plus** plan carries the portable keys (`ai.chat`, `quiz.templates`)
   into the org — plus an explicit `members` roster:
   - `manager` — manager account, `admin` org role;
@@ -70,15 +71,17 @@ seeded tenant instead:
 ## Expected result
 
 - W „Przydziałach” nowy wpis; w puli przydzielone +1, dostępne −1; inne pule bez zmian.
-- **The seat-upgrade story on the capacity-only hub org (#1493).** The org ceiling adds
-  no paid key, so the assignment changes **limits, not features**. The seated member's
+- **The seat-upgrade story on the cumulative hub org.** The Hub ceiling carries
+  `quiz.templates` and `stats.insights`; a `member` role resolves the learner profile
+  (`flashcards`, `quiz`) ∩ ceiling, so before the seat the member's
   `/api/v1/me/entitlements` is the personal Plus plan's portable keys plus the two
-  baseline keys (`ai.chat, flashcards, quiz, quiz.templates`) before and after the seat.
+  baseline keys (`ai.chat, flashcards, quiz, quiz.templates`). The Max seat intersects the
+  ceiling and adds the one key the profile lacks, `stats.insights`.
   `/api/v1/me/plan` → `key: 'max'` with `limits.max_flashcards === 25000` and
   `limits.max_ai_tokens_per_day === 500000` (the user-scope limit is
   `max(org, seat, personal)`, D28/D30). `/api/v1/ai/usage` → `limit: 500000`,
   `plan: 'hub'` (the effective primary stays the org plan, D30).
-  `student2` (no seat) keeps `max_flashcards === 2000` (the hub floor) and
+  `student2` (no seat) keeps `max_flashcards === 5000` (the hub floor) and
   `max_ai_tokens_per_day === 100000` (the Plus budget): the seat is per-member, not
   org-wide.
 - Po wyborze członka dostępne są **wszystkie** pule organizacji: plan osobisty nie ma
@@ -89,10 +92,10 @@ seeded tenant instead:
 > ceiling rule did not move with the story: it is pinned by
 > `__tests__/unit/services/entitlement.resolver.test.ts` („intersects the seat plan
 > with the org ceiling”) and by the `manager-plan-model` / `limits-resolution`
-> integration cases. Under the capacity-only ladder the intersection adds nothing: the
-> seat is observable in the effective plan's limits, not in the entitlement set.
+> integration cases. The intersection is what lets the Max seat add `stats.insights` from
+> the Hub ceiling while the user-scope limits still come from `max(org, seat, personal)`.
 
-## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f` — pre-4b walk; the picker copy below is superseded by the 4b rewrite, and the dialog and hub-ceiling story by the #1493 freeze)
+## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f` — pre-4b walk; the picker copy below is superseded by the 4b rewrite, and the dialog by the #1493 seat freeze)
 
 - `/manage/seats` („Licencje miejsc”) lists the purchased pools with the columns
   „Wykupione / Przydzielone / Dostępne” and the „Przydziały” table. The MGR-SEAT-01
@@ -113,9 +116,9 @@ seeded tenant instead:
   superseded), `GET /api/v1/me/plan` returns `max` with
   `max_ai_tokens_per_day = 500000`, and `GET /api/v1/ai/usage` reports
   `limit: 500000, plan: 'hub'`. The unseated `student2` keeps
-  `limit: 200000` and no `stats.insights`. Org-scoped entitlements are never _added_
+  `limit: 100000` and no `stats.insights`. Org-scoped entitlements are never _added_
   through a seat beyond what the learner profile already grants from the ceiling
-  (`branding` is in both).
+  (`branding` sits on Campus, so the Hub ceiling does not grant it).
 - The guards behind the pickers hold server-side too: a second seat for the
   already-seated member → **429** `USAGE_LIMIT_EXCEEDED`; a different member accepts
   any pool, including one whose plan used to name another persona → **201**.

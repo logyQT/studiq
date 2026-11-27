@@ -33,10 +33,11 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 - `__tests__/qa/profiles/LIM-05.json` deklaruje `{ "profile": "content", "plan": "hub" }`. Profil
   `content` tworzy organizację `qa-lim-05-<suffix>` z managerem (`admin`), nauczycielem i
   studentem; `plan: "hub"` przenosi **tę jedną** organizację na Hub przez `change_org_plan`.
-  Od #1493 **żaden plan organizacji nie zawiera `branding`** — organizacja na Hubie jest
-  celowo warunkiem „nawet najwyższy self-serve tier nie ma brandingu”. Wartości logo i koloru,
-  które zostawiłby plan z brandingiem, spec zapisuje bezpośrednio w wierszu **swojej**
-  organizacji (fixture), żeby dowieść, że ukrywa je bramka, a nie brak danych.
+  Drabinka organizacji jest kumulatywna: `branding` ma tylko **Campus**, a Hub jest najwyższym
+  planem self-serve bez tej funkcji. Tenant na Hubie jest więc celowo w stanie „najwyższy
+  self-serve tier nadal nie ma brandingu”. Wartości logo i koloru, które zostawiłaby
+  organizacja na Campusie, spec zapisuje bezpośrednio w wierszu **swojej** organizacji
+  (fixture), żeby dowieść, że ukrywa je bramka, a nie brak danych.
 - Klucz tenanta: `LIM-05.md::LIM-05#<run>::qa-shared` —
   `tenantKey('qa/cases/LIM-05.md', 'LIM-05#<run>', 'qa-shared')` + `tenantId` dla org, grup i
   użytkowników, ten sam schemat co fixture'y e2e. `--fresh` nadaje nowy sufiks przebiegu, więc
@@ -44,27 +45,29 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
   w obrębie przebiegu (bez losowanych UUID). Spec czyta tenant przez `loadTenant('LIM-05')`.
 - Krok 1 przypadku („Wykonaj MGR-SET-01, MGR-SET-02, MGR-SET-05”) jest odtworzony w jednym
   tenancie: organizacja na Hubie ze zapisanymi wartościami logo/koloru pokazuje kartę
-  blokady, brak pól wgrywania i koloru oraz nie maluje zapisanych wartości — bo żaden plan nie
-  przyznaje `branding`. Spec nie zmienia już planu, żeby „odebrać” funkcję: nie ma planu,
-  który mógłby ją przyznać.
+  blokady, brak pól wgrywania i koloru oraz nie maluje zapisanych wartości — bo `branding`
+  przyznaje tylko Campus. Spec nie przenosi organizacji na Campus: bada stan tenanta na Hubie,
+  a plan pozostaje `hub` przez cały przebieg.
 - Izolacja: test czyta i zapisuje wyłącznie logo, kolor marki i plan **swojej** organizacji;
   nie dotyka flag funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy
   singletonowych, ani innego tenanta.
 
-## Observed during the suite walk (qa-env-2, shared app 3010 / DB 54421, 2026-10-29)
+## Observed during the suite walk (qa-env-2, shared app 3010 / DB 54421, 2026-10-29; plan names from the pre-#1493 matrix — Campus carries branding today, Hub does not)
 
-- Hub (`plan: hub`, `/api/v1/me/entitlements` zawiera `branding`): `/manage/settings` pokazuje
+- The branding tier at the time (`Hub`; today **Campus**): `/api/v1/me/entitlements` contained
+  `branding`, and `/manage/settings` showed
   „Brak logo” / „Wgraj logo” (ukryty `input[type=file]`), „Kolor marki” z `input[type=color]`
   i przyciskiem „Zapisz”. Wgranie PNG 1×1 (`POST …/logo`) zwraca 200 i zapisuje
   `organizations.logo_url` pod `org-logos/<org-id>/…png`; zapis koloru (`PUT` z
   `brandColor`) zwraca 200 i zapisuje `#00aa00`; po odświeżeniu podgląd logo ma 48×48, a pole
   koloru pokazuje zapisaną wartość.
-- Po obniżeniu do `launch` (webhook 200): `/api/v1/me/entitlements` nie zawiera już `branding`,
-  `/api/v1/me/plan` zwraca `launch` / „StudiQ Launch”. `/manage/settings` renderuje kartę
-  blokady „Własny branding” + „Ulepsz plan, aby uzyskać dostęp do własnego brandingu” +
+- After a plan change to a tier without branding (then `launch`; today **Hub**, this tenant's
+  state): `/api/v1/me/entitlements` omits `branding`,
+  `/api/v1/me/plan` zwraca plan bez funkcji. `/manage/settings` renderuje kartę
+  blokady „Własny branding” + „Własny branding jest dostępny w planie Campus.” +
   „Zobacz plany”; nie ma `input[type=file]`, `input[type=color]`, „Wgraj logo” ani „Kolor
   marki”, a wcześniej wgrane logo nie jest nigdzie malowane (przełącznik pokazuje awatar
-  `/api/v1/avatar/org/<id>`). Karta „Subskrypcja” pokazuje „StudiQ Launch”.
+  `/api/v1/avatar/org/<id>`). Karta „Subskrypcja” pokazuje nazwę planu tenanta.
 - Krok 2 — jako manager bez funkcji: `PUT /api/v1/organization/<id>` z
   `{"brandColor":"#ff0000"}` → **403** `{"success":false,"error":"FORBIDDEN"}`;
   `POST /api/v1/organization/<id>/logo` (multipart, prawdziwy PNG) → **403**

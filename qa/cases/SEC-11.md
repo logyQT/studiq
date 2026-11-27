@@ -25,8 +25,9 @@ legacy `manager@dev.local` / `teacher1@dev.local` / `pass` accounts):
 
 - key: `tenantKey('qa/cases/SEC-11.md', 'SEC-11#<run suffix>', 'qa-shared')`
 - `__tests__/qa/profiles/SEC-11.json` declares `{ "profile": "content", "plan": "hub" }`: one
-  organization on **Hub** (so the manager's logo upload passes the `branding` feature gate,
-  which is otherwise a 403 before any file is looked at), the tenant's
+  organization on **Hub** (which does not grant `branding` — Campus is that tier — so the logo
+  upload is refused **403** before any file is looked at, and the logo row keeps its value),
+  the tenant's
   manager/teacher/student, and the default group `G1`.
 - the profile seeds the graph only. The spec builds the one piece the case needs — a
   published assignment with an open question, targeted at the tenant's student, plus that

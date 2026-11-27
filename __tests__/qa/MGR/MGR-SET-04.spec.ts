@@ -6,11 +6,11 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 /**
  * MGR-SET-04 — the brand colour requires the `branding` feature.
  *
- * The case set a colour in „Kolor marki” and checked it survived a refresh. Since
- * #1493 no organization plan carries `branding`, so the field is not rendered and
- * the API refuses the write. The case moves to the disabled state: a colour
- * stored on the row (the state a branding plan would have left) is not painted,
- * and the write is 403.
+ * The case set a colour in „Kolor marki” and checked it survived a refresh.
+ * `branding` is the Campus tier, and this tenant's org sits on Hub without it,
+ * so the field is not rendered and the API refuses the write. The case moves to
+ * the locked state: a colour stored on the row (the state a Campus org would
+ * have left) is not painted, and the write is 403.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-04 --fresh
  *
@@ -26,7 +26,7 @@ const COPY = {
   pageTitle: 'Ustawienia',
   brandColorLabel: 'Kolor marki',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDescription: 'Własny branding jest dostępny w planie Campus.',
 } as const;
 
 /** The stored colour the gate must not paint; distinct from any UI default. */
@@ -51,7 +51,7 @@ function mainContent(page: Page) {
   return page.locator('main[data-slot="sidebar-inset"]').first();
 }
 
-test('hides the colour field and refuses a write when no plan grants branding', async ({
+test('hides the colour field and refuses a write when the plan does not grant branding', async ({
   page,
 }) => {
   const tenant = loadTenant(CASE);
@@ -64,7 +64,7 @@ test('hides the colour field and refuses a write when no plan grants branding', 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
-  // A stored colour, as a plan that carried branding would have left it.
+  // A stored colour, as a Campus org would have left it.
   const db = createQaSupabase();
   const seeded = await db
     .from('organizations')

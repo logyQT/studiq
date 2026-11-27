@@ -42,9 +42,9 @@ interface Assignment {
 }
 
 /**
- * Read-only seat view (#1493). The organization ladder is capacity only, so a
- * sold seat no longer has a feature to add; organization licences arrive in
- * #1511. The purchase, assign and release actions are hidden, and the pools and
+ * Read-only seat view (#1493). Seats are frozen: a seat plan intersects the
+ * organization ceiling, and organization licences arrive in #1511. The purchase,
+ * assign and release actions are hidden, and the pools and
  * assignments stay visible. The API routes keep their authority checks: they are
  * the data path #1511 builds on, not this page.
  */

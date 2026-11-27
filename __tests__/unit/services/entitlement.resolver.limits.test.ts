@@ -17,7 +17,7 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
  */
 
 /**
- * The organization ladder is capacity only since #1493: `hub` carries no
+ * No organization plan carries an AI quota (#1511): the `hub` mock has no
  * `max_ai_tokens_per_day` row, so its AI quota resolves to 0. A member's paid
  * personal plan supplies the AI quota inside an org (`personalPortable`).
  */

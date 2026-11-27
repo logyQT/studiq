@@ -44,7 +44,7 @@ interface PlanInfo {
 /** The two ladders the pricing page documents, per scope. */
 const LADDERS = [
   { scope: 'personal', plans: ['free', 'plus', 'pro', 'max'] },
-  { scope: 'organization', plans: ['launch', 'hub', 'campus'] },
+  { scope: 'organization', plans: ['launch', 'team', 'hub', 'campus'] },
 ] as const;
 
 /** Collect browser-side failures so "no errors" is asserted, not assumed. */
@@ -210,6 +210,16 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
     await expectLadder(page, copy('ladder_org_title'), organizationPlans);
 
+    // Custom setup is a conversation after the ladder, on this audience only.
+    await expect(
+      page.getByRole('heading', { level: 3, name: copy('sales_title'), exact: true }),
+      'the custom-setup band follows the organization ladder',
+    ).toBeVisible();
+    await expect(
+      page.locator('#pricing-plans').getByRole('link', { name: copy('sales_cta'), exact: true }),
+      'the band links to the contact page',
+    ).toHaveAttribute('href', '/contact');
+
     expect(
       await page.evaluate(() => document.documentElement.dataset.pub03),
       'the audience switch is a client swap, not a document load',
@@ -233,6 +243,10 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     await expect(page).toHaveURL(/\/pricing$/);
     await expectLadder(page, copy('ladder_individual_title'), individualPlans);
     await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { level: 3, name: copy('sales_title'), exact: true }),
+      'the custom-setup band is off the individual ladder',
+    ).toHaveCount(0);
     await expect(individualRadio).toBeChecked();
 
     await page.goForward();
@@ -278,11 +292,21 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
      * alone is true of a client-fetched ladder too (#1272). The handles are the
      * plan keys the catalogue renders (`#launch` … `#campus`).
      */
-    for (const key of ['launch', 'hub', 'campus']) {
+    for (const key of ['launch', 'team', 'hub', 'campus']) {
       expect(organizationHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
     expect(organizationHtml, 'with its price').toContain(copy('period_month'));
     expect(organizationHtml, 'and no individual row').not.toContain('id="free"');
+    /*
+     * The custom-setup band is a rendered `<aside>` after the ladder. Its copy is
+     * in the `PricingPage` catalogue serialized into every `/pricing` response,
+     * so asserting the string proves nothing; the tag is what only the
+     * organization view renders.
+     */
+    expect(
+      organizationHtml.match(/<aside\b/g) ?? [],
+      'the custom-setup band is one rendered landmark in the organization response',
+    ).toHaveLength(1);
     const organizationRadioTag = /<input[^>]*value="organization"[^>]*>/.exec(
       organizationHtml,
     )?.[0];
@@ -306,6 +330,10 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     }
     expect(individualHtml, 'with prices').toContain(copy('period_month'));
     expect(individualHtml, 'and no organization row').not.toContain('id="launch"');
+    expect(
+      individualHtml.match(/<aside\b/g) ?? [],
+      'the individual response renders no custom-setup band',
+    ).toHaveLength(0);
     const individualRadioTag = /<input[^>]*value="individual"[^>]*>/.exec(individualHtml)?.[0];
     expect(individualRadioTag, 'the individual segment is the chosen one by default').toContain(
       'checked',

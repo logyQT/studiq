@@ -17,8 +17,9 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * gives the org `qa-edu-qz-01-<suffix>` with a manager, two educators (`teacher` and
  * `teacher2`) and a student, plus the default group `G1`; the spec logs in as
  * `tenant.users.teacher` with the tenant org as the active org. Every non-manager account
- * holds the personal Plus plan, which is where `quiz.templates` lives since Hub became
- * capacity only (#1493); the manager holds no personal plan (ADR-0007). The case's legacy
+ * holds the personal Plus plan; Hub carries `quiz.templates` cumulatively and the `teacher`
+ * org role resolves the whole ceiling, so the gate comes from the org plan and personal Plus
+ * adds the portable `ai.chat`; the manager holds no personal plan (ADR-0007). The case's legacy
  * prerequisite account (`teacher-classroom@dev.local`, password `pass`) is never used.
  * Nothing global is read or written: no admin setting, feature flag, plan, platform stat or
  * singleton row, and no other worker's tenant.
@@ -40,7 +41,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * 6. The list is own-only (2b-6): the Teacher role's `quiz.read` reaches only the caller's
  *    own rows (a quiz has no class share link), so a quiz another member of the same
  *    organization created — the spec mints one as the tenant's second educator
- *    (`users.teacher2`, who holds the personal Plus plan's `quiz.templates`), then deletes
+ *    (`users.teacher2`, who holds `quiz.templates` through the same Hub ceiling), then deletes
  *    it again — does not appear in `GET /api/v1/teacher/quizzes` for the first educator,
  *    and every listed row carries the first educator's own `created_by`.
  *
@@ -192,7 +193,7 @@ test.describe('@case:EDU-QZ-01 @area:EDU @prio:P2 create a quiz', () => {
     // The Teacher role's `quiz.read` reaches only the caller's own rows (a quiz has
     // no class share link), so a quiz another member of the same organization
     // created must stay out of the first educator's list. The tenant's second
-    // educator holds the personal Plus plan's `quiz.templates` gate and mints one;
+    // educator holds the Hub ceiling's `quiz.templates` gate and mints one;
     // the spec deletes it again as its creator, so the tenant ends as it started.
     // A manager cannot mint it: a manager is an org buyer and holds no personal plan.
     await page.context().clearCookies();

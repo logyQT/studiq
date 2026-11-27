@@ -25,10 +25,10 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * moves
  * `organizations.plan` only (the org layer is derived live); the buyer's personal
  * plan is deliberately left on the free `launch` tier (#228). After buying Hub
- * the organization reads `hub` and its capacity rises (50 members, 20 groups);
- * since #1493 the organization plan carries no paid feature, so
- * `/manage/settings` keeps the „Własny branding” lock card and no plan unlocks
- * `quiz.templates`. That is the behavior the case now asserts.
+ * the organization reads `hub` and its capacity rises (100 members, 40 groups);
+ * its cumulative feature set adds the saved quiz library and insights, while
+ * branding stays a Campus feature, so `/manage/settings` keeps the „Własny
+ * branding” lock card naming Campus. That is the behavior the case now asserts.
  *
  * The purchase is a one-way entitlement write on the tenant's own organization,
  * so the assertions capture the state before the checkout and assert the state
@@ -61,7 +61,7 @@ const UI = {
   success: /Płatność udana! Przekierowywanie/,
   successPageTitle: 'Zakup udany!',
   brandingLockedTitle: 'Własny branding',
-  brandingLockedDesc: 'Własny branding nie jest częścią obecnych planów.',
+  brandingLockedDesc: 'Własny branding jest dostępny w planie Campus.',
   uploadLogo: 'Wgraj logo',
   brandColor: 'Kolor marki',
   roleLockedTitle: 'Kreator ról nie jest dostępny w Twoim planie',
@@ -135,7 +135,7 @@ async function readPayments(page: Page): Promise<PaymentItem[]> {
 }
 
 test.describe('BIL-04 — organization plan purchase', () => {
-  test('buys Hub for the organization and unlocks branding and the quiz builder', async ({
+  test('buys Hub for the organization and unlocks the saved quiz library and insights', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -254,15 +254,17 @@ test.describe('BIL-04 — organization plan purchase', () => {
     expect(planAfter.key, 'the active organization plan is Hub').toBe('hub');
     expect(planAfter.name, 'Hub is the plan the summary showed').toBe(UI.hubName);
 
-    // The tier change buys capacity, not features: the org ceiling is baseline
-    // only, so the resolved set is unchanged by the purchase.
+    // The tier change buys capacity and the cumulative feature set: Hub carries
+    // the saved quiz library and insights, and branding stays a Campus feature.
     const featuresAfter = await readFeatures(page);
-    expect(featuresAfter.toSorted(), 'Hub adds no paid feature to the org ceiling').toEqual([
+    expect(featuresAfter.toSorted(), 'Hub adds the saved quiz library and insights').toEqual([
       'flashcards',
       'quiz',
+      'quiz.templates',
+      'stats.insights',
     ]);
-    expect(planAfter.limits.max_students, 'Hub raises the member capacity').toBe(50);
-    expect(planAfter.limits.max_groups, 'Hub raises the group capacity').toBe(20);
+    expect(planAfter.limits.max_students, 'Hub raises the member capacity').toBe(100);
+    expect(planAfter.limits.max_groups, 'Hub raises the group capacity').toBe(40);
 
     // The organization purchase must not give the buyer a personal plan: a
     // manager holds none at all (ADR-0007).
@@ -290,11 +292,11 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await page.goto('/manage/settings');
     await expect(
       page.getByText(UI.brandingLockedTitle, { exact: true }),
-      'the branding lock card stays: no organization plan carries the feature',
+      'the branding lock card stays: this Hub org is below the Campus tier',
     ).toBeVisible();
     await expect(
       page.getByText(UI.brandingLockedDesc, { exact: true }),
-      'the lock says branding is not part of the current plans',
+      'the lock names the Campus tier',
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: UI.uploadLogo, exact: true }),

@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-26 (B2: three capacity-only organization plans, no organization entitlements).
+> Last updated: 2026-11-27 (organization ladder: Launch / Team / Hub / Campus, cumulative features).
 
 ## Summary
 
@@ -36,13 +36,16 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 | `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                                                                                                          |
 
 The `free` / `launch` defaults and the nullable manager plan come from the
-plan-catalogue migrations (`20261125170000_plan_catalog_owned_by_migrations.sql`
-and `20261126170000_plan_key_rename_manager_plan.sql`), not from the original
-table migrations. The current matrix is
-`20261126170000_plan_key_rename_manager_plan.sql`: Free / Plus / Pro / Max on
-`free` / `plus` / `pro` / `max`, plus Launch / Hub / Campus. Every organization
-plan carries only `flashcards` + `quiz`, its capacity rows, and no
-`max_ai_tokens_per_day` row (AI is an organization licence in #1511).
+plan-catalogue migrations (`20261125170000_plan_catalog_owned_by_migrations.sql`,
+`20261126170000_plan_key_rename_manager_plan.sql` and
+`20261127090000_org_team_tier.sql`), not from the original table migrations. The
+current matrix is `20261127090000_org_team_tier.sql`: Free / Plus / Pro / Max on
+`free` / `plus` / `pro` / `max`, plus Launch / Team / Hub / Campus. The
+organization ladder is cumulative — Launch carries `flashcards` + `quiz`, Team
+adds `quiz.templates`, Hub adds `stats.insights`, Campus adds `branding` — with
+5/3, 25/10, 100/40 and 1 000/100 members/groups. No organization plan carries
+`max_ai_tokens_per_day` (AI is an organization licence in #1511), and an
+organization plan is never a seat pool: a pool is a licence of a personal plan.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -149,7 +152,7 @@ a wrapper over the single resolver's composed `limits`
 > **2026-11-21 (phase 3b, ADR-0015 §6.2):** the seat is no longer exclusive
 > (#233 Q1/Q3 reversed for user-scope keys): per-member keys now take
 > `max(org, seat, personal)` with `-1` short-circuiting, so a `free` seat in a
-> `hub` org keeps the hub flashcard allowance (2000) instead of the seat's 100.
+> `hub` org keeps the hub flashcard allowance (5000) instead of the seat's 100.
 > `max_ai_tokens_per_day` now comes from the personal plan: no organization plan
 > carries an AI quota (#1493). Membership is
 > verified before the seat plan is consulted, so a forged `active_org_id`

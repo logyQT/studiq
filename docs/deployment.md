@@ -274,21 +274,21 @@ Preconditions:
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
 - The approved ladder is applied by the plan-catalogue migration
-  (`20261126170000_plan_key_rename_manager_plan.sql` for the four personal plans
-  and the three organization plans); the catalogue is migration-owned since
-  #1494 and `supabase/seeds/00_plans.sql` no longer writes plan rows. After the
-  migration is applied, confirm the live ladder with this read-only query — it
-  returns the 5 paid plans only while their amounts match. **Pass condition:
-  exactly 5 rows.** The migration inserts those 5 paid keys, so fewer rows means
-  the migration did not apply (or a price differs from the ladder) — stop and fix
-  the catalog before continuing; an empty result is not a timing artefact:
+  (`20261127090000_org_team_tier.sql` for the four personal plans and the four
+  organization plans); the catalogue is migration-owned since #1494 and
+  `supabase/seeds/00_plans.sql` no longer writes plan rows. After the migration
+  is applied, confirm the live ladder with this read-only query — it returns the
+  6 paid plans only while their amounts match. **Pass condition: exactly 6 rows.**
+  The migration inserts those 6 paid keys, so fewer rows means the migration did
+  not apply (or a price differs from the ladder) — stop and fix the catalog
+  before continuing; an empty result is not a timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly
   FROM public.subscription_plans AS p
   JOIN (VALUES
     ('plus', 1999), ('pro', 3999), ('max', 7999),
-    ('hub', 29900), ('campus', 69900)
+    ('team', 9900), ('hub', 29900), ('campus', 69900)
   ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
   ORDER BY p.sort_order;
   ```

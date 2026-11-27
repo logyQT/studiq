@@ -27,11 +27,25 @@ function plan(overrides: Partial<CatalogPlanForBootstrap> = {}): CatalogPlanForB
 describe('lookupKeyForPlan', () => {
   it('encodes the plan key and cycle', () => {
     expect(lookupKeyForPlan('plus')).toBe('studiq_plus_monthly');
+    expect(lookupKeyForPlan('team')).toBe('studiq_team_monthly');
     expect(lookupKeyForPlan('campus')).toBe('studiq_campus_monthly');
   });
 });
 
 describe('selectBootstrapPrices', () => {
+  it('charges the Team tier the catalogue amount of 99 zł', () => {
+    const { prices, errors } = selectBootstrapPrices([
+      plan({ key: 'team', name: 'StudiQ Team', priceMonthly: 9900, sortOrder: 6 }),
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(prices[0]).toMatchObject({
+      planKey: 'team',
+      lookupKey: 'studiq_team_monthly',
+      unitAmount: 9900,
+      interval: 'month',
+    });
+  });
   it('selects active paid plans in catalog order', () => {
     const { prices, errors } = selectBootstrapPrices([
       plan({ key: 'max', name: 'StudiQ Max', priceMonthly: 4999, sortOrder: 10 }),

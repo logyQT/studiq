@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`), not the org plan.
+Hub carries `quiz.templates` cumulatively since #1493, and the `teacher` org role resolves the whole ceiling (`entitlement_profile: 'all'`), so the `quiz.templates` gate passes through the org plan. The educator's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`) adds the portable `ai.chat`.
 
 ## Prerequisite (verbatim)
 
@@ -30,9 +30,10 @@ Quiz z ≥ 3 pytaniami.
   student, plus the default group `G1`. The tenant's active org is the tenant org, put on the
   **hub** plan by the profile
   (`{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "teacher" }`
-  in `__tests__/qa/profiles/EDU-QZ-03.json`, applied through the seeder's `--plan`). Hub is
-  capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
-  (phase 5d) comes from the educator's personal Plus plan; the educator passes the write gates on
+  in `__tests__/qa/profiles/EDU-QZ-03.json`, applied through the seeder's `--plan`). Hub carries
+  `quiz.templates` cumulatively since #1493 and the `teacher` role resolves the whole ceiling, so
+  the saved-quiz library's `quiz.templates` entitlement (phase 5d) comes from the org plan; the
+  personal Plus plan adds the portable `ai.chat`. The educator passes the write gates on
   `POST /api/v1/teacher/quizzes` and `POST /api/v1/teacher/quizzes/:id/questions`.
 - Content: the spec creates the case's „quiz z ≥ 3 pytaniami” itself — one question
   bank and three questions through `POST /api/v1/questions/banks` +

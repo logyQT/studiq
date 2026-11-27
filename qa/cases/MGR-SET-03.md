@@ -9,11 +9,11 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-„Plan z brandingiem” no longer exists: no organization plan carries `branding` since #1493. The
-uploader is not rendered, and the API refuses every file — `.txt`, `.svg`, oversized or valid —
-with **403 FORBIDDEN** before the type/size validation. The case keeps its subject (an invalid
-logo file cannot enter the organization) in the disabled state: there is no file-type selector to
-try, and every upload is refused at the entitlement gate.
+„Plan z brandingiem” to plan **Campus**. Ten tenant jest na Hubie, który `branding` nie ma,
+więc uploader nie jest renderowany, a API odrzuca każdy plik — `.txt`, `.svg`, za duży czy
+prawidłowy — **403 FORBIDDEN** przed walidacją typu/rozmiaru. Przypadek zachowuje swój temat
+(niedozwolony plik logo nie wchodzi do organizacji) w stanie blokady: nie ma selektora typu
+pliku do przetestowania, a każde wgranie jest odrzucane na bramce entitlementu.
 
 ## Prerequisite (verbatim)
 
@@ -29,10 +29,10 @@ Plan z brandingiem.
 
 ## Seed (QA-suite tenant)
 
-Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
-wstępny przypadku — plan z brandingiem — jest ustawiany **wewnątrz tenanta przypadku**
-przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), a nie przez zmianę
-globalnego katalogu planów czy planu innej organizacji:
+Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Przypadek bada
+stan tenanta na Hubie — planie bez `branding` — a plan jest ustawiany **wewnątrz tenanta
+przypadku** przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), a nie przez
+zmianę globalnego katalogu planów czy planu innej organizacji:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-SET-03 --fresh
@@ -40,10 +40,10 @@ bun scripts/qa-tenant.ts MGR-SET-03 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
-  organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
-  z profilem `all` dostaje `branding`; `/api/v1/me/entitlements` zwraca tę funkcję, a
-  `/manage/settings` pokazuje kontrolki logo i koloru marki zamiast karty blokady.
+  tenanta na plan Hub. Drabinka jest kumulatywna, ale `branding` ma tylko Campus: rola
+  `admin` z profilem `all` dostaje przecięcie z pułapem Hubu, więc
+  `/api/v1/me/entitlements` nie zawiera `branding`, a `/manage/settings` pokazuje kartę
+  blokady zamiast kontrolek logo i koloru marki.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.
 - Klucz tenanta: `MGR-SET-03.md::MGR-SET-03#<run>::qa-shared` —
@@ -64,9 +64,10 @@ bun scripts/qa-tenant.ts MGR-SET-03 --fresh
   funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy
   singletonowych.
 
-## Observed (ręczny przebieg, 2026-10-28, qa-env-7)
+## Observed (ręczny przebieg, 2026-10-28, qa-env-7; plan names from the pre-#1493 matrix — Campus carries branding today)
 
-- `/manage/settings` na planie Hub pokazuje kartę „Profil uczelni” z sekcją „Logo”
+- `/manage/settings` na planie z brandingiem (wtedy Hub; dziś **Campus**) pokazuje kartę
+  „Profil uczelni” z sekcją „Logo”
   („Brak logo” + przycisk „Wgraj logo”) oraz „Kolor marki”; karta blokady brandingu się
   nie pojawia.
 - Ukryty `input[type=file]` ma `accept="image/png,image/jpeg,image/gif,image/webp"` —

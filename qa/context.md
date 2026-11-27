@@ -78,14 +78,15 @@ All seeded accounts use the password `pass`. QA runs a production build, so ther
 
 ### Plans (prices are stored in grosze in the database)
 
-| Ladder       | Free                           | Paid                                                                                               |
-| ------------ | ------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Individual   | Free (100 cards, 50 questions) | Plus 19.99 zł (AI, saved quiz library) · Pro 39.99 zł (+ insights) · Max 79.99 zł (highest limits) |
-| Organization | Launch (5 members, 3 groups)   | Hub 299 zł (50 members, 20 groups) · Campus 699 zł (1 000 members, 100 groups; sales conversation) |
+| Ladder       | Free                                | Paid                                                                                                                     |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Individual   | Free (100 cards, 50 questions)      | Plus 19.99 zł (AI, saved quiz library) · Pro 39.99 zł (+ insights) · Max 79.99 zł (highest limits)                       |
+| Organization | Launch (free; 5 students, 3 groups) | Team 99 zł (25 / 10, + saved quiz library) · Hub 299 zł (100 / 40, + insights) · Campus 699 zł (1 000 / 100, + branding) |
 
-An organization plan is **capacity only** since #1493: it carries no `ai.chat`, `quiz.templates`,
-`stats.insights` or `branding`. A member's own personal plan adds those surfaces inside the
-organization (`personalPortable`). Seats exist as data but the UI does not sell or assign them
+The organization ladder is **cumulative**: each tier carries every key of the tier below it (Launch
+baseline, Team adds `quiz.templates`, Hub adds `stats.insights`, Campus adds `branding`). No
+organization plan carries `ai.chat` — organization AI is #1511 — so a member's `ai.chat` comes from
+their personal plan (`personalPortable`). Seats exist as data but the UI does not sell or assign them
 until #1511.
 
 # 3. How to use this document

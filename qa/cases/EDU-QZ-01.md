@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the account's personal Plus plan (`personalPlan: "plus"` in the profile), not the org plan.
+The organization ladder is cumulative since #1493: Hub carries `quiz.templates` and `stats.insights`, and the `teacher` org role resolves the whole ceiling (`entitlement_profile: 'all'`), so the `quiz.templates` gate passes through the org plan. No organization plan carries `ai.chat`; that portable key comes from the account's personal Plus plan (`personalPlan: "plus"` in the profile).
 
 ## Amendment (2026-11-27, manager model)
 
@@ -34,8 +34,10 @@ TC.
   the tenant org sits on the **hub** plan (`"profile": "content", "plan": "hub"`) and every
   non-manager account carries `"personalPlan": "plus"`
   (`__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's `--plan` /
-  `--personal-plan`). Hub is capacity only since #1493, so the saved-quiz library's
-  `quiz.templates` entitlement (phase 5d) comes from that personal Plus plan: the first
+  `--personal-plan`). Hub carries `quiz.templates` cumulatively since #1493, and the
+  `teacher` org role resolves the whole ceiling, so the saved-quiz library's
+  `quiz.templates` entitlement (phase 5d) comes from the org plan (the personal Plus plan
+  adds the portable `ai.chat`): the first
   educator passes the gate on `POST /api/v1/teacher/quizzes`, and so does the second
   educator who mints the foreign quiz for the own-only list check (acceptance point 6). A
   manager carries no personal plan (ADR-0007), so the org admin is not a content creator in

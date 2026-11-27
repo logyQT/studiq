@@ -189,10 +189,14 @@ describe('active_org_id membership gate (#186)', () => {
     expect(body.data.key).toBe('pro');
     expect(body.data.limits.max_ai_tokens_per_day).toBe(250000);
     expect(body.data.limits.max_decks).toBe(500);
-    // The organization ladder is capacity only (#1493): the seat ∩ hub ceiling
-    // adds the baseline keys, and a paid surface would need the member's own
-    // personal plan (`personalPortable`).
-    expect(body.data.features.toSorted()).toEqual(['flashcards', 'quiz']);
+    // The seat ∩ the Hub ceiling: the baseline pair plus the two features the
+    // Hub tier carries (`quiz.templates`, `stats.insights`).
+    expect(body.data.features.toSorted()).toEqual([
+      'flashcards',
+      'quiz',
+      'quiz.templates',
+      'stats.insights',
+    ]);
   });
 
   it('serves the org plan to the org manager', async () => {

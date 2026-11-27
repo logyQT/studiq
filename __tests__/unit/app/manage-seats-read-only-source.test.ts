@@ -3,9 +3,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Seats are frozen at the UI (#1493): the organization ladder is capacity only,
- * so a sold seat has no feature to add and organization licences arrive in
- * #1511. The read path stays — pools and assignments are data #1511 builds on —
+ * Seats are frozen at the UI (#1493): a seat plan intersects the organization
+ * ceiling, and organization licences arrive in #1511. The read path stays —
+ * pools and assignments are data #1511 builds on —
  * and the API keeps its own authority checks. Only the purchase, assign and
  * release entries are gone.
  *

@@ -166,8 +166,8 @@ describe(`Stats Integration`, () => {
 
     member = await createTestUser({ role: 'student' });
     outsider = await createTestUser({ role: 'student' });
-    // The organization ladder is capacity only since #1493, so the paid
-    // `stats.insights` surface reaches this member through their personal plan.
+    // A `member` role's profile excludes `stats.insights`, so the paid
+    // surface reaches this member through their personal plan.
     const { error: memberPlanError } = await service
       .from('profiles')
       .update({ personal_plan_key: 'pro' })

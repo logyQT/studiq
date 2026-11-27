@@ -124,6 +124,15 @@ test.describe('MGR-ACC-01 — manager user menu', () => {
     await expect(page.locator('[data-slot="card"] [data-slot="card-title"]')).toHaveText(
       organizationPlans.map((plan) => plan.name),
     );
+    // Custom setup is a conversation after the grid, not a fifth card.
+    await expect(
+      page.getByRole('heading', {
+        level: 3,
+        name: 'Potrzebujesz niestandardowego rozwiązania?',
+        exact: true,
+      }),
+      'the custom-setup band follows the grid',
+    ).toBeVisible();
 
     // 3. „Konto” → /manage/account: the manager's own account screen (name, e-mail,
     //    role and the password form), not a 404.

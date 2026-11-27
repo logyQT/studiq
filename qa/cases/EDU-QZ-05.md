@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the teacher's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`), not the org plan.
+Hub carries `quiz.templates` cumulatively since #1493, and the `teacher` org role resolves the whole ceiling (`entitlement_profile: 'all'`), so the `quiz.templates` gate passes through the org plan. The teacher's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`) adds the portable `ai.chat`.
 
 ## Prerequisite (verbatim)
 
@@ -31,8 +31,9 @@ Odkrycia”). The suite version uses the case's own tenant and never the legacy 
 
 - Profile: `content` on the **hub** plan (`__tests__/qa/profiles/EDU-QZ-05.json` declares
   `{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "teacher" }`).
-  Hub is capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
-  (phase 5d) comes from the teacher's personal Plus plan and the teacher passes the write
+  Hub carries `quiz.templates` cumulatively since #1493 and the `teacher` role resolves the whole
+  ceiling, so the saved-quiz library's `quiz.templates` entitlement (phase 5d) comes from the org
+  plan; the personal Plus plan adds the portable `ai.chat`. The teacher passes the write
   gates — one organization, one default group `G1`, and one account per account type:
   `manager` (org `admin`), `teacher` (account type `educator`, org `member` — the „TC”
   analogue that owns the quiz), `student`.

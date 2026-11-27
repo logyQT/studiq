@@ -21,7 +21,16 @@ import { createServiceClient } from '#test/integration/helpers';
 // which never runs seeds) had no reproducible catalogue at all. The matrix here
 // is a literal copy of the migration's, so the two must move together.
 
-const MIGRATION_FILE = path.join(
+const CATALOGUE_FILE = path.join(
+  process.cwd(),
+  'supabase/migrations/20261127090000_org_team_tier.sql',
+);
+
+/**
+ * The rename that preceded the team tier still owns `handle_new_user()`. Its guard
+ * is exercised against its own file: the team-tier migration does not restate it.
+ */
+const RENAME_FILE = path.join(
   process.cwd(),
   'supabase/migrations/20261126170000_plan_key_rename_manager_plan.sql',
 );
@@ -101,24 +110,38 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_quiz_attempts_per_day: 10,
     },
   },
+  team: {
+    scope: 'organization',
+    price: 9900,
+    entitlements: ['flashcards', 'quiz', 'quiz.templates'],
+    limits: {
+      max_flashcards: 1000,
+      max_questions: 500,
+      max_decks: 100,
+      max_question_banks: 50,
+      max_groups: 10,
+      max_students: 25,
+      max_quiz_attempts_per_day: 50,
+    },
+  },
   hub: {
     scope: 'organization',
     price: 29900,
-    entitlements: ['flashcards', 'quiz'],
+    entitlements: ['flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
-      max_flashcards: 2000,
-      max_questions: 1000,
-      max_decks: 200,
-      max_question_banks: 100,
-      max_groups: 20,
-      max_students: 50,
+      max_flashcards: 5000,
+      max_questions: 2500,
+      max_decks: 500,
+      max_question_banks: 200,
+      max_groups: 40,
+      max_students: 100,
       max_quiz_attempts_per_day: -1,
     },
   },
   campus: {
     scope: 'organization',
     price: 69900,
-    entitlements: ['flashcards', 'quiz'],
+    entitlements: ['branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: -1,
       max_questions: -1,
@@ -131,23 +154,23 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   },
 };
 
-/** The two baseline keys every organization plan carries, and nothing else (B2). */
-const ORG_ENTITLEMENTS = ['flashcards', 'quiz'];
+/** The organization ladder in the settled order: each tier adds one surface. */
+const ORGANIZATION_LADDER = ['launch', 'team', 'hub', 'campus'] as const;
 
 const EXPECTED_FLAGS = ['branding', 'quiz.templates', 'stats.insights'];
 
 /**
- * A subscription mirror row that predates the rename: its applied-entitlement
- * column still names a retired key. The replay test writes it inside the
- * rolled-back transaction, so a migration that forgets to re-point the column
- * (or a guard that omits it) fails the replay instead of passing on an empty
- * table.
+ * A subscription mirror row the catalogue must leave alone: applying the
+ * team-tier matrix re-writes plans, not a customer's subscription. The replay
+ * test writes it inside the rolled-back transaction, so a migration that prunes
+ * a mirror row (or a guard that omits it) fails the replay instead of passing on
+ * an empty table.
  */
 const REPLAY_USER_ID = '00000000-0000-4000-8000-0000000c0de1';
 const REPLAY_CUSTOMER_ID = '00000000-0000-4000-8000-0000000c0de2';
 const REPLAY_SUBSCRIPTION_ID = '00000000-0000-4000-8000-0000000c0de3';
 
-async function seedOldAppliedKey(tx: postgres.ISql): Promise<void> {
+async function seedSubscription(tx: postgres.ISql): Promise<void> {
   await tx.unsafe(
     `insert into auth.users (
        instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -169,7 +192,7 @@ async function seedOldAppliedKey(tx: postgres.ISql): Promise<void> {
        id, stripe_subscription_id, billing_customer_id, user_id, plan_key,
        price_id, status, livemode, entitlement_applied_plan_key
      ) values (
-       $1, 'sub_plan_replay', $2, $3, 'plus', 'price_plan_replay', 'active', false, 'spark'
+       $1, 'sub_plan_replay', $2, $3, 'hub', 'price_plan_replay', 'active', false, 'hub'
      )`,
     [REPLAY_SUBSCRIPTION_ID, REPLAY_CUSTOMER_ID, REPLAY_USER_ID],
   );
@@ -248,6 +271,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     key: string;
     scope: string;
     price_monthly: number | null;
+    sort_order: number;
   }>;
   let entitlementRows: Array<{ plan_key: string; entitlement_key: string }>;
   let limitRows: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
@@ -260,7 +284,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // created; the catalogue is the active set the product sells.
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope, price_monthly')
+      .select('key, scope, price_monthly, sort_order')
       .eq('is_active', true)
       .order('key');
     if (plansError) throw new Error(`[plan-catalog] plan lookup failed: ${plansError.message}`);
@@ -310,7 +334,14 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     );
   }
 
-  it('is exactly the seven matrix plans, with the expected scope/price', () => {
+  function getOrgLadder(): string[] {
+    return planRows
+      .filter((row) => row.scope === 'organization')
+      .toSorted((a, b) => a.sort_order - b.sort_order)
+      .map((row) => row.key);
+  }
+
+  it('is exactly the eight matrix plans, with the expected scope/price', () => {
     expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
@@ -348,7 +379,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
   });
 
   it('the replay guard rejects a personal plan for a manager', async () => {
-    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+    const migrationSql = readFileSync(RENAME_FILE, 'utf8');
     const broken = migrationSql.replace('    plan_key_val := null;', "    plan_key_val := 'free';");
     expect(broken, 'this test needs the null assignment in the migration').not.toBe(migrationSql);
 
@@ -372,11 +403,31 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(outcome).toBe('42883');
   });
 
-  it('each organization plan carries exactly the baseline keys (B2: capacity only)', () => {
-    for (const [key, expected] of Object.entries(MATRIX)) {
-      if (expected.scope !== 'organization') continue;
-      expect(entitlementsFor(key), key).toEqual(ORG_ENTITLEMENTS);
+  it('the organization ladder is four purchasable tiers with cumulative features', () => {
+    expect(getOrgLadder()).toEqual([...ORGANIZATION_LADDER]);
+
+    for (let tier = 1; tier < ORGANIZATION_LADDER.length; tier += 1) {
+      const lower = entitlementsFor(ORGANIZATION_LADDER[tier - 1]!);
+      const upper = entitlementsFor(ORGANIZATION_LADDER[tier]!);
+      expect(
+        lower.filter((key) => !upper.includes(key)),
+        ORGANIZATION_LADDER[tier],
+      ).toEqual([]);
+      expect(upper.length, ORGANIZATION_LADDER[tier]).toBeGreaterThan(lower.length);
     }
+  });
+
+  it('never makes an organization plan a seat pool', () => {
+    // A pool is a licence of a personal plan (D15/D32); the migration aborts on
+    // one that names an organization tier, and the live database has none.
+    return withDirect(async (sql) => {
+      const rows = await sql<Array<{ n: number }>>`
+        select count(*)::int as n
+        from public.org_seat_pools sp
+        join public.subscription_plans pl on pl.key = sp.plan_key
+        where pl.scope = 'organization'`;
+      expect(rows[0]?.n).toBe(0);
+    });
   });
 
   it('no organization plan carries an AI quota (AI is an organization licence in #1511)', () => {
@@ -406,8 +457,8 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(flagKeys).toEqual(expect.arrayContaining(EXPECTED_FLAGS));
   });
 
-  it('replaying the rename twice leaves the same matrix, in a rolled-back transaction', async () => {
-    const migrationSql = readFileSync(MIGRATION_FILE, 'utf8');
+  it('replaying the team tier twice leaves the same matrix, in a rolled-back transaction', async () => {
+    const migrationSql = readFileSync(CATALOGUE_FILE, 'utf8');
     const before = await withDirect(readSnapshot);
 
     // The replay runs inside one transaction that ends by throwing, so this
@@ -418,15 +469,14 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
     const replay = withDirect(async (sql) => {
       await sql.begin(async (tx) => {
-        await seedOldAppliedKey(tx);
-        expect(await appliedKey(tx), 'the fixture starts on a retired key').toBe('spark');
+        await seedSubscription(tx);
+        expect(await appliedKey(tx), 'the fixture starts on a live tier').toBe('hub');
 
         await tx.unsafe(migrationSql);
         await tx.unsafe(migrationSql);
 
-        // The applied-entitlement marker follows the same mapping as every other
-        // reference; a pre-existing `spark` must be `plus` after the rename.
-        expect(await appliedKey(tx), 'the applied plan key is re-pointed').toBe('plus');
+        // The migration writes the catalogue, not a customer's subscription.
+        expect(await appliedKey(tx), 'the mirror row is left alone').toBe('hub');
 
         duringRun = await readSnapshot(tx);
 

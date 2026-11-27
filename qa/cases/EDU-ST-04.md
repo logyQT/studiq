@@ -26,8 +26,8 @@ accounts):
   `--plan`, the same `change_org_plan` RPC the billing webhook calls). The case's
   fixture is the saved-quiz library — the spec builds its quiz through
   `POST /api/v1/teacher/quizzes`, which phase 5d gates on the `quiz.templates`
-  entitlement. Hub is capacity only since #1493, so the teacher's personal Plus plan
-  carries the key and lets them pass that gate.
+  entitlement. Hub carries `quiz.templates` cumulatively and the `teacher` role resolves the
+  whole ceiling, so the org plan grants the key.
 - `GET /api/v1/stats/teacher/quizzes` aggregates the attempts of the org members
   whose **org role is `member`** — i.e. the tenant's `student`. The manager (admin)
   and the teacher (teacher role) are not part of that population, so the page only

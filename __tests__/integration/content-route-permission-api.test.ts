@@ -219,8 +219,9 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
   }
 
   /**
-   * The organization ladder is capacity only since #1493, so a paid surface
-   * reaches an org member through the personal plan (`personalPortable`). These
+   * No organization plan carries `ai.chat`, and a `member` role resolves only
+   * the learner profile, so a paid surface the org layer does not grant reaches
+   * an org member through the personal plan (`personalPortable`). These
    * cases pin permissions; the personal plan keeps the entitlement gate out of
    * the way.
    */
