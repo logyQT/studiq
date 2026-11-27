@@ -1715,6 +1715,34 @@ describe('TeacherAssignmentService', () => {
       );
     });
 
+    it('lists the auto-graded items, never the open one (#1301)', async () => {
+      linkRows.rows = [];
+      vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+        success: true,
+        data: new Map(
+          ['mcq', 'true_false', 'open'].map((type) => [
+            `q-${type}`,
+            { id: `q-${type}`, content: type, type, question_answers: [] },
+          ]),
+        ),
+      });
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(chain(attempts));
+
+      const result = await service.getResults(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      // The per-question page hides its grading fields for exactly these ids.
+      expect(asJson<{ auto_graded_item_ids: string[] }>(result.data).auto_graded_item_ids).toEqual([
+        'q-mcq',
+        'q-true_false',
+      ]);
+    });
+
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
@@ -2181,6 +2209,63 @@ describe('TeacherAssignmentService', () => {
         total_points: 3,
         graded_at: anyTimestamp,
       });
+    });
+
+    it.each(['mcq', 'true_false'])(
+      'refuses a manual grade on a %s item before any write (#1301)',
+      async (type) => {
+        const link = { question_id: 'q-auto', points: 2, snapshot: { ...frozen('q-auto'), type } };
+
+        baseSetup();
+        mock.from
+          .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
+          .mockReturnValueOnce(chain([link]))
+          .mockReturnValueOnce(chain([{ question_id: 'q-auto' }]));
+
+        const result = await service.gradeAnswer(
+          assignmentId,
+          'attempt-1',
+          { questionId: 'q-auto', points: 0 },
+          ctx,
+        );
+
+        expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
+        // Ownership, attempt, assignment items and served set: no answer or score write.
+        expect(mock.from).toHaveBeenCalledTimes(4);
+      },
+    );
+
+    it('grades an item that was published as open (#1301)', async () => {
+      const link = {
+        question_id: 'q-open',
+        points: 2,
+        snapshot: { ...frozen('q-open'), type: 'open' },
+      };
+      const answerUpdate = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'student-1' }))
+        .mockReturnValueOnce(chain([link]))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open' }]))
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(answerUpdate)
+        .mockReturnValueOnce(
+          chain([{ question_id: 'q-open', is_correct: true, teacher_points: 2 }]),
+        )
+        .mockReturnValueOnce(chain(null));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'attempt-1',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(answerUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ teacher_points: 2 }),
+      );
     });
 
     it('rejects points above the question maximum (#169)', async () => {

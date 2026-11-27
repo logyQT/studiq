@@ -426,6 +426,78 @@ describe('spawnBuild always ends (#1518)', () => {
   }, 3_000);
 });
 
+/** Ends a group a test started. `0` would name the test runner's own group. */
+function killLeftover(pgid: number): void {
+  if (pgid <= 1) return;
+  try {
+    process.kill(-pgid, 'SIGKILL');
+  } catch {
+    /* the group already ended */
+  }
+}
+
+describe('the progress line of a build (#1525)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts the time left from the limit of this build', async () => {
+    // Only the progress interval and the clock are fake: the child and the limit are real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    const stderr = captureStderr();
+    let group = 0;
+    const slot = {
+      setProcessGroup: (pgid: number) => {
+        group = pgid;
+      },
+      heartbeat: () => {},
+    };
+    const outcome = build.spawnBuild(slot, options, {
+      command: nodeCommand('setTimeout(() => {}, 30_000)'),
+      timeoutMs: 90_000,
+    });
+
+    try {
+      vi.advanceTimersByTime(30_000);
+
+      expect(stderr()).toContain('0:30 elapsed, 1:00 left');
+    } finally {
+      killLeftover(group);
+      await outcome;
+    }
+  });
+
+  it('gives the default limit in minutes', async () => {
+    // The limit is fake too: nothing waits 30 minutes. The failing cleanup ends the build.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    const stderr = captureStderr();
+    let group = 0;
+    const slot = {
+      setProcessGroup: (pgid: number) => {
+        group = pgid;
+      },
+      heartbeat: () => {},
+    };
+    const rejected = expect(
+      build.spawnBuild(slot, options, {
+        command: nodeCommand('setTimeout(() => {}, 30_000)'),
+        killGroup: failingCleanup,
+      }),
+    ).rejects.toBe(cleanupError);
+
+    try {
+      vi.advanceTimersByTime(30 * 60_000);
+
+      expect(stderr()).toContain("build: exceeded 30 minutes; killing the build's process group");
+      await rejected;
+    } finally {
+      killLeftover(group);
+    }
+  });
+});
+
 const artifactRoot = join(stateDir, 'artifact');
 const artifactDir = join(artifactRoot, '.next');
 
@@ -497,6 +569,8 @@ describe('the build result after a cleanup error (#1518)', () => {
     ).rejects.toBe(cleanupError);
 
     expect(stderr()).toContain('still compiling');
+    // The message gives the limit of this build, not the production default (#1525).
+    expect(stderr()).toContain("build: exceeded 1 s; killing the build's process group");
     expect(stderr()).toContain('the build command did not end in the time limit');
   });
 });

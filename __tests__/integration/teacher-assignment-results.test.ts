@@ -51,10 +51,16 @@ interface ResultsRow {
     selected_option_id: string | null;
     /** The published option's text, resolved from the frozen snapshot (#1238). */
     selected_option_content: string | null;
+    is_correct: boolean;
     teacher_points: number | null;
     teacher_feedback: string | null;
   }>;
   assignment_answer_images: Array<{ question_id: string; image_url: string }>;
+}
+
+interface ResultsPayload {
+  attempts: ResultsRow[];
+  auto_graded_item_ids: string[];
 }
 
 /**
@@ -88,6 +94,7 @@ describe('Teacher assignment results payload (#1230)', () => {
   let silent!: BeforeResult;
   let assignmentId!: string;
   let questionId!: string;
+  let openQuestionId!: string;
   /** The option text the student picked, as published (the live item is edited after publish). */
   let publishedOptionContent!: string;
   let answeringAttemptId!: string;
@@ -95,7 +102,7 @@ describe('Teacher assignment results payload (#1230)', () => {
 
   const cookie = () => ({ active_org_id: teacher.orgId ?? '' });
 
-  async function results(): Promise<ResultsRow[]> {
+  async function resultsPayload(): Promise<ResultsPayload> {
     mockUser(teacher.user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${assignmentId}/results`,
@@ -105,7 +112,11 @@ describe('Teacher assignment results payload (#1230)', () => {
     );
     const response = await resultsGet(request, { params });
     expect(response.status, await response.clone().text()).toBe(200);
-    return (await json<{ data: { attempts: ResultsRow[] } }>(response)).data.attempts;
+    return (await json<{ data: ResultsPayload }>(response)).data;
+  }
+
+  async function results(): Promise<ResultsRow[]> {
+    return (await resultsPayload()).attempts;
   }
 
   async function start(user: BeforeResult): Promise<StartedAttempt> {
@@ -141,7 +152,12 @@ describe('Teacher assignment results payload (#1230)', () => {
     expect(response.status, await response.clone().text()).toBe(200);
   }
 
-  async function grade(attemptId: string, points: number, feedback: string): Promise<number> {
+  async function grade(
+    attemptId: string,
+    gradedId: string,
+    points: number,
+    feedback: string,
+  ): Promise<number> {
     mockUser(teacher.user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${assignmentId}/results/${attemptId}`,
@@ -149,7 +165,7 @@ describe('Teacher assignment results payload (#1230)', () => {
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId, points, feedback }),
+        body: JSON.stringify({ questionId: gradedId, points, feedback }),
       },
       cookie(),
     );
@@ -178,7 +194,19 @@ describe('Teacher assignment results payload (#1230)', () => {
     }
 
     const questionIds = teacher.created.questions.slice(0, 2);
-    questionId = requiredAt(questionIds, 0, 'the graded question');
+    questionId = requiredAt(questionIds, 0, 'the choice question');
+    // Only an open item takes a manual grade (#1301), so the second seeded item becomes one.
+    openQuestionId = requiredAt(questionIds, 1, 'the open question');
+    const { error: optionsError } = await service
+      .from('question_options')
+      .delete()
+      .eq('question_id', openQuestionId);
+    if (optionsError) throw new Error(optionsError.message);
+    const { error: typeError } = await service
+      .from('questions')
+      .update({ type: 'open' })
+      .eq('id', openQuestionId);
+    if (typeError) throw new Error(typeError.message);
 
     mockUser(teacher.user);
     const created = await createAssignmentPost(
@@ -332,13 +360,32 @@ describe('Teacher assignment results payload (#1230)', () => {
     expect(answer?.selected_option_content, 'no selection, no option text').toBeNull();
   });
 
+  it('refuses a manual grade on a choice item and keeps its result (#1301)', async () => {
+    const read = async () => {
+      const row = (await results()).find((r) => r.id === answeringAttemptId);
+      const answer = row?.quiz_answers.find((a) => a.question_id === questionId);
+      return { score: row?.score, isCorrect: answer?.is_correct, points: answer?.teacher_points };
+    };
+    const unchanged = await read();
+
+    // Zero and one point: whichever the stored result is, one of the two would flip it.
+    expect(await grade(answeringAttemptId, questionId, 0, 'x')).toBe(422);
+    expect(await grade(answeringAttemptId, questionId, 1, 'x')).toBe(422);
+
+    expect(await read()).toEqual(unchanged);
+  });
+
+  it('lists the choice item as auto-graded and leaves the open one out (#1301)', async () => {
+    expect((await resultsPayload()).auto_graded_item_ids).toEqual([questionId]);
+  });
+
   it('shows a grade written through the per-attempt route on the next read', async () => {
-    expect(await grade(answeringAttemptId, 1, 'trafne uzasadnienie')).toBe(200);
+    expect(await grade(answeringAttemptId, openQuestionId, 1, 'trafne uzasadnienie')).toBe(200);
 
     const rows = await results();
     const answer = rows
       .find((r) => r.id === answeringAttemptId)
-      ?.quiz_answers.find((a) => a.question_id === questionId);
+      ?.quiz_answers.find((a) => a.question_id === openQuestionId);
     expect(answer?.teacher_points, 'the stored grade is what the list returns').toBe(1);
     expect(answer?.teacher_feedback).toBe('trafne uzasadnienie');
   });

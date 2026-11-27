@@ -632,6 +632,13 @@ describe('i18n message parity', () => {
     );
   });
 
+  /** #1519 — a key present in only one locale would show a raw key on the assignment page. */
+  it('has the same AppAssignmentDetailPage keys in en and pl', () => {
+    expect(Object.keys(en.AppAssignmentDetailPage).toSorted()).toEqual(
+      Object.keys(pl.AppAssignmentDetailPage).toSorted(),
+    );
+  });
+
   /**
    * #319 — the session summary dialog resolves its keys dynamically (mode suffix,
    * exhausted state), so a key present in only one locale would silently show the

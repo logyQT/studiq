@@ -3187,6 +3187,7 @@
     "model_answer": "Model answer: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "This question is graded automatically. You cannot change its points.",
     "grade_failed": "Grade failed",
     "unknown": "Unknown",
     "back": "Back to Results",
@@ -3241,6 +3242,11 @@
     "closed_on": "Closed: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Scheduled",
+    "closed_badge": "Closed",
+    "opens": "Opens",
+    "opens_in": "Opens in {countdown}",
+    "closed_message": "This assignment is closed.",
     "not_found": "Assignment not found",
     "back": "Back",
     "questions": "Questions",
@@ -3266,6 +3272,13 @@
     "ungraded": "Awaiting grading — open questions are not part of the score yet."
   },
   "AppAssignmentTakePage": {
+    "confirm_title": "Submit your answers?",
+    "confirm_final": "You cannot change them after you submit.",
+    "confirm_unanswered": "{count, plural, one {# question is unanswered.} other {# questions are unanswered.}}",
+    "confirm_jump": "Question {number}",
+    "confirm_back": "Back",
+    "confirm_submit": "Submit answers",
+    "confirm_submit_anyway": "Submit anyway",
     "upload_failed": "Upload failed",
     "quit": "Quit",
     "answer_placeholder": "Type your answer...",

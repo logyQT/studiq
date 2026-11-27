@@ -3168,6 +3168,7 @@
     "model_answer": "Odpowiedź wzorcowa: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "Pytanie oceniane automatycznie. Punktów nie można zmienić.",
     "grade_failed": "Błąd oceniania",
     "unknown": "Nieznany",
     "back": "Powrót do wyników",
@@ -3222,6 +3223,11 @@
     "closed_on": "Zamknięto: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Zaplanowana",
+    "closed_badge": "Zamknięta",
+    "opens": "Dostępna od",
+    "opens_in": "Dostępna za: {countdown}",
+    "closed_message": "Ta kartkówka jest zamknięta.",
     "not_found": "Nie znaleziono kartkówki",
     "back": "Powrót",
     "questions": "Pytania",
@@ -3247,6 +3253,13 @@
     "ungraded": "Oczekuje na ocenę — pytania otwarte nie wchodzą jeszcze do wyniku."
   },
   "AppAssignmentTakePage": {
+    "confirm_title": "Wysłać odpowiedzi?",
+    "confirm_final": "Po wysłaniu nie można ich zmienić.",
+    "confirm_unanswered": "{count, plural, one {# pytanie nie ma odpowiedzi.} few {# pytania nie mają odpowiedzi.} many {# pytań nie ma odpowiedzi.} other {# pytania nie ma odpowiedzi.}}",
+    "confirm_jump": "Pytanie {number}",
+    "confirm_back": "Wróć",
+    "confirm_submit": "Wyślij odpowiedzi",
+    "confirm_submit_anyway": "Wyślij mimo to",
     "upload_failed": "Błąd przesyłania",
     "quit": "Wyjdź",
     "answer_placeholder": "Wpisz swoją odpowiedź...",

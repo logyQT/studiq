@@ -8,10 +8,11 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { SubmitConfirmDialog } from '@/components/assignments/submit-confirm-dialog';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { ApiError, apiPost } from '@/lib/api';
-import { toSaveAnswersPayload, type SavedAnswer } from '@/lib/quiz-draft';
+import { toSaveAnswersPayload, unansweredIndexes, type SavedAnswer } from '@/lib/quiz-draft';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
@@ -61,8 +62,10 @@ export default function TakeAssignmentPage() {
   // Photos attached to each question in this session, so the student can see what was sent (#338).
   const [photos, setPhotos] = useState<Record<string, UploadedPhoto[]>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const autoSubmitted = useRef(false);
+  const questionCard = useRef<HTMLDivElement>(null);
 
   const deadlineParam = searchParams.get('deadline');
 
@@ -211,6 +214,8 @@ export default function TakeAssignmentPage() {
     ) {
       // Auto-submit before the timeout only once: a failed attempt must not loop.
       autoSubmitted.current = true;
+      // The time limit asks nothing: an open confirmation closes (#1353).
+      setConfirmOpen(false);
       void handleSubmit();
     }
   }, [remainingMs, attempt, submitting, handleSubmit]);
@@ -266,7 +271,12 @@ export default function TakeAssignmentPage() {
         />
       </div>
 
-      <div className="rounded-lg border p-6 space-y-6">
+      <div
+        ref={questionCard}
+        tabIndex={-1}
+        data-question-card=""
+        className="rounded-lg border p-6 space-y-6 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+      >
         <p className="text-lg font-medium">{question.content}</p>
 
         {isMcq && question.question_answers && (
@@ -367,12 +377,21 @@ export default function TakeAssignmentPage() {
         {currentIndex < attempt.questions.length - 1 ? (
           <Button onClick={() => setCurrentIndex((i) => i + 1)}>{t('next')}</Button>
         ) : (
-          <Button onClick={handleSubmit} disabled={submitting}>
+          <Button onClick={() => setConfirmOpen(true)} disabled={submitting}>
             <Check className="w-4 h-4 mr-1" />
             {submitting ? t('submitting') : t('submit')}
           </Button>
         )}
       </div>
+
+      <SubmitConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        unanswered={unansweredIndexes(attempt.questions, answers, photos)}
+        onJump={setCurrentIndex}
+        jumpTargetRef={questionCard}
+        onConfirm={() => void handleSubmit()}
+      />
     </div>
   );
 }

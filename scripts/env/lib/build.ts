@@ -52,6 +52,11 @@ const FAILURE_TAIL_LINES = 40;
 /** How many warning lines a successful build prints before pointing at the log. */
 const SUCCESS_WARNING_LINES = 10;
 
+/** The time limit as the timeout message gives it: `30 minutes`, `90 s`, `0.2 s`. */
+function formatTimeLimit(ms: number): string {
+  return ms >= 120_000 && ms % 60_000 === 0 ? `${ms / 60_000} minutes` : `${ms / 1000} s`;
+}
+
 /**
  * A line worth showing from a *successful* build: a warning or an error.
  *
@@ -481,14 +486,14 @@ export function spawnBuild(
     const timer = setTimeout(() => {
       timedOut = true;
       writeStderrLine(
-        `build: exceeded ${Math.round(BUILD_TIMEOUT_MS / 60_000)} minutes; killing the build's process group`,
+        `build: exceeded ${formatTimeLimit(timeoutMs)}; killing the build's process group`,
       );
       killGroup(pgid ?? 0).then(awaitClose, abandon);
     }, timeoutMs);
     const progress = setInterval(() => {
       slot?.heartbeat();
       const elapsed = formatDuration(Date.now() - startedAt);
-      const left = formatDuration(Math.max(0, BUILD_TIMEOUT_MS - (Date.now() - startedAt)));
+      const left = formatDuration(Math.max(0, timeoutMs - (Date.now() - startedAt)));
       writeStderrLine(
         `build: building (${formatBuildSlots(readBuildSlots())}), ${elapsed} elapsed, ${left} left`,
       );
