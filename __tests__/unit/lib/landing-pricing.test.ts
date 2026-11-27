@@ -26,7 +26,12 @@ function plan(key: string, priceMonthly: number, currency = 'PLN'): PlanInfo {
 }
 
 const personal = [plan('free', 0), plan('plus', 1999), plan('pro', 3999), plan('max', 7999)];
-const organization = [plan('launch', 0), plan('hub', 29900), plan('campus', 69900)];
+const organization = [
+  plan('launch', 0),
+  plan('team', 9900),
+  plan('hub', 29900),
+  plan('campus', 69900),
+];
 
 describe('pickLandingPlans', () => {
   it('picks the free personal plan, Plus as the paid tier and the cheapest paid org plan', () => {
@@ -34,7 +39,8 @@ describe('pickLandingPlans', () => {
 
     expect(picked.free?.key).toBe('free');
     expect(picked.premium?.key).toBe('plus');
-    expect(picked.organizationFrom?.key).toBe('hub');
+    expect(picked.organizationFrom?.key).toBe('team');
+    expect(picked.organizationFrom?.priceMonthly, 'the landing says "from 99 zł"').toBe(9900);
   });
 
   it('never advertises the free organization plan as "from"', () => {

@@ -6,7 +6,8 @@ import { Check, Sparkles } from 'lucide-react';
 import { useLocale } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { PlanAction } from '@/components/pricing/plan-action';
-import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
+import { PlanCapacity } from '@/components/pricing/plan-capacity';
+import { ctaMessageKey, isRecommendedPlan, isSalesLedPlan } from '@/lib/pricing-ladders';
 import { planCopy } from '@/lib/pricing-copy';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
@@ -41,7 +42,7 @@ export function PlanCard({
     signedIn: Boolean(user),
     isCurrent: isCurrentPlan,
     isFree: !paid,
-    contactOnly: plan.key === 'campus',
+    contactOnly: isSalesLedPlan(plan.key),
     hasActivePlan,
   });
 
@@ -79,6 +80,12 @@ export function PlanCard({
             <span className="text-sm text-muted-foreground">{t('period_month')}</span>
           )}
         </div>
+
+        {plan.scope === 'organization' ? (
+          <div className="mb-6">
+            <PlanCapacity limits={plan.limits} />
+          </div>
+        ) : null}
 
         <Separator className="mb-6" />
 

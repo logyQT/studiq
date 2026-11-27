@@ -31,7 +31,7 @@ export function pricingPlanAction(input: {
   hasActivePlan: boolean | null;
   purchaseBlocked?: boolean;
 }): PlanAction {
-  // Campus is a sales conversation in every state, including for a subscriber.
+  // A sales-led plan is a conversation in every state, including for a subscriber.
   if (input.contactOnly) return 'contact';
   if (!input.signedIn) return 'register';
   if (input.purchaseBlocked) return 'none';

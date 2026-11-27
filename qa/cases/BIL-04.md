@@ -7,12 +7,13 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
-## Amendment (2026-11-26, B2 #1493)
+## Amendment (2026-11-27, organization ladder)
 
-Hub is capacity only: after the purchase the organization plan is `hub` (50 members, 20 groups),
-but the org ceiling adds no paid feature. `/manage/settings` keeps the „Własny branding” lock
-card, the logo/colour controls stay hidden, and `branding`/`quiz.templates` stay absent. The
-purchase, the payment row and the untouched personal plan are unchanged.
+Hub is the second paid tier: after the purchase the organization plan is `hub` (100 members,
+40 groups) and the org ceiling adds `quiz.templates` and `stats.insights` on top of the baseline
+`flashcards` + `quiz`. Branding stays a Campus feature, so `/manage/settings` keeps the
+„Własny branding” lock card, now naming Campus. The purchase, the payment row and the untouched
+personal plan are unchanged.
 
 ## Prerequisite (verbatim)
 
@@ -83,13 +84,13 @@ Confirmed end to end on this case's tenant:
 - Paying with the test card shows „Płatność udana! Przekierowywanie...”, then
   „Zakup udany!”, then the manager panel.
 - `GET /api/v1/organization/<id>` reports `plan: "hub"`, `GET /api/v1/me/plan`
-  reports Hub with the `branding` and `quiz.templates` features, and
+  reports Hub with the `quiz.templates` and `stats.insights` features, and
   `GET /api/v1/me/payments` gains one Hub row (299 PLN).
-- `/manage/settings` shows „StudiQ Hub” and the unlocked controls („Wgraj logo”,
-  „Kolor marki”) — the „Własny branding” lock card is gone.
-- `/manage/roles` shows „Nowa rola” — the „Kreator ról nie jest dostępny w Twoim
-  planie” lock card is gone.
-- The manager's personal plan stays Launch before and after the purchase.
+- `/manage/settings` shows „StudiQ Hub” and keeps the „Własny branding” lock
+  card, which names the Campus tier; the logo and colour controls stay hidden.
+- `/manage/roles` shows „Nowa rola”: the role builder is permission-gated
+  (`org.role.manage`), not plan-gated.
+- The manager's personal plan stays absent (a manager holds none) before and after the purchase.
 - A teacher of the same organization cannot buy the plan: the `/checkout` page
   and the API both key on `org.billing.manage` **in the target organization**.
   The page answers „Tylko osoba zarządzająca płatnościami organizacji może kupić

@@ -7,12 +7,12 @@
 - prereqs: none
 - source: StudiQ Dokument Testera v1.3
 
-## Amendment (2026-11-26, B2 #1493)
+## Amendment (2026-11-27, organization ladder)
 
-The Launch lock state is unchanged, but no organization plan carries `branding` any more: the org
-ladder is Launch / Hub / Campus (three rows) and its comparison table lists the capacity rows
-(students, groups), not a branding row. The lock copy now says branding is not part of the current
-plans; the API still returns 403 for both branding writes.
+The Launch lock state is unchanged. `branding` is the Campus feature: the org ladder is
+Launch / Team / Hub / Campus (four rows), its comparison table lists the capacity rows (students,
+groups) and a branding row that only Campus carries. The lock copy now says branding is available
+on the Campus plan; the API still returns 403 for both branding writes.
 
 ## Prerequisite (verbatim)
 
@@ -63,15 +63,15 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
   karty: „Profil uczelni” (Nazwa + „Tylko do odczytu”, Utworzono, Logo) i „Subskrypcja”
   (badge „StudiQ Launch”, „Zarządzane przez administratorów systemowych”).
 - Krok 1 — w sekcji „Logo” zamiast uploadu renderuje się karta z ikoną zamka:
-  **„Własny branding”** / **„Własny branding nie jest częścią obecnych planów.”** oraz
+  **„Własny branding”** / **„Własny branding jest dostępny w planie Campus.”** oraz
   przycisk **„Zobacz plany”**. Nie ma przycisku „Wgraj logo”, napisu „Brak logo”, etykiety
   „Kolor marki”, żadnego `input[type=file]` ani `input[type=color]`. Profil organizacji
   (nazwa, data utworzenia) pozostaje widoczny — blokada dotyczy tylko brandingu.
 - Krok 2 — „Zobacz plany” prowadzi dokładnie do **`/pricing?audience=organization`**
   („Wybierz swój plan”), z przełącznikiem ustawionym na „Dla organizacji”. Wiersz
-  „StudiQ Launch” jest oznaczony „Twój plan”. Od #1493 żaden plan organizacji nie zawiera
-  „Własny branding”: tabela porównania pokazuje pojemność (uczniowie, grupy), a nie funkcję
-  brandingową. Karta prowadzi do planów po pojemność, nie po branding.
+  „StudiQ Launch” jest oznaczony „Twój plan”. „Własny branding” jest funkcją planu Campus:
+  tabela porównania pokazuje pojemność (uczniowie, grupy) oraz wiersz brandingu, który
+  zaznacza tylko Campus. Karta prowadzi do planów po pojemność i funkcje.
 - Ta sama sesja potwierdza bramkę po stronie API: `GET /api/v1/me/entitlements` nie zawiera
   `branding`, `GET /api/v1/me/plan` zwraca `launch` bez `branding`,
   `PUT /api/v1/organization/<id>` z `{"brandColor":"#123456"}` → **403**

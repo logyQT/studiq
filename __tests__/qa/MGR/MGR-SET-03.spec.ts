@@ -27,7 +27,7 @@ const COPY = {
   pageTitle: 'Ustawienia',
   uploadLogo: 'Wgraj logo',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDescription: 'Własny branding jest dostępny w planie Campus.',
 } as const;
 
 const LOGO_PNG = Buffer.from(

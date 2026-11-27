@@ -199,11 +199,14 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const plus = plan('plus');
     const max = plan(SEAT_PLAN_KEY);
 
-    // Catalog facts the story leans on: the org ceiling is baseline only, and
-    // the personal Plus plan carries the portable paid keys.
-    expect(hub.features.toSorted(), 'catalog: Hub is capacity only').toEqual([
+    // Catalog facts the story leans on: the Hub ceiling carries the saved quiz
+    // library and insights, and the personal Plus plan carries the portable AI
+    // key the ceiling does not.
+    expect(hub.features.toSorted(), 'catalog: Hub carries the cumulative set').toEqual([
       'flashcards',
       'quiz',
+      'quiz.templates',
+      'stats.insights',
     ]);
     expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub carries no AI quota').toBeUndefined();
     expect(plus.features, 'catalog: Plus carries ai.chat').toContain('ai.chat');
@@ -296,15 +299,18 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    const expectedKeys = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
+    const controlKeys = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
+    // A seated member also gets the ceiling's `stats.insights`: the Max seat is
+    // the layer that carries it, and the learner profile does not.
+    const seatedKeys = [...controlKeys, 'stats.insights'];
     expect(
       (await entitlements(page)).toSorted(),
-      'the personal plan carries the paid keys',
-    ).toEqual(expectedKeys.toSorted());
+      'the seat adds the ceiling key the personal plan lacks',
+    ).toEqual(seatedKeys.toSorted());
 
     const memberPlan = await planOf(page);
     expect(memberPlan.key, 'the seat is the effective plan').toBe(SEAT_PLAN_KEY);
-    expect(memberPlan.limits.max_flashcards, 'max(hub 2000, seat 25000, plus 1000)').toBe(25_000);
+    expect(memberPlan.limits.max_flashcards, 'max(hub 5000, seat 25000, plus 1000)').toBe(25_000);
     expect(memberPlan.limits.max_ai_tokens_per_day, 'max(0, seat 500000, plus 100000)').toBe(
       500_000,
     );
@@ -320,10 +326,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(
       (await entitlements(page)).toSorted(),
       'the unseated control keeps its personal keys',
-    ).toEqual(expectedKeys.toSorted());
+    ).toEqual(controlKeys.toSorted());
     const controlPlan = await planOf(page);
     expect(controlPlan.key, 'the unseated member resolves their personal plan').toBe('plus');
-    expect(controlPlan.limits.max_flashcards, 'the hub floor stays above Plus').toBe(2_000);
+    expect(controlPlan.limits.max_flashcards, 'the hub floor stays above Plus').toBe(5_000);
     expect(controlPlan.limits.max_ai_tokens_per_day, 'no seat: the Plus AI budget').toBe(100_000);
     expect((await usage(page)).limit).toBe(100_000);
 

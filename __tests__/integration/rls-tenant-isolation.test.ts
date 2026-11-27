@@ -1220,14 +1220,19 @@ describe('RLS tenant isolation (#191)', () => {
       });
       expect(unseatedEntitlements).toEqual([]);
 
-      // A seat adds seat-eligible keys through `seat plan ∩ ceiling`; the
-      // baseline pair is in both `hub` and `max`, and `none` grants nothing.
+      // A seat adds seat-eligible keys through `seat plan ∩ ceiling`; `max` and
+      // the Hub ceiling both carry the four keys, and `none` grants nothing.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
-      expect(seatedEntitlements.toSorted()).toEqual(['flashcards', 'quiz']);
+      expect(seatedEntitlements.toSorted()).toEqual([
+        'flashcards',
+        'quiz',
+        'quiz.templates',
+        'stats.insights',
+      ]);
       expect(seatedEntitlements).not.toContain('branding');
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
@@ -1350,14 +1355,19 @@ describe('RLS tenant isolation (#191)', () => {
       const controlSession = await signIn(controlEmail);
 
       // Resolution must follow the seat plan: the `none` profile grants
-      // nothing, so the baseline pair can only arrive through the seat branch,
-      // and the org-scoped `branding` stays denied.
+      // nothing, so the four keys can only arrive through the seat branch, and
+      // the Campus-only `branding` stays denied.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
-      expect(seatedEntitlements.toSorted()).toEqual(['flashcards', 'quiz']);
+      expect(seatedEntitlements.toSorted()).toEqual([
+        'flashcards',
+        'quiz',
+        'quiz.templates',
+        'stats.insights',
+      ]);
       expect(seatedEntitlements).not.toContain('branding');
 
       // The app denies group creation for this user; PostgREST must too.

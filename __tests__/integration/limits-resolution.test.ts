@@ -149,10 +149,10 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     expect(error).toBeNull();
     expect(await orgPlan(fixture.orgId!)).toBe('hub');
 
-    // hub max_flashcards = 2000. The manager's personal plan (launch, 100) is
+    // hub max_flashcards = 5000. The manager's personal plan (launch, 100) is
     // excluded inside a verified org (#228), so the value can only come from
     // the live org plan (#230).
-    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
+    await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(5000);
     // Narrowing works the same way: back to launch, the next resolution is 100.
     await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
     await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
@@ -165,18 +165,18 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       .eq('id', fixture.orgId!);
     expect(error).toBeNull();
 
-    // hub max_groups = 20 (launch said 3).
+    // hub max_groups = 40 (launch said 3).
     await expect(
-      checkOrgLimit(fixture.orgId!, 'max_groups', 19, 1, service),
+      checkOrgLimit(fixture.orgId!, 'max_groups', 39, 1, service),
     ).resolves.toBeUndefined();
-    await expect(checkOrgLimit(fixture.orgId!, 'max_groups', 20, 1, service)).rejects.toThrow(
+    await expect(checkOrgLimit(fixture.orgId!, 'max_groups', 40, 1, service)).rejects.toThrow(
       'USAGE_LIMIT_EXCEEDED',
     );
-    // hub max_students = 50: the invite-accept path sees the new capacity.
+    // hub max_students = 100: the invite-accept path sees the new capacity.
     await expect(
-      checkOrgLimit(fixture.orgId!, 'max_students', 49, 1, service),
+      checkOrgLimit(fixture.orgId!, 'max_students', 99, 1, service),
     ).resolves.toBeUndefined();
-    await expect(checkOrgLimit(fixture.orgId!, 'max_students', 50, 1, service)).rejects.toThrow(
+    await expect(checkOrgLimit(fixture.orgId!, 'max_students', 100, 1, service)).rejects.toThrow(
       'USAGE_LIMIT_EXCEEDED',
     );
   });
@@ -198,11 +198,11 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       // max(org hub 0, seat base 0, personal plus 100000) = 100000 — the
       // seat's 0 must not win, and the org no longer funds AI.
       await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(100000);
-      // max(hub 2000, base 100, plus 1000) = 2000.
-      await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
-      // Org-scope capacity stays the org plan's: hub max_students = 50, never
+      // max(hub 5000, base 100, plus 1000) = 5000.
+      await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(5000);
+      // Org-scope capacity stays the org plan's: hub max_students = 100, never
       // the seat plan's -1.
-      await expect(effectiveLimit(memberCtx(), 'max_students')).resolves.toBe(50);
+      await expect(effectiveLimit(memberCtx(), 'max_students')).resolves.toBe(100);
 
       const { entitlements, sources } = await resolver.resolveEntitlements(memberCtx());
       // ai.chat arrives through the personal plan, with a non-zero quota.
@@ -218,7 +218,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
   });
 
   it('a forged active_org_id with a stale seat row resolves the personal plan for user keys and 0 for org keys', async () => {
-    // The foreign org sits on hub (max_flashcards 2000) and the student has a
+    // The foreign org sits on hub (max_flashcards 5000) and the student has a
     // stale `free` seat row in it — but no org_members row.
     await service.from('organizations').update({ plan: 'hub' }).eq('id', foreignOrgId);
     await seatUser(foreignOrgId, student.id, 'free');
@@ -246,7 +246,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     await expect(effectiveLimit(spoofed, 'max_flashcards')).resolves.toBe(
       personalLimit!.limit_value,
     );
-    expect(personalLimit!.limit_value).not.toBe(2000);
+    expect(personalLimit!.limit_value).not.toBe(5000);
     // Org-scope keys are 0 outside a verified org.
     await expect(effectiveLimit(spoofed, 'max_students')).resolves.toBe(0);
 
@@ -286,9 +286,9 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
     // Membership — not `orgRoleId` — decides the org branch. The fixture user
     // has a real org_members row, so losing the ctx role id must not drop the
-    // org plan (hub max_flashcards = 2000).
+    // org plan (hub max_flashcards = 5000).
     const memberWithoutRole = memberCtx({ orgRoleId: null });
-    await expect(effectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(2000);
+    await expect(effectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(5000);
   });
 
   it('lets the org plan govern a member with an unlimited organization-scope personal plan (#233 Q1, D34)', async () => {

@@ -38,6 +38,12 @@ const USER_ID = '00000000-0000-4000-8001-000000000007';
 
 const PERSONAL_CEILING = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
 
+/**
+ * The same member inside a Hub organization: the Hub ceiling adds
+ * `stats.insights` on top of the personal Plus layer.
+ */
+const HUB_CEILING_UNION = [...PERSONAL_CEILING, 'stats.insights'];
+
 describe('entitlement deploy order (phase 8 matrix)', () => {
   let service: SupabaseClient<Database>;
   let resolver: EntitlementResolver;
@@ -113,7 +119,7 @@ describe('entitlement deploy order (phase 8 matrix)', () => {
     if (overrideError) throw new Error(overrideError.message);
 
     const resolved = await resolver.resolveEntitlements(ctx(adminRoleId));
-    expect(resolved.entitlements).toEqual(PERSONAL_CEILING);
+    expect(resolved.entitlements).toEqual(HUB_CEILING_UNION);
     expect(resolved.entitlements).not.toContain(UNKNOWN_KEY);
     expect(resolved.sources.overrides).toEqual([]);
   });

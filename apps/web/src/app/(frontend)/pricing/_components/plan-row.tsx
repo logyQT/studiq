@@ -3,9 +3,10 @@
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { useLocale, useTranslations } from 'next-intl';
 import { PlanAction } from '@/components/pricing/plan-action';
+import { PlanCapacity } from '@/components/pricing/plan-capacity';
 import { formatPlanPrice } from '@/lib/landing-pricing';
 import { planCopy } from '@/lib/pricing-copy';
-import { isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { isRecommendedPlan, isSalesLedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
 
 interface PlanRowProps {
@@ -44,8 +45,7 @@ export function PlanRow({
 
   const recommended = isRecommendedPlan(plan.key);
   const isFree = plan.priceMonthly === 0;
-  /** Sales-led tier: it is priced per institution, not per seat. */
-  const contactOnly = plan.key === 'campus';
+  const contactOnly = isSalesLedPlan(plan.key);
   const { description, note } = planCopy(t, plan);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
@@ -93,6 +93,11 @@ export function PlanRow({
         {/* No copy, no line: `description` is the seed's admin-internal column. */}
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
+        {plan.scope === 'organization' ? (
+          <div className="mt-2">
+            <PlanCapacity limits={plan.limits} />
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 md:col-span-2 md:col-start-11 md:row-start-1 md:mt-0 md:justify-self-end">

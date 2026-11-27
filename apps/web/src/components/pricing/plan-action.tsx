@@ -47,10 +47,10 @@ export function PlanAction({
   const tone = isRecommendedPlan(plan.key) && action !== 'current' ? 'signal' : 'quiet';
 
   if (action === 'contact') {
-    // Campus is a 699 zł conversation, not a self-serve checkout: the label says
-    // contact sales, so the action under it must too. `quiet` is explicit: the
-    // default fill is `signal`, and a sales link beside the ladder's recommended
-    // plan would be a second primary pointing away from the product.
+    // A sales-led plan is a conversation, not a self-serve checkout: the label
+    // says contact sales, so the action under it must too. `quiet` is explicit:
+    // the default fill is `signal`, and a sales link beside the ladder's
+    // recommended plan would be a second primary pointing away from the product.
     return (
       <CtaButton href="/contact" tone="quiet" fullWidth className={className}>
         {label}

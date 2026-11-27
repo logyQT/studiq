@@ -14,22 +14,27 @@ export function isRecommendedPlan(key: string): boolean {
 }
 
 /**
+ * Plans sold through a conversation rather than a checkout. No catalogue plan is
+ * sales-led: the organization ladder sells all four tiers, and custom setup is a
+ * separate CTA (`SalesCta`), not a plan card. The list stays because a sales-led
+ * row must render a conversation in every state, and a plan added to it must not
+ * quietly become a checkout.
+ */
+const SALES_LED_PLAN_KEYS: readonly string[] = [];
+
+export function isSalesLedPlan(key: string): boolean {
+  return SALES_LED_PLAN_KEYS.includes(key);
+}
+
+/**
  * The message key of a plan's own action. A zero price is the free action every
  * free tier shares; a paid plan names itself, so the label cannot borrow another
  * tier's verb. Both the price list and the dashboard card ask this, so a new plan
  * needs a `cta_<key>` message and nothing else.
  */
-/**
- * Plans sold through a conversation rather than a checkout. The label is the one
- * sales verb the page already uses, not a per-plan string: "Kontakt z działem
- * handlowym" is wider than the price list's action column and ran over the
- * figure beside it.
- */
-const SALES_LED_PLAN_KEYS: readonly string[] = ['campus'];
-
 export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): string {
   if (plan.priceMonthly === 0) return 'cta_free';
-  if (SALES_LED_PLAN_KEYS.includes(plan.key)) return 'cta_contact';
+  if (isSalesLedPlan(plan.key)) return 'cta_contact';
   return `cta_${plan.key}`;
 }
 
@@ -106,7 +111,7 @@ const ABSENT = '—';
  * rendering bug (N-14) — and a missing key means the same thing as `0`.
  *
  * Numbers are grouped in the reader's locale (`200 000` / `200,000`). The
- * organization ladder prints three plan columns, so the exact figure fits the
+ * organization ladder prints four plan columns, so the exact figure fits the
  * narrowest gutter; nothing is abbreviated away.
  */
 export function formatLimitValue(value: number | undefined, locale: string): string {

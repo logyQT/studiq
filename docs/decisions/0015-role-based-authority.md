@@ -458,8 +458,7 @@ Add to `subscription_plans`:
 - `scope text not null check (scope in ('personal','organization'))`
 
 There is no `audience` column: a plan carries no persona dimension. The table
-below is the matrix the cleanup migration
-(`20261126170000_plan_key_rename_manager_plan.sql`) owns; `audience` was added
+below is the matrix the plan-catalogue migrations own; `audience` was added
 for phase 4a, stopped keying anything in B1, and was dropped in the cleanup.
 
 | Plan     | scope        |
@@ -469,6 +468,7 @@ for phase 4a, stopped keying anything in B1, and was dropped in the cleanup.
 | `pro`    | personal     |
 | `max`    | personal     |
 | `launch` | organization |
+| `team`   | organization |
 | `hub`    | organization |
 | `campus` | organization |
 
@@ -1717,6 +1717,23 @@ interpretation.
 > keys are all seat-eligible); it no longer means "a seat a manager can buy"
 > until #1511. §14.2's "paid org (`hub`/`campus`)" column therefore reads as
 > capacity, not a feature ceiling.
+
+> **2026-11-27 (B2 amendment).** The organization ladder is four **purchasable**
+> tiers again, differentiated on capacity and cumulative features: Launch
+> (`launch`, 0 zł, 5 members / 3 groups, `flashcards` + `quiz`), Team (`team`,
+> 99 zł, 25 / 10, adds `quiz.templates`), Hub (`hub`, 299 zł, 100 / 40, adds
+> `stats.insights`) and Campus (`campus`, 699 zł, 1 000 / 100, adds `branding`).
+> Campus checks out like every other tier; custom setup (limits, SSO, invoicing,
+> onboarding) is a **separate contact CTA**, not a plan and not a price.
+>
+> `team` returns as a new key, so the B2 fold is superseded; an organization
+> already on `hub` or `campus` keeps its key and gains the new feature rows. The
+> matrix in `20261127090000_org_team_tier.sql` owns all eight plans, pins each
+> tier's entitlement set and every limit, and asserts the four organization sets
+> are cumulative. No organization plan carries `ai.chat` or
+> `max_ai_tokens_per_day`: organization AI is still #1511. Seats stay frozen at
+> the UI, and a seat pool still references a `scope='personal'` plan only — an
+> organization tier is never a pool.
 
 ---
 

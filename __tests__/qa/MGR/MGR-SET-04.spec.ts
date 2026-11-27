@@ -26,7 +26,7 @@ const COPY = {
   pageTitle: 'Ustawienia',
   brandColorLabel: 'Kolor marki',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDescription: 'Własny branding jest dostępny w planie Campus.',
 } as const;
 
 /** The stored colour the gate must not paint; distinct from any UI default. */

@@ -32,7 +32,7 @@ const COPY = {
   uploadLogo: 'Wgraj logo',
   brandColorLabel: 'Kolor marki',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDescription: 'Własny branding jest dostępny w planie Campus.',
   lockedCta: 'Zobacz plany',
   hubPlan: 'StudiQ Hub',
 } as const;

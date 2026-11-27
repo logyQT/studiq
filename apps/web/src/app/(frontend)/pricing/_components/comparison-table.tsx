@@ -27,9 +27,9 @@ interface ComparisonTableProps {
  * plan carries is printed once above the table and a limit whose value is the
  * same everywhere is not a row, so no fact appears twice (N-06).
  *
- * The organization ladder prints three plan columns. The region is still
- * focusable, because a fourth plan would overflow it and a truncated reading
- * has to stay navigable (N-02).
+ * The organization ladder prints four plan columns. The region is still
+ * focusable, because a fourth plan overflows a narrow viewport and a truncated
+ * reading has to stay navigable (N-02).
  */
 export function ComparisonTable({ plans, kind }: ComparisonTableProps) {
   const t = useTranslations('PricingPage');
