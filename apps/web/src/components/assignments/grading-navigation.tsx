@@ -28,10 +28,12 @@ export function GradingNavigation({
   const t = useTranslations('EduGradingPage');
   const router = useRouter();
 
-  // The results table's own query: the same order, and a saved grade refreshes it.
-  const { data } = useApiQuery<{ attempts: NavigableAttempt[] }>({
+  // The results table's own query: the same order, and a saved grade refreshes it. A student
+  // can submit while the teacher grades, so every opened sheet reads the list again.
+  const { data, isFetching } = useApiQuery<{ attempts: NavigableAttempt[] }>({
     queryKey: assignmentKeys.results(assignmentId),
     url: `/api/v1/teacher/assignments/${assignmentId}/results`,
+    staleTime: 0,
   });
   const navigation = data ? attemptNavigation(data.attempts, attemptId) : null;
 
@@ -93,7 +95,8 @@ export function GradingNavigation({
           </Link>
         </Button>
       )}
-      {navigation.leftToGrade === 0 && (
+      {/* Not from a list that is still being read: it can lack a new submission. */}
+      {navigation.leftToGrade === 0 && !isFetching && (
         <p className="text-sm font-medium">
           {t('all_graded')}{' '}
           <Link
@@ -104,13 +107,21 @@ export function GradingNavigation({
           </Link>
         </p>
       )}
-      <KeyboardShortcutsPanel
-        shortcuts={[
-          { key: GRADING_SHORTCUT_KEYS.previous, label: t('previous_attempt') },
-          { key: GRADING_SHORTCUT_KEYS.next, label: t('next_attempt') },
-          { key: GRADING_SHORTCUT_KEYS.nextUngraded, label: t('next_ungraded') },
-        ]}
-      />
     </nav>
+  );
+}
+
+/** The keys of the grading page. The panel sticks to the bottom, so it goes last on the page. */
+export function GradingShortcutsPanel() {
+  const t = useTranslations('EduGradingPage');
+
+  return (
+    <KeyboardShortcutsPanel
+      shortcuts={[
+        { key: GRADING_SHORTCUT_KEYS.previous, label: t('previous_attempt') },
+        { key: GRADING_SHORTCUT_KEYS.next, label: t('next_attempt') },
+        { key: GRADING_SHORTCUT_KEYS.nextUngraded, label: t('next_ungraded') },
+      ]}
+    />
   );
 }

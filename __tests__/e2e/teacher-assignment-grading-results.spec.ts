@@ -170,6 +170,23 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       // stays at the schema default 1 (#169 rejects anything above it).
       await page.locator('input[type="number"]').first().fill('1');
 
+      // The grading page reads the list too (#1354). Let that first read end, so that the
+      // wait below can only get a read that the grade caused.
+      await expect(
+        page.getByRole('navigation', { name: t('EduGradingPage.navigation') }),
+      ).toBeVisible();
+
+      // Arm the list refetch *before* the save: the whole point of #168 is that the grade
+      // makes the app read the list again. The grading page now has the list open, so the
+      // read can start at the save, before the navigation back.
+      const resultsRefetch = page.waitForResponse((res) => {
+        const url = new URL(res.url());
+        return (
+          res.request().method() === 'GET' &&
+          url.pathname === `/api/v1/teacher/assignments/${assignmentId}/results`
+        );
+      });
+
       const saveGrade = page.waitForResponse(
         (res) =>
           res.request().method() === 'PUT' &&
@@ -178,15 +195,6 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await page.getByRole('button', { name: t('EduGradingPage.save') }).click();
       expect((await saveGrade).status()).toBe(200);
 
-      // Arm the list refetch *before* the click: the whole point of #168 is
-      // that this GET is issued on the SPA navigation back.
-      const resultsRefetch = page.waitForResponse((res) => {
-        const url = new URL(res.url());
-        return (
-          res.request().method() === 'GET' &&
-          url.pathname === `/api/v1/teacher/assignments/${assignmentId}/results`
-        );
-      });
       await page.getByRole('link', { name: t('EduGradingPage.back') }).click();
       expect((await resultsRefetch).status()).toBe(200);
 
@@ -216,7 +224,8 @@ test.describe('moving between attempts on the grading page (#1354)', () => {
         page,
         `E2E grading navigation #1354 ${Date.now()}`,
         (id) => created.push(id),
-        { maxAttempts: 3, allowSameItemRetake: true },
+        // Three to grade, and one more that arrives while the teacher grades.
+        { maxAttempts: 4, allowSameItemRetake: true },
       );
 
       const studentPage = await studentContext.newPage();
@@ -272,6 +281,21 @@ test.describe('moving between attempts on the grading page (#1354)', () => {
 
       await expect(nav.getByText(t('EduGradingPage.all_graded'))).toBeVisible();
       await expect(link('next_ungraded')).toHaveCount(0);
+
+      // A submission that arrives now shows on the next sheet the teacher opens, with no
+      // reload and no saved grade in between.
+      const late = await submitAttempt(studentPage, assignmentId, questionId, 'E2E late #1354');
+      await link('previous_attempt').click();
+      await page.waitForURL(onAttempt(second));
+      await expect(
+        nav.getByText(/Attempt \d of 4 · 1 left to grade|Praca \d z 4 · do oceny: 1/),
+      ).toBeVisible();
+      await expect(nav.getByText(t('EduGradingPage.all_graded'))).toHaveCount(0);
+      await link('next_ungraded').click();
+      await page.waitForURL(onAttempt(late));
+      await saveOnePoint(page);
+
+      await expect(nav.getByText(t('EduGradingPage.all_graded'))).toBeVisible();
       await link('view_results').click();
       await page.waitForURL(new RegExp(`/edu/assignments/${assignmentId}/results$`, 'i'));
     } finally {

@@ -6,7 +6,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { GradingNavigation } from '@/components/assignments/grading-navigation';
+import {
+  GradingNavigation,
+  GradingShortcutsPanel,
+} from '@/components/assignments/grading-navigation';
 import { useApiQuery } from '@/hooks/use-api';
 import { useAssignmentBreadcrumb } from '@/hooks/use-assignment-breadcrumb';
 import { useGradeAnswerMutation } from '@/hooks/use-grade-mutation';
@@ -295,6 +298,8 @@ function GradingSheet() {
             );
           })}
       </div>
+
+      <GradingShortcutsPanel />
     </div>
   );
 }

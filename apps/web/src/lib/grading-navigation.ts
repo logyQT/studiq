@@ -6,7 +6,7 @@ export interface NavigableAttempt {
 }
 
 export interface AttemptNavigation {
-  /** From 1, in the order of the results table. */
+  /** From 1, in the order of the results table. An unsubmitted attempt is not counted. */
   position: number;
   total: number;
   /** Both wrap at the ends; null when there is no other attempt. */
@@ -21,20 +21,27 @@ export interface AttemptNavigation {
 const needsGrade = (attempt: NavigableAttempt): boolean =>
   attempt.completed_at !== null && !attempt.graded;
 
-/** Where `currentId` stands among the attempts, or null when it is not one of them (#1354). */
+/**
+ * Where `currentId` stands among the submitted attempts, or null when it is not one of the
+ * attempts (#1354). An attempt that is still running has nothing to grade yet, so the moves
+ * skip it. The current one always counts: the results table can open a running attempt.
+ */
 export function attemptNavigation(
   attempts: readonly NavigableAttempt[],
   currentId: string,
 ): AttemptNavigation | null {
-  const index = attempts.findIndex((attempt) => attempt.id === currentId);
+  const sheets = attempts.filter(
+    (attempt) => attempt.completed_at !== null || attempt.id === currentId,
+  );
+  const index = sheets.findIndex((attempt) => attempt.id === currentId);
   if (index < 0) return null;
 
-  // Every other attempt, starting after this one and wrapping round.
-  const others = [...attempts.slice(index + 1), ...attempts.slice(0, index)];
+  // Every other sheet, starting after this one and wrapping round.
+  const others = [...sheets.slice(index + 1), ...sheets.slice(0, index)];
 
   return {
     position: index + 1,
-    total: attempts.length,
+    total: sheets.length,
     previousId: others.at(-1)?.id ?? null,
     nextId: others[0]?.id ?? null,
     nextUngradedId: others.find(needsGrade)?.id ?? null,

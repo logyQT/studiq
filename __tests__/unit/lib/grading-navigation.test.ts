@@ -65,6 +65,24 @@ describe('attemptNavigation (#1354)', () => {
     });
   });
 
+  it('skips a running attempt in both directions and in the count', () => {
+    const mixed = [submitted('a'), running('b'), submitted('c')];
+
+    expect(attemptNavigation(mixed, 'a')).toMatchObject({ position: 1, total: 2, nextId: 'c' });
+    expect(attemptNavigation(mixed, 'c')).toMatchObject({ position: 2, previousId: 'a' });
+  });
+
+  it('keeps the current attempt when it is the running one', () => {
+    const mixed = [submitted('a'), running('b'), submitted('c')];
+
+    expect(attemptNavigation(mixed, 'b')).toMatchObject({
+      position: 2,
+      total: 3,
+      previousId: 'a',
+      nextId: 'c',
+    });
+  });
+
   it('is null for an attempt that is not in the list', () => {
     expect(attemptNavigation(attempts, 'x')).toBeNull();
   });
