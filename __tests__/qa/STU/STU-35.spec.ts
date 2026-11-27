@@ -66,6 +66,10 @@ const COPY = {
   next: 'Następne',
   submit: 'Wyślij',
   confirmSubmit: 'Wyślij odpowiedzi',
+  confirmBack: 'Wróć',
+  quit: 'Wyjdź',
+  continue: 'Kontynuuj',
+  savedPhoto: 'Zapisane zdjęcie 1',
   uploading: 'Przesyłanie...',
   uploadPhoto: 'Prześlij zdjęcie',
   answerPlaceholder: 'Wpisz swoją odpowiedź...',
@@ -288,19 +292,22 @@ async function selectOption(page: Page, label: string): Promise<void> {
   );
 }
 
-/**
- * Type the open answer and attach one photo, asserting the in-flight label, the
- * upload response, the success toast and the thumbnail. The upload request is
- * delayed so the transient „Przesyłanie...” state is observable deterministically.
- */
-async function answerOpenQuestion(page: Page): Promise<void> {
-  const textarea = page.locator(`main textarea[placeholder="${COPY.answerPlaceholder}"]`);
-  await expect(
-    textarea,
-    'the open question offers the „Wpisz swoją odpowiedź...” field',
-  ).toBeVisible();
-  await textarea.fill(OPEN_ANSWER);
+/** The open question's text field. */
+function openAnswerField(page: Page): Locator {
+  return page.locator(`main textarea[placeholder="${COPY.answerPlaceholder}"]`);
+}
 
+/** The listed photos of the question on screen. */
+function attachedPhotos(page: Page): Locator {
+  return page.locator(`main ul[aria-label="${COPY.attachedPhotos}"] li`);
+}
+
+/**
+ * Attach one photo, asserting the in-flight label, the upload response, the success
+ * toast and the thumbnail. The upload request is delayed so the transient
+ * „Przesyłanie...” state is observable deterministically.
+ */
+async function attachPhoto(page: Page): Promise<void> {
   const uploadPattern = '**/api/v1/assignments/**/upload-image';
   await page.route(uploadPattern, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1_200));
@@ -341,10 +348,7 @@ async function answerOpenQuestion(page: Page): Promise<void> {
     page.locator(`main img[alt="${PHOTO_NAME}"]`),
     'the uploaded photo renders as a thumbnail',
   ).toBeVisible();
-  await expect(
-    page.locator(`main ul[aria-label="${COPY.attachedPhotos}"] li`),
-    'exactly one photo is attached',
-  ).toHaveCount(1);
+  await expect(attachedPhotos(page), 'exactly one photo is attached').toHaveCount(1);
 }
 
 /** Assert that a question whose answer was already given still shows it. */
@@ -365,7 +369,7 @@ async function expectAnswerKept(page: Page, content: string): Promise<void> {
       'the open answer survives navigation',
     ).toHaveValue(OPEN_ANSWER);
     await expect(
-      page.locator(`main img[alt="${PHOTO_NAME}"]`),
+      page.locator(`main img[alt="${COPY.savedPhoto}"]`),
       'the attached photo still renders',
     ).toBeVisible();
   }
@@ -458,6 +462,39 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     await expect(page.getByText('1 / 3', { exact: true }), 'the jump opens it').toBeVisible();
     await expect(page.locator('[data-question-card]'), 'the focus follows').toBeFocused();
 
+    // --- A photo with no text survives leaving the attempt (#1544) -----------
+    let openPosition = 1;
+    while ((await questionContent(page).innerText()).trim() !== QUESTIONS.open.content) {
+      await page.getByRole('button', { name: COPY.next, exact: true }).click();
+      openPosition += 1;
+      await expect(page.getByText(`${openPosition} / 3`, { exact: true })).toBeVisible();
+    }
+    await attachPhoto(page);
+
+    // In-app leave and „Kontynuuj”: no reload, so a payload kept from before would show here.
+    await page.getByRole('link', { name: COPY.quit }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/assignments/${assignment.id}$`));
+    await page.getByRole('button', { name: COPY.continue, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/take\\?attemptId=${attemptId}`));
+
+    for (let index = 1; index < 3; index += 1) {
+      await page.getByRole('button', { name: COPY.next, exact: true }).click();
+    }
+    await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    await expect(unanswered).toBeVisible();
+    await expect(unanswered.getByRole('button', { name: /^Pytanie \d$/ })).toHaveCount(2);
+    await expect(
+      unanswered.getByRole('button', { name: `Pytanie ${openPosition}`, exact: true }),
+      'the question with a saved photo counts as answered',
+    ).toHaveCount(0);
+    await unanswered.getByRole('button', { name: COPY.confirmBack, exact: true }).click();
+    await expect(unanswered).toHaveCount(0);
+
+    // Back to the first question for the walk below.
+    for (let index = 2; index > 0; index -= 1) {
+      await page.getByRole('button', { name: COPY.previous, exact: true }).click();
+    }
+
     // --- Steps 2 + 4: answer each question, navigating back and forth -------
     const seen = new Set<string>();
     for (let index = 0; index < 3; index += 1) {
@@ -475,8 +512,9 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
         await selectOption(page, QUESTIONS.trueFalse.correct);
       } else {
         expect(content, 'the third question is the open one').toBe(QUESTIONS.open.content);
-        // Step 3: „Prześlij zdjęcie” on the open question.
-        await answerOpenQuestion(page);
+        // Step 3: the photo is already there from before the resume; add the text.
+        await expect(attachedPhotos(page), 'the saved photo is listed once').toHaveCount(1);
+        await openAnswerField(page).fill(OPEN_ANSWER);
       }
 
       if (index === 2) break;
@@ -546,6 +584,14 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
       page.getByRole('button', { name: COPY.start, exact: true }),
       'a single-attempt quiz cannot be started again',
     ).toHaveCount(0);
+
+    // The resume uploaded nothing again: the attempt holds the one photo (#1544).
+    const sheet = await api<{ assignment_answer_images: unknown[] }>(
+      teacherPage.request,
+      'GET',
+      `${ASSIGNMENTS_URL}/${assignment.id}/results/${attemptId}`,
+    );
+    expect(sheet.assignment_answer_images).toHaveLength(1);
 
     // The teacher closes the run; the review unlocks for the whole cohort.
     await api<unknown>(

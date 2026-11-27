@@ -90,6 +90,29 @@ export type QuizAttemptListItem = Omit<
   'score'
 > & { score: number | null; gradable_questions: number };
 
+/**
+ * question_id → the URLs of the photos attached to it in one attempt, oldest first. The caller
+ * proves that the attempt is theirs before this read.
+ */
+async function readAnswerImages(
+  supabase: SupabaseClient<Database>,
+  attemptId: string,
+): Promise<ServiceResult<Record<string, string[]>>> {
+  const { data, error } = await supabase
+    .from('assignment_answer_images')
+    .select('question_id, image_url')
+    .eq('attempt_id', attemptId)
+    .order('uploaded_at', { ascending: true });
+
+  if (error) return toDbFailure(error);
+
+  const images: Record<string, string[]> = {};
+  for (const row of dbRows(data)) {
+    if (row.question_id) (images[row.question_id] ??= []).push(row.image_url);
+  }
+  return success(images);
+}
+
 export class QuizAttemptService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
 
@@ -436,10 +459,20 @@ export class QuizAttemptService {
       Object.assign(answerObj, readDraftAnswers(draftAnswers));
     }
 
+    // A resumed attempt shows the photos it already has (#1544): a photo is saved by its own
+    // upload, so neither the draft nor the answer rows name it. A review does not use them.
+    let images: Record<string, string[]> = {};
+    if (!isCompleted && attempt.assignment_id) {
+      const saved = await readAnswerImages(supabase, attemptId);
+      if (isFailure(saved)) return saved;
+      images = saved.data;
+    }
+
     return success({
       ...attemptFields,
       questions,
       answers: answerObj,
+      images,
     });
   }
 

@@ -3274,6 +3274,7 @@
     "ungraded": "Awaiting grading — open questions are not part of the score yet."
   },
   "AppAssignmentTakePage": {
+    "saved_photo": "Saved photo {number}",
     "confirm_title": "Submit your answers?",
     "confirm_final": "You cannot change them after you submit.",
     "confirm_unanswered": "{count, plural, one {# question is unanswered.} other {# questions are unanswered.}}",

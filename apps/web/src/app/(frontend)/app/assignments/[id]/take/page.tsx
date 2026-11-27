@@ -12,7 +12,12 @@ import { SubmitConfirmDialog } from '@/components/assignments/submit-confirm-dia
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { ApiError, apiPost } from '@/lib/api';
-import { toSaveAnswersPayload, unansweredIndexes, type SavedAnswer } from '@/lib/quiz-draft';
+import {
+  seedQuizPhotos,
+  toSaveAnswersPayload,
+  unansweredIndexes,
+  type SavedAnswer,
+} from '@/lib/quiz-draft';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
@@ -28,6 +33,8 @@ interface AttemptData {
   }>;
   /** Answers the server already holds: the autosaved draft while in progress (#349). */
   answers?: Record<string, { selected_answer_id: string | null; text_answer: string | null }>;
+  /** question_id → the photos the attempt already has (#1544). */
+  images?: Record<string, string[]>;
 }
 
 interface UploadedPhoto {
@@ -59,7 +66,7 @@ export default function TakeAssignmentPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
-  // Photos attached to each question in this session, so the student can see what was sent (#338).
+  // Photos attached to each question of this attempt, so the student can see what was sent (#338).
   const [photos, setPhotos] = useState<Record<string, UploadedPhoto[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -87,6 +94,9 @@ export default function TakeAssignmentPage() {
     queryKey: ['assignment-attempt', attemptId ?? ''],
     url: `/api/v1/quiz/${attemptId}`,
     enabled: !!attemptId,
+    // Leaving the page drops the entry, so „Kontynuuj” reads the attempt again. The payload kept
+    // from before would lack the photos uploaded since (#1544).
+    gcTime: 0,
     // A completed attempt whose assignment hides results answers 403; retrying
     // it only delays the redirect to the assignment page (#374).
     retry: false,
@@ -125,7 +135,10 @@ export default function TakeAssignmentPage() {
       if (value) restored[questionId] = value;
     }
     setAnswers(restored);
-  }, [attempt]);
+    setPhotos(
+      seedQuizPhotos(attempt.questions, attempt.images, (number) => t('saved_photo', { number })),
+    );
+  }, [attempt, t]);
 
   const submitMutation = useApiMutation<unknown, { attemptId: string; answers: SavedAnswer[] }>({
     mutationFn: (body) =>
