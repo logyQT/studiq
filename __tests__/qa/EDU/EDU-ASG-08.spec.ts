@@ -612,6 +612,8 @@ test.describe('@case:EDU-ASG-08 @area:EDU @prio:P1 assignment grading', () => {
     await page.goto(skippedPath);
     await expect(page).toHaveURL(new RegExp(`${skippedPath}$`));
 
+    // A skipped open item leaves nothing to grade, so it is not awaiting a grade (#1303).
+    await expect(content(page).getByText(COPY.perQuestionPending, { exact: true })).toBeVisible();
     const skippedCard = content(page).locator('div.rounded-lg.border');
     await expect(skippedCard, 'one card per submitted attempt').toHaveCount(1);
     await expect(skippedCard.getByText(COPY.noAnswer, { exact: true })).toBeVisible();

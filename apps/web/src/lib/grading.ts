@@ -31,3 +31,12 @@ export function parseGradePoints(raw: string): number | null {
 export function exceedsGradeMax(points: number | null, max: number | null | undefined): boolean {
   return points !== null && max != null && points > max;
 }
+
+/**
+ * Whether one answer still waits for a teacher (#1303), the rule of the results list (#1069): the
+ * answer row exists and has no points. A skipped question has no row, so nothing waits.
+ */
+export function awaitsGrade(saved: SavedGrade | undefined): boolean {
+  // Strictly `null`: with no row the chain gives `undefined`, which does not wait.
+  return saved?.teacher_points === null;
+}

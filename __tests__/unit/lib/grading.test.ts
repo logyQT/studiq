@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exceedsGradeMax, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
+import { awaitsGrade, exceedsGradeMax, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 
 describe('resolveGradeDraft', () => {
   it('hydrates points and feedback from the persisted grade', () => {
@@ -108,5 +108,21 @@ describe('exceedsGradeMax', () => {
   it('never caps when the maximum is unknown', () => {
     expect(exceedsGradeMax(5, null)).toBe(false);
     expect(exceedsGradeMax(5, undefined)).toBe(false);
+  });
+});
+
+const saved = (teacher_points: number | null) => ({ teacher_points, teacher_feedback: null });
+
+describe('awaitsGrade (#1303)', () => {
+  it('waits for a saved answer that has no points yet', () => {
+    expect(awaitsGrade(saved(null))).toBe(true);
+  });
+
+  it('does not wait for a skipped question, which has no answer row', () => {
+    expect(awaitsGrade(undefined)).toBe(false);
+  });
+
+  it('does not wait once points are given, zero included', () => {
+    expect([awaitsGrade(saved(0)), awaitsGrade(saved(2))]).toEqual([false, false]);
   });
 });

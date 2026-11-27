@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
 import { usePerQuestionGrading } from '@/hooks/use-grading-actions';
-import { type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
+import { awaitsGrade, type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 
 interface ResultsData {
   id: string;
@@ -88,12 +88,6 @@ export default function PerQuestionGradingClient() {
     };
   };
 
-  /** An attempt whose answer for this question is missing or still ungraded. */
-  const needsGrading = (attempt: ResultsData) => {
-    const points = answerOf(attempt)?.teacher_points;
-    return points === null || points === undefined;
-  };
-
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -106,7 +100,7 @@ export default function PerQuestionGradingClient() {
   }
 
   const isAutoGraded = autoGradedItemIds.includes(qId);
-  const pending = attempts?.filter(needsGrading) ?? [];
+  const pending = attempts?.filter((attempt) => awaitsGrade(answerOf(attempt))) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
