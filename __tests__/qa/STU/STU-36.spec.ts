@@ -65,6 +65,8 @@ const COPY = {
   submit: 'Wyślij',
   confirmSubmitAnyway: 'Wyślij mimo to',
   confirmBack: 'Wróć',
+  quit: 'Wyjdź',
+  continue: 'Kontynuuj',
   review: 'Zobacz podsumowanie',
   reviewLocked: 'Podsumowanie otwiera się po zakończeniu kartkówki.',
 } as const;
@@ -285,6 +287,16 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     await expect(
       page.getByRole('radio', { checked: true }),
       'the answer is selected before submitting',
+    ).toHaveCount(1);
+
+    // A selection survives leaving at once, before any pause in the answers (#1547).
+    await page.getByRole('link', { name: COPY.quit }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/assignments/${assignment.id}$`));
+    await page.getByRole('button', { name: COPY.continue, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/take\\?attemptId=${attemptId}`));
+    await expect(
+      page.getByRole('radio', { checked: true }),
+      'the resumed attempt keeps the selection',
     ).toHaveCount(1);
 
     await page.getByRole('button', { name: COPY.submit, exact: true }).click();
