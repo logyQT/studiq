@@ -254,6 +254,30 @@ describe('PlanCard action', () => {
   });
 });
 
+describe('PlanCard layout', () => {
+  it('pushes the action to the bottom of every card', () => {
+    const markup = render({ hasActivePlan: true });
+    const content = /<div data-slot="card-content" class="([^"]*)"/.exec(markup)?.[1] ?? '';
+    const list = /<ul class="([^"]*)"/.exec(markup)?.[1] ?? '';
+
+    // The feature list is the only flexible row: cards with fewer features still
+    // end with their action on the same line as the tallest card in the row.
+    expect(toneTokens(content)).toContain('flex-1');
+    expect(toneTokens(list)).toContain('flex-1');
+  });
+
+  it('wraps the price and its period instead of one unbreakable line', () => {
+    const markup = render({ planKey: 'pro', hasActivePlan: false });
+    const row = /<div class="([^"]*)"><span class="text-4xl/.exec(markup)?.[1] ?? '';
+    const tokens = toneTokens(row);
+
+    expect(tokens).toEqual(expect.arrayContaining(['flex', 'flex-wrap']));
+    // The period is a sibling span, so the row can drop it to its own line.
+    expect(markup).toMatch(/<\/span><span class="text-sm text-muted-foreground">/);
+    expect(tokens).not.toContain('whitespace-nowrap');
+  });
+});
+
 describe('PlanCard badges', () => {
   it('prints the current badge and not the recommended badge on a current recommended plan', () => {
     const markup = render({ planKey: 'pro', isCurrentPlan: true, hasActivePlan: true });

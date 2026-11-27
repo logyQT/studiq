@@ -67,8 +67,8 @@ export function PlanCard({
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       </CardHeader>
       <CardContent className="flex flex-col flex-1">
-        <div className="mb-6">
-          <span className="text-4xl font-bold">
+        <div className="mb-6 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-4xl font-bold break-words">
             {new Intl.NumberFormat(locale, {
               style: 'currency',
               currency: plan.currency,
@@ -76,7 +76,7 @@ export function PlanCard({
             }).format(plan.priceMonthly / 100)}
           </span>
           {plan.priceMonthly > 0 && (
-            <span className="text-sm text-muted-foreground ml-1">{t('period_month')}</span>
+            <span className="text-sm text-muted-foreground">{t('period_month')}</span>
           )}
         </div>
 
