@@ -3,6 +3,7 @@ import {
   isOrganizationPlanFamily,
   resolveApplicablePlan,
   resolveCheckoutOwner,
+  resolvePlanAssignment,
   resolvePurchasablePlan,
 } from '@studiq/server/lib/payment/checkout-rules';
 import type { CatalogPlan } from '@studiq/server/lib/payment/stripe-repository';
@@ -17,6 +18,8 @@ const personalPlan: CatalogPlan = {
   isActive: true,
   scope: 'personal',
   sortOrder: 2,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const orgPlan: CatalogPlan = {
   key: 'hub',
@@ -26,11 +29,19 @@ const orgPlan: CatalogPlan = {
   isActive: true,
   scope: 'organization',
   sortOrder: 7,
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 const freePersonalPlan: CatalogPlan = {
   ...personalPlan,
   key: 'free',
   priceMonthly: 0,
+};
+const invoicePlan: CatalogPlan = { ...personalPlan, key: 'legacy', billingMode: 'invoice' };
+const unlistedOrgPlan: CatalogPlan = {
+  ...orgPlan,
+  key: 'enterprise',
+  visibility: 'unlisted',
 };
 const student = { userId: 'u-student', accountType: AccountType.STUDENT };
 const manager = { userId: 'u-manager', accountType: AccountType.MANAGER };
@@ -71,6 +82,8 @@ describe('resolveApplicablePlan', () => {
   it.each([
     ['missing', null],
     ['inactive', { ...personalPlan, isActive: false }],
+    ['invoice', invoicePlan],
+    ['none', { ...personalPlan, key: 'comped', billingMode: 'none' }],
   ])('rejects a %s plan with BAD_REQUEST', async (_label, plan) => {
     await expect(resolveApplicablePlan(planPort(plan), 'plus', student)).resolves.toEqual(
       failure('BAD_REQUEST'),
@@ -187,5 +200,64 @@ describe('resolveCheckoutOwner', () => {
     await expect(
       resolveCheckoutOwner(port, { plan: orgPlan, isOrgPlan: true }, caller, 'org-1'),
     ).resolves.toEqual(failure('INTERNAL_SERVER'));
+  });
+});
+
+describe('resolvePlanAssignment (B3)', () => {
+  const orgOwner = {
+    type: 'org' as const,
+    orgId: 'org-1',
+    userId: 'u-1',
+    accountType: AccountType.MANAGER,
+  };
+  const userOwner = {
+    type: 'user' as const,
+    userId: 'u-1',
+    accountType: AccountType.STUDENT,
+  };
+
+  it('accepts a public plan without an assignment read', async () => {
+    const port = { planIsAssignedToOrg: vi.fn() };
+
+    await expect(resolvePlanAssignment(port, orgPlan, orgOwner)).resolves.toEqual(success(null));
+    expect(port.planIsAssignedToOrg).not.toHaveBeenCalled();
+  });
+
+  it('accepts an unlisted plan for its assigned organization', async () => {
+    const port = { planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)) };
+
+    await expect(resolvePlanAssignment(port, unlistedOrgPlan, orgOwner)).resolves.toEqual(
+      success(null),
+    );
+    expect(port.planIsAssignedToOrg).toHaveBeenCalledWith('enterprise', 'org-1');
+  });
+
+  it('refuses an unlisted plan for an organization it is not assigned to', async () => {
+    const port = { planIsAssignedToOrg: vi.fn().mockResolvedValue(success(false)) };
+
+    await expect(resolvePlanAssignment(port, unlistedOrgPlan, orgOwner)).resolves.toEqual(
+      failure('FORBIDDEN'),
+    );
+  });
+
+  it('refuses an unlisted plan for a personal owner without a read', async () => {
+    // A contract plan belongs to an organization; a user owner can never hold
+    // one, so the answer does not need a database call.
+    const port = { planIsAssignedToOrg: vi.fn() };
+
+    await expect(
+      resolvePlanAssignment(port, { ...invoicePlan, visibility: 'unlisted' }, userOwner),
+    ).resolves.toEqual(failure('FORBIDDEN'));
+    expect(port.planIsAssignedToOrg).not.toHaveBeenCalled();
+  });
+
+  it('propagates an assignment read failure', async () => {
+    const port = {
+      planIsAssignedToOrg: vi.fn().mockResolvedValue(failure('INTERNAL_SERVER')),
+    };
+
+    await expect(resolvePlanAssignment(port, unlistedOrgPlan, orgOwner)).resolves.toEqual(
+      failure('INTERNAL_SERVER'),
+    );
   });
 });

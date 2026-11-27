@@ -18,6 +18,9 @@ export const queryKeys = {
     all: ['subscription-plans'] as const,
     detail: (id: string) => ['subscription-plans', id] as const,
   },
+  planAssignments: {
+    byPlan: (id: string) => ['plan-assignments', id] as const,
+  },
   stats: {
     platform: ['stats', 'platform'] as const,
     daily: (days: number) => ['stats', 'daily', days] as const,

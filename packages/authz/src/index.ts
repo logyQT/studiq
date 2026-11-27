@@ -27,6 +27,15 @@ export {
   ORG_LIMIT_KEYS,
   USER_LIMIT_KEYS,
 } from './limits';
+// ── Plans ───────────────────────────────────────────────────────────────────
+export {
+  PLAN_BILLING_MODES,
+  PLAN_SCOPES,
+  PLAN_VISIBILITIES,
+  type PlanBillingMode,
+  type PlanScope,
+  type PlanVisibility,
+} from './plans';
 // ── Permissions ─────────────────────────────────────────────────────────────
 export {
   type CatalogScope,

@@ -29,15 +29,14 @@ Fix open defects before new features. The order below follows that rule.
 | A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                                                                                                                                                                                                                                                                                                      |
 | B1   | **#1193** | #1513 | One individual ladder: Free / Plus / Pro / Max on `base` / `spark` / `ace` / `pro`. `audience` retires; no personal `-1`; the organization ladder stays for B2. The operator settled four tiers on 2026-11-26, not the three this row first proposed.                                                                                                                                   |
 | B2   | **#1493** | #1517 | Four purchasable organization tiers — Launch 5/3, Team 25/10, Hub 100/40, Campus 1000/100 — with cumulative features (`quiz.templates`, `stats.insights`, `branding`). Custom setup is a separate "talk to sales" CTA, not a card. Seats frozen at the UI; AI deferred to #1511. Revised 2026-11-27: supersedes the merged three-tier capacity-only cut and the `team`-into-`hub` fold. |
+| B3   | **#1495** | #1553 | Unlisted contract plans: hidden from every public read, pinned to organizations (`plan_assignments`), and refused at checkout and in `change_org_plan` for every organization that is not assigned.                                                                                                                                                                                     |
 
 A4 moved the two stats triggers behind definer functions, so no user client writes the
 table. A fresh local review and served QA ran before the PR opened.
 
 ## B. Simplify the plans
 
-| Step | Issue     | What it does                                                         | Exit criterion                                                                                                             | Depends on                                       |
-| ---- | --------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| B3   | **#1495** | Unlisted plans, pinned to one organization, for sales-led contracts. | A plan can be `unlisted`, assigned to one org, and refused for every other org. Checkout refuses it. Public reads hide it. | B2 (the enterprise tier), A3 (the public filter) |
+B3 is done (see Done). The B section is closed.
 
 Target: eight public SKUs. Four individual (Free / Plus / Pro / Max), four organization
 (Launch / Team / Hub / Campus). Enterprise is an unlisted plan (B3).

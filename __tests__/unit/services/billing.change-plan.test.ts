@@ -45,6 +45,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'personal',
     sortOrder: 1,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   pro: {
     key: 'pro',
@@ -54,6 +56,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'personal',
     sortOrder: 2,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   hub: {
     key: 'hub',
@@ -63,6 +67,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'organization',
     sortOrder: 3,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   campus: {
     key: 'campus',
@@ -72,6 +78,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'organization',
     sortOrder: 4,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
   max: {
     key: 'max',
@@ -81,6 +89,8 @@ const CATALOG: Record<string, CatalogPlan> = {
     isActive: true,
     scope: 'personal',
     sortOrder: 5,
+    visibility: 'public',
+    billingMode: 'stripe',
   },
 };
 
@@ -132,6 +142,7 @@ function createRepository(
       .fn()
       .mockImplementation((key: string) => Promise.resolve(success(CATALOG[key] ?? null))),
     canManageBilling: vi.fn().mockResolvedValue(success(true)),
+    planIsAssignedToOrg: vi.fn().mockResolvedValue(success(true)),
     findCustomer: vi.fn().mockResolvedValue(success({ stripeCustomerId: 'cus_1' })),
     insertCustomer: vi.fn(),
     getCustomerDetails: vi.fn(),
@@ -230,6 +241,20 @@ describe('BillingService.changePlan', () => {
       success: false,
       error: 'FORBIDDEN',
     });
+    expect(gateway.changePlan).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unlisted target plan for an organization it is not assigned to (B3)', async () => {
+    vi.mocked(repository.getPlan).mockResolvedValueOnce(
+      success({ ...requiredValue(CATALOG.hub, 'hub plan'), visibility: 'unlisted' }),
+    );
+    vi.mocked(repository.planIsAssignedToOrg).mockResolvedValueOnce(success(false));
+
+    await expect(service.changePlan(managerCtx, 'hub')).resolves.toEqual({
+      success: false,
+      error: 'FORBIDDEN',
+    });
+    expect(repository.planIsAssignedToOrg).toHaveBeenCalledWith('hub', 'org-1');
     expect(gateway.changePlan).not.toHaveBeenCalled();
   });
 

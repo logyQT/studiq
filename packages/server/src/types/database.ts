@@ -1384,6 +1384,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      plan_assignments: {
+        Row: {
+          created_at: string;
+          organization_id: string;
+          plan_key: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          organization_id: string;
+          plan_key: string;
+        };
+        Update: {
+          created_at?: string;
+          organization_id?: string;
+          plan_key?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'plan_assignments_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'plan_assignments_plan_key_fkey';
+            columns: ['plan_key'];
+            isOneToOne: false;
+            referencedRelation: 'subscription_plans';
+            referencedColumns: ['key'];
+          },
+        ];
+      };
       plan_entitlements: {
         Row: {
           created_at: string | null;
@@ -2175,6 +2209,7 @@ export type Database = {
       };
       subscription_plans: {
         Row: {
+          billing_mode: string;
           created_at: string | null;
           currency: string;
           description: string | null;
@@ -2187,9 +2222,11 @@ export type Database = {
           scope: string;
           sort_order: number | null;
           updated_at: string | null;
+          visibility: string;
         };
         ComputedFields: never;
         Insert: {
+          billing_mode?: string;
           created_at?: string | null;
           currency?: string;
           description?: string | null;
@@ -2202,8 +2239,10 @@ export type Database = {
           scope: string;
           sort_order?: number | null;
           updated_at?: string | null;
+          visibility?: string;
         };
         Update: {
+          billing_mode?: string;
           created_at?: string | null;
           currency?: string;
           description?: string | null;
@@ -2216,6 +2255,7 @@ export type Database = {
           scope?: string;
           sort_order?: number | null;
           updated_at?: string | null;
+          visibility?: string;
         };
         Relationships: [];
       };
@@ -2594,6 +2634,7 @@ export type Database = {
       actor_may_assign_org_role: { Args: { p_actor: string; p_role_id: string }; Returns: boolean };
       admin_daily_stats: { Args: { p_days?: number }; Returns: Json };
       admin_platform_stats: { Args: Record<PropertyKey, never>; Returns: Json };
+      assign_plan_to_org: { Args: { p_org_id: string; p_plan_key: string }; Returns: undefined };
       apply_entitlement_fenced: {
         Args: {
           p_event_created: number;
