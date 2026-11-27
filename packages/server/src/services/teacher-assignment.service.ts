@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { readNotStarted } from '@studiq/server/lib/assignment-recipients';
 import {
   type AssignmentLink,
   ASSIGNMENT_QUESTION_COLUMNS,
@@ -1387,7 +1388,16 @@ export class TeacherAssignmentService {
     if (isFailure(snapshots)) return snapshots;
     const manualItems = manualGradeItems(snapshots.data);
 
+    // Who the teacher still waits for (#1340): targeted, with no attempt in the list above.
+    const notStarted = await readNotStarted(
+      id,
+      new Set(dbRows(attempts).flatMap((attempt) => (attempt.user_id ? [attempt.user_id] : []))),
+    );
+    if (isFailure(notStarted)) return notStarted;
+
     return success({
+      notStarted: notStarted.data.students,
+      run_closed: notStarted.data.closed,
       attempts: dbRows(attempts).map((attempt) => {
         const answers = dbRows(attempt.quiz_answers);
         return {

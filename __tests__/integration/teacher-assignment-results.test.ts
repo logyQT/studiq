@@ -60,6 +60,8 @@ interface ResultsRow {
 
 interface ResultsPayload {
   attempts: ResultsRow[];
+  notStarted: Array<{ userId: string; email: string | null; groupNames: string[] }>;
+  run_closed: boolean;
   auto_graded_item_ids: string[];
 }
 
@@ -92,6 +94,7 @@ describe('Teacher assignment results payload (#1230)', () => {
   let teacher!: BeforeResult;
   let answering!: BeforeResult;
   let silent!: BeforeResult;
+  let absent!: BeforeResult;
   let assignmentId!: string;
   let questionId!: string;
   let openQuestionId!: string;
@@ -176,6 +179,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     teacher = await before({ role: 'educator', org: true, questions: 2 });
     answering = await before({ role: 'student' });
     silent = await before({ role: 'student' });
+    absent = await before({ role: 'student' });
     if (!teacher.orgId) throw new Error('the teacher fixture has no organisation');
 
     const service = createServiceClient();
@@ -185,7 +189,7 @@ describe('Teacher assignment results payload (#1230)', () => {
       .eq('organization_id', teacher.orgId)
       .eq('name', 'member')
       .single();
-    for (const student of [answering, silent]) {
+    for (const student of [answering, silent, absent]) {
       await seedOrgMembership({
         organizationId: teacher.orgId,
         userId: student.user.id,
@@ -245,7 +249,9 @@ describe('Teacher assignment results payload (#1230)', () => {
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentIds: [answering.user.id, silent.user.id] }),
+          body: JSON.stringify({
+            studentIds: [answering.user.id, silent.user.id, absent.user.id],
+          }),
         },
         cookie(),
       ).request,
@@ -313,6 +319,15 @@ describe('Teacher assignment results payload (#1230)', () => {
     expect(answer, 'the answer for the graded question is embedded').toBeDefined();
     expect(answer?.teacher_points, 'a submitted answer starts ungraded').toBeNull();
     expect(row?.assignment_answer_images, 'the photo rows travel too').toBeInstanceOf(Array);
+  });
+
+  it('lists the targeted student who has no attempt, and only that one (#1340)', async () => {
+    const payload = await resultsPayload();
+
+    // An attempt with no answers still counts as started.
+    expect(payload.notStarted.map((student) => student.userId)).toEqual([absent.user.id]);
+    expect(payload.notStarted[0]?.email).toBe(absent.user.email);
+    expect(payload.run_closed).toBe(false);
   });
 
   it('returns empty answer arrays for an attempt with no answers', async () => {

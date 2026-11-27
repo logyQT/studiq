@@ -4,6 +4,10 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import {
+  NotStartedStudents,
+  type NotStartedStudentRow,
+} from '@/components/assignments/not-started-students';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
@@ -45,7 +49,13 @@ export default function ResultsClient() {
   const locale = useLocale();
   const t = useTranslations('EduAssignmentResultsPage');
 
-  const { data: results, isLoading } = useApiQuery<{ attempts: Attempt[]; fairness: Fairness }>({
+  const { data: results, isLoading } = useApiQuery<{
+    attempts: Attempt[];
+    fairness: Fairness;
+    /** Optional on the wire: a missing list hides the section instead of breaking the page. */
+    notStarted?: NotStartedStudentRow[];
+    run_closed?: boolean;
+  }>({
     queryKey: assignmentKeys.results(id),
     url: `/api/v1/teacher/assignments/${id}/results`,
   });
@@ -170,6 +180,10 @@ export default function ResultsClient() {
           </tbody>
         </table>
       </div>
+
+      {results?.notStarted && (
+        <NotStartedStudents students={results.notStarted} closed={results.run_closed ?? false} />
+      )}
 
       {fairness && fairness.items.length > 0 && (
         <div className="space-y-2">

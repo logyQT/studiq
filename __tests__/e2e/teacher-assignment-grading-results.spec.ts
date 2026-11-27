@@ -165,6 +165,10 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
         (id) => created.push(id),
       );
 
+      // Before anyone starts, the results page names who it waits for (#1340).
+      await page.goto(`/edu/assignments/${assignmentId}/results`);
+      await expect(page.getByText(/Not started \(1\)|Nie rozpoczęli \(1\)/)).toBeVisible();
+
       // ── The student submits a text answer ───────────────────────────────
       const studentPage = await studentContext.newPage();
       await login(studentPage, STUDENT_EMAIL);
@@ -180,6 +184,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await page.goto(`/edu/assignments/${assignmentId}/results`);
       const row = page.locator('tbody tr', { hasText: 'Classroom Student' });
       await expect(row.getByText(t('EduAssignmentResultsPage.submitted'))).toBeVisible();
+      await expect(page.getByText(/Not started \(0\)|Nie rozpoczęli \(0\)/)).toBeVisible();
 
       // The grading page reads the list when it opens (#1354). Wait for that read itself: the
       // navigation also renders from the cached list, so seeing it proves nothing. Only then

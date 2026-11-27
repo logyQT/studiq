@@ -1,4 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
+import { readTargetedStudents } from '@studiq/server/lib/assignment-recipients';
 import { error as logError } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isRecord } from '@studiq/server/lib/record';
@@ -64,15 +65,6 @@ type NotificationRow = Pick<
 
 /** Inserts are sent in batches so one big class does not become one huge statement. */
 const INSERT_BATCH = 500;
-
-/**
- * PostgREST caps a response at 1000 rows, so reads walk pages instead of trusting one query to
- * return everything: a large class must not silently lose its later members.
- */
-const READ_PAGE = 500;
-
-/** `.in()` values travel in the request URL, so they are chunked rather than sent all at once. */
-const IN_CHUNK = 200;
 
 /** Only a code or a class name is logged: database messages can quote ids and names. */
 function errorCode(err: unknown): string {
@@ -195,70 +187,14 @@ export class NotificationService implements Notifier {
       const assignment = await this.assignment(input.assignmentId);
       if (!assignment?.organizationId) return;
 
-      const targets: Array<{ group_id: string | null; student_id: string | null }> = [];
-      for (let from = 0; ; from += READ_PAGE) {
-        const { data: page, error } = await admin
-          .from('assignment_targets')
-          .select('group_id, student_id')
-          .eq('assignment_id', input.assignmentId)
-          .order('id', { ascending: true })
-          .range(from, from + READ_PAGE - 1);
-        if (error) throw error;
-        const pageRows = dbRows(page);
-        targets.push(...pageRows);
-        if (pageRows.length < READ_PAGE) break;
-      }
-
-      const recipients = new Set<string>();
-      const groupIds = [...new Set(targets.flatMap((t) => (t.group_id ? [t.group_id] : [])))];
-      for (const target of targets) {
-        if (target.student_id) recipients.add(target.student_id);
-      }
-
-      // A target is a raw id the request supplied, so the recipients are never taken from it
-      // as they are: groups are resolved through the assignment's organisation, and every
-      // recipient must still be a member of it. Otherwise a teacher of two organisations could
-      // push one tenant's assignment title into another tenant's bell.
-      for (let g = 0; g < groupIds.length; g += IN_CHUNK) {
-        const groupChunk = groupIds.slice(g, g + IN_CHUNK);
-        for (let from = 0; ; from += READ_PAGE) {
-          const { data: members, error: membersError } = await admin
-            .from('group_members')
-            .select('user_id, groups!inner(organization_id)')
-            .in('group_id', groupChunk)
-            .eq('role', 'member')
-            .eq('groups.organization_id', assignment.organizationId)
-            .order('id', { ascending: true })
-            .range(from, from + READ_PAGE - 1);
-          if (membersError) throw membersError;
-          const memberRows = dbRows(members);
-          for (const member of memberRows) {
-            if (member.user_id) recipients.add(member.user_id);
-          }
-          if (memberRows.length < READ_PAGE) break;
-        }
-      }
-
-      // The teacher may sit in the group too; they know they published it.
-      recipients.delete(input.teacherId);
-
-      if (recipients.size > 0) {
-        const inOrg = new Set<string>();
-        const ids = [...recipients];
-        for (let i = 0; i < ids.length; i += IN_CHUNK) {
-          const { data: orgMembers, error: orgError } = await admin
-            .from('org_members')
-            .select('user_id')
-            .eq('organization_id', assignment.organizationId)
-            .in('user_id', ids.slice(i, i + IN_CHUNK));
-          if (orgError) throw orgError;
-          for (const member of dbRows(orgMembers)) inOrg.add(member.user_id);
-        }
-        for (const id of ids) if (!inOrg.has(id)) recipients.delete(id);
-      }
+      const recipients = await readTargetedStudents(admin, {
+        assignmentId: input.assignmentId,
+        organizationId: assignment.organizationId,
+        teacherId: input.teacherId,
+      });
 
       await this.insert(
-        [...recipients].map((userId) => ({
+        [...recipients.keys()].map((userId) => ({
           userId,
           organizationId: assignment.organizationId,
           type: 'assignment_published' as const,
