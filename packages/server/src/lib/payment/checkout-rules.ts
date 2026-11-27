@@ -34,22 +34,24 @@ export interface CheckoutCaller {
   accountType: AccountType;
 }
 
-/** An organization plan has `scope='organization'` and no audience. */
+/** An organization plan has `scope='organization'`. */
 export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): boolean {
   return plan.scope === 'organization';
 }
 
 /**
- * A plan may be *applied* when it exists and is active. A personal plan has no
- * audience since #1193 — one individual ladder serves every persona — so it is
- * applicable to any caller. An organization plan is applicable too; the owner
- * rule below decides who may buy it. Free plans are included: they are reached
- * by a lifecycle change (the mock's completion command, Stripe's
- * `customer.subscription.deleted`), not by a purchase.
+ * A plan may be *applied* when it exists and is active. A personal plan is
+ * applicable to a content subscriber; a manager is an organization buyer and
+ * holds no personal plan (ADR-0007), so a personal plan is refused for them.
+ * An organization plan is applicable too, and the owner rule below decides who
+ * may buy it. Free plans are included: they are reached by a lifecycle change
+ * (the mock's completion command, Stripe's `customer.subscription.deleted`),
+ * not by a purchase.
  */
 export async function resolveApplicablePlan(
   port: Pick<CheckoutRulePort, 'getPlan'>,
   planKey: string,
+  caller: CheckoutCaller,
 ): Promise<ServiceResult<ResolvedPlan>> {
   const result = await port.getPlan(planKey);
   if (isFailure(result)) return result;
@@ -57,7 +59,10 @@ export async function resolveApplicablePlan(
   const plan = result.data;
   if (!plan?.isActive) return failure('BAD_REQUEST');
 
-  return success({ plan, isOrgPlan: isOrganizationPlanFamily(plan) });
+  const isOrgPlan = isOrganizationPlanFamily(plan);
+  if (!isOrgPlan && caller.accountType === AccountType.MANAGER) return failure('FORBIDDEN');
+
+  return success({ plan, isOrgPlan });
 }
 
 /**
@@ -67,8 +72,9 @@ export async function resolveApplicablePlan(
 export async function resolvePurchasablePlan(
   port: Pick<CheckoutRulePort, 'getPlan'>,
   planKey: string,
+  caller: CheckoutCaller,
 ): Promise<ServiceResult<ResolvedPlan>> {
-  const result = await resolveApplicablePlan(port, planKey);
+  const result = await resolveApplicablePlan(port, planKey, caller);
   if (isFailure(result)) return result;
   if (result.data.plan.priceMonthly <= 0) return failure('BAD_REQUEST');
   return result;

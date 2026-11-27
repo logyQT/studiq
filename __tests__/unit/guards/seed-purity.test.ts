@@ -212,7 +212,7 @@ describe('findingsInSource()', () => {
   it('reports a do block, whose blanked body is opaque', () => {
     const source = [
       'select 1;',
-      "do $$ begin insert into public.permissions (key) values ('base'); end $$;",
+      "do $$ begin insert into public.permissions (key) values ('free'); end $$;",
     ].join('\n');
     expect(findingsInSource('seeds/x.sql', source).map((finding) => finding.line)).toEqual([2]);
   });

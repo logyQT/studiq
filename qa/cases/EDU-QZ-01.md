@@ -9,7 +9,11 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"` in the profile), not the org plan.
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the account's personal Plus plan (`personalPlan: "plus"` in the profile), not the org plan.
+
+## Amendment (2026-11-27, manager model)
+
+A manager is an organization buyer and holds no personal plan (ADR-0007, #1530), so the tenant's manager cannot create a saved quiz. The own-only list check uses the tenant's second educator (`users.teacher2`) as the other creator: an educator with the same personal Plus plan holds `quiz.templates` and `quiz.create`, and the org admin stays out of the fixture's writes.
 
 ## Prerequisite (verbatim)
 
@@ -25,23 +29,27 @@ TC.
   (`loginAs(page, tenant, 'teacher', { locale: 'pl' })`), with the tenant org as the active org
   (`active_org_id`). The legacy prerequisite account (`teacher-classroom@dev.local`, `pass`) is
   never used.
-- Organization: `qa-edu-qz-01-<suffix>` with a manager, an educator and a student, plus the
-  default group `G1`. The tenant org sits on the **hub** plan
-  (`{ "profile": "content", "plan": "hub", "personalPlan": "spark" }` in
-  `__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's `--plan`). Hub is
-  capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
-  (phase 5d) comes from the personal Plus plan, which every seeded account carries: the
-  educator passes the gate on `POST /api/v1/teacher/quizzes`, and so does the org admin
-  who mints the foreign quiz for the own-only list check (acceptance point 6). No content
-  is needed: the case starts from the empty quiz list („Brak quizów”).
+- Organization: `qa-edu-qz-01-<suffix>` with a manager, two educators (`teacher`, `teacher2`)
+  and a student, plus the default group `G1`. The profile declares the roster in `members`;
+  the tenant org sits on the **hub** plan (`"profile": "content", "plan": "hub"`) and every
+  non-manager account carries `"personalPlan": "plus"`
+  (`__tests__/qa/profiles/EDU-QZ-01.json`, applied through the seeder's `--plan` /
+  `--personal-plan`). Hub is capacity only since #1493, so the saved-quiz library's
+  `quiz.templates` entitlement (phase 5d) comes from that personal Plus plan: the first
+  educator passes the gate on `POST /api/v1/teacher/quizzes`, and so does the second
+  educator who mints the foreign quiz for the own-only list check (acceptance point 6). A
+  manager carries no personal plan (ADR-0007), so the org admin is not a content creator in
+  this tenant. No content is needed: the case starts from the empty quiz list („Brak
+  quizów”).
 - Quiz name: the case's „Quiz próbny” carries the run suffix („Quiz próbny <suffix>”) so two
   runs on the same tenant never share a card; the spec addresses the quiz by the id the create
   response returns, never by name alone.
-- Own-only list check (2b-6): the spec also logs in as the tenant's `users.manager` (org
-  `admin`, holds `quiz.create` at `organization`), creates one quiz in the same organization
-  through `POST /api/v1/teacher/quizzes`, asserts it does **not** appear in the educator's
-  `GET /api/v1/teacher/quizzes`, and deletes it again as its creator, so the tenant ends as
-  the case found it.
+- Own-only list check (2b-6): the spec also logs in as the tenant's `users.teacher2` (a
+  second educator in the same organization, holds the personal Plus plan's `quiz.templates`
+  and `quiz.create` at `own`), creates one quiz in the same organization
+  through `POST /api/v1/teacher/quizzes`, asserts it does **not** appear in the first
+  educator's `GET /api/v1/teacher/quizzes`, and deletes it again as its creator, so the
+  tenant ends as the case found it.
 - Nothing shared is read or written: no admin setting, feature flag, plan, platform stat or
   singleton row, and no other tenant.
 
@@ -76,7 +84,7 @@ TC.
 
 - Przejście do edytora quizu (/edu/quizzes/<id>/edit).
 - Przycisk „Utwórz quiz” nieaktywny przy pustej nazwie.
-- Lista quizów nauczyciela pokazuje tylko quizy własne (2b-6: rola `teacher` ma
-  `quiz.read` w zakresie `own`): quiz utworzony przez admina organizacji w tej samej
+- Lista quizów nauczyciela pokazuje tylko quizy własne (2b-6: rola `teacher` czyta quizy
+  wyłącznie w zakresie własnym): quiz utworzony przez drugiego nauczyciela w tej samej
   organizacji nie pojawia się na liście (`GET /api/v1/teacher/quizzes` → 200, każdy
   wiersz z `created_by` nauczyciela), a własny quiz tak.

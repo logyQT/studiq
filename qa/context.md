@@ -60,12 +60,12 @@ All seeded accounts use the password `pass`. QA runs a production build, so ther
 | manager2@dev.local          | M2    | manager      | Akademia Górnicza (admin)                              | Launch        | Only organization, no groups or students                            |
 | teacher1@dev.local          | T1    | educator     | WSB Merito and UE Wrocław (teacher); groups O1G1, O2G1 | Lite          | Main teacher account                                                |
 | teacher2@dev.local          | T2    | educator     | WSB Merito and UE Wrocław (teacher); groups O1G2, O2G2 | Lite          | For isolation tests against T1                                      |
-| student1@dev.local          | S1    | student      | WSB Merito (member), group O1G1                        | Base          | Has a personal deck "O1S1"                                          |
-| student2@dev.local          | S2    | student      | UE Wrocław (member), group O2G1                        | Base          | Different organization from S1                                      |
-| student3@dev.local          | S3    | student      | no organization                                        | Base          | Standalone account (B2C)                                            |
-| test-student@dev.local      | TS    | student      | none                                                   | Base          | No content at all – for "from scratch" and limit tests              |
+| student1@dev.local          | S1    | student      | WSB Merito (member), group O1G1                        | Free          | Has a personal deck "O1S1"                                          |
+| student2@dev.local          | S2    | student      | UE Wrocław (member), group O2G1                        | Free          | Different organization from S1                                      |
+| student3@dev.local          | S3    | student      | no organization                                        | Free          | Standalone account (B2C)                                            |
+| test-student@dev.local      | TS    | student      | none                                                   | Free          | No content at all – for "from scratch" and limit tests              |
 | teacher-classroom@dev.local | TC    | educator     | Classroom (admin), group "Classroom Group"             | Launch        | Full data: 2 banks, 10 questions, 2 decks (8 flashcards), 2 quizzes |
-| student-classroom@dev.local | SC    | student      | Classroom (member), group "Classroom Group"            | Base          | TC's student – for quizzes and tests                                |
+| student-classroom@dev.local | SC    | student      | Classroom (member), group "Classroom Group"            | Free          | TC's student – for quizzes and tests                                |
 
 ### Organizations, groups and seeded content
 
@@ -80,7 +80,7 @@ All seeded accounts use the password `pass`. QA runs a production build, so ther
 
 | Ladder       | Free                           | Paid                                                                                               |
 | ------------ | ------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Individual   | Base (100 cards, 50 questions) | Plus 19.99 zł (AI, saved quiz library) · Pro 39.99 zł (+ insights) · Max 79.99 zł (highest limits) |
+| Individual   | Free (100 cards, 50 questions) | Plus 19.99 zł (AI, saved quiz library) · Pro 39.99 zł (+ insights) · Max 79.99 zł (highest limits) |
 | Organization | Launch (5 members, 3 groups)   | Hub 299 zł (50 members, 20 groups) · Campus 699 zł (1 000 members, 100 groups; sales conversation) |
 
 An organization plan is **capacity only** since #1493: it carries no `ai.chat`, `quiz.templates`,

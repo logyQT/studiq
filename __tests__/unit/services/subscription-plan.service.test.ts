@@ -66,7 +66,7 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
-function planRow(key: string, scope: string = 'personal', audience: string | null = 'student') {
+function planRow(key: string, scope: string = 'personal') {
   return {
     id: `p-${key}`,
     key,
@@ -78,7 +78,6 @@ function planRow(key: string, scope: string = 'personal', audience: string | nul
     sort_order: 0,
     is_active: true,
     scope,
-    audience,
   };
 }
 
@@ -88,7 +87,6 @@ function mockPlanTables(
   opts: Parameters<typeof mockResolverTables>[1],
   planKey: string | null,
   scope: string = 'personal',
-  audience: string | null = 'student',
 ) {
   mockResolverTables(mock, opts);
   const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
@@ -96,7 +94,7 @@ function mockPlanTables(
     if (table !== 'subscription_plans') return baseImpl(table);
     // Key-aware catalog read: a lookup for any other key finds no row, so a
     // wrong plan key resolves NOT_FOUND instead of silently passing.
-    const row = planKey ? planRow(planKey, scope, audience) : null;
+    const row = planKey ? planRow(planKey, scope) : null;
     const plansQb = qb(row);
     plansQb.eq = vi.fn((column: string, value: unknown) =>
       column === 'key' && value !== planKey ? qb(null) : plansQb,
@@ -131,7 +129,7 @@ describe('SubscriptionPlanService', () => {
       const plans = [
         {
           id: 'p-1',
-          key: 'base',
+          key: 'free',
           name: 'Base',
           description: null,
           price_monthly: 0,
@@ -140,8 +138,8 @@ describe('SubscriptionPlanService', () => {
           is_active: true,
         },
       ];
-      const features = [{ plan_key: 'base', entitlement_key: 'quiz' }];
-      const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
+      const features = [{ plan_key: 'free', entitlement_key: 'quiz' }];
+      const limits = [{ plan_key: 'free', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb(features));
       mock.from.mockReturnValueOnce(qb([]));
@@ -154,11 +152,10 @@ describe('SubscriptionPlanService', () => {
       expect(expectSuccess(result)[0]?.limits.max_groups).toBe(3);
     });
 
-    it('maps scope/audience to the PlanInfo fields', async () => {
+    it('maps scope to the PlanInfo field', async () => {
       const plans = [
-        { id: 'p-1', key: 'hub', name: 'Hub', scope: 'organization', audience: null },
-        { id: 'p-2', key: 'solo', name: 'Solo', scope: 'personal', audience: 'manager' },
-        { id: 'p-3', key: 'base', name: 'Base', scope: 'personal', audience: 'student' },
+        { id: 'p-1', key: 'hub', name: 'Hub', scope: 'organization' },
+        { id: 'p-2', key: 'pro', name: 'Pro', scope: 'personal' },
       ];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb([]));
@@ -168,21 +165,19 @@ describe('SubscriptionPlanService', () => {
       const result = await service.listActive();
 
       expect(expectSuccess(result)[0]?.scope).toBe('organization');
-      expect(expectSuccess(result)[0]?.audience).toBeNull();
       expect(expectSuccess(result)[1]?.scope).toBe('personal');
-      expect(expectSuccess(result)[1]?.audience).toBe('manager');
     });
 
     it('derives seatEligible from the catalog embed: all keys seat-eligible', async () => {
-      const plans = [planRow('ace')];
+      const plans = [planRow('pro')];
       const features = [
         {
-          plan_key: 'ace',
+          plan_key: 'pro',
           entitlement_key: 'flashcards',
           entitlement_catalog: { seat_eligible: true },
         },
         {
-          plan_key: 'ace',
+          plan_key: 'pro',
           entitlement_key: 'ai.chat',
           entitlement_catalog: { seat_eligible: true },
         },
@@ -230,7 +225,6 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
       expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
-      expect(plansQb.eq).not.toHaveBeenCalledWith('audience', expect.anything());
     });
 
     it('returns error on plans query failure', async () => {
@@ -266,13 +260,13 @@ describe('SubscriptionPlanService', () => {
     it('drops a surface key whose flag row is disabled', async () => {
       const features = [
         {
-          plan_key: 'pro',
+          plan_key: 'max',
           entitlement_key: 'stats.insights',
           entitlement_catalog: { seat_eligible: true },
         },
-        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        { plan_key: 'max', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
       ];
-      mock.from.mockReturnValueOnce(qb([planRow('pro')]));
+      mock.from.mockReturnValueOnce(qb([planRow('max')]));
       mock.from.mockReturnValueOnce(qb(features));
       mock.from.mockReturnValueOnce(qb([{ key: 'stats.insights', is_enabled: false }]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -285,13 +279,13 @@ describe('SubscriptionPlanService', () => {
     it('drops a surface key with no flag row because the resolver fails closed', async () => {
       const features = [
         {
-          plan_key: 'pro',
+          plan_key: 'max',
           entitlement_key: 'stats.insights',
           entitlement_catalog: { seat_eligible: true },
         },
-        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        { plan_key: 'max', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
       ];
-      mock.from.mockReturnValueOnce(qb([planRow('pro')]));
+      mock.from.mockReturnValueOnce(qb([planRow('max')]));
       mock.from.mockReturnValueOnce(qb(features));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -303,14 +297,14 @@ describe('SubscriptionPlanService', () => {
 
     it('keeps a baseline key with no flag row: baseline keys are never gated', async () => {
       const features = [
-        { plan_key: 'base', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        { plan_key: 'free', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
         {
-          plan_key: 'base',
+          plan_key: 'free',
           entitlement_key: 'flashcards',
           entitlement_catalog: { seat_eligible: true },
         },
       ];
-      mock.from.mockReturnValueOnce(qb([planRow('base')]));
+      mock.from.mockReturnValueOnce(qb([planRow('free')]));
       mock.from.mockReturnValueOnce(qb(features));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -344,7 +338,7 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('returns error on the flag query failure', async () => {
-      mock.from.mockReturnValueOnce(qb([planRow('base')]));
+      mock.from.mockReturnValueOnce(qb([planRow('free')]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
@@ -354,7 +348,7 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('returns error on features query failure', async () => {
-      mock.from.mockReturnValueOnce(qb([{ id: 'p-1', key: 'base', name: 'Base' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'p-1', key: 'free', name: 'Base' }]));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.listActive();
@@ -370,12 +364,12 @@ describe('SubscriptionPlanService', () => {
         {
           orgPlan: 'launch',
           roleProfile: 'learner',
-          seatPlanKey: 'ace',
-          personalPlanKey: 'base',
+          seatPlanKey: 'pro',
+          personalPlanKey: 'free',
           planEntitlements: {
             launch: ['flashcards', 'quiz'],
-            ace: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
-            base: ['flashcards', 'quiz'],
+            pro: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'],
+            free: ['flashcards', 'quiz'],
           },
           planLimits: {
             launch: {
@@ -385,14 +379,14 @@ describe('SubscriptionPlanService', () => {
               max_students: 5,
               max_groups: 3,
             },
-            ace: {
+            pro: {
               max_flashcards: 2000,
               max_quiz_attempts_per_day: -1,
               max_ai_tokens_per_day: 200000,
               max_students: -1,
               max_groups: -1,
             },
-            base: {
+            free: {
               max_flashcards: 100,
               max_quiz_attempts_per_day: 10,
               max_ai_tokens_per_day: 0,
@@ -401,7 +395,7 @@ describe('SubscriptionPlanService', () => {
             },
           },
         },
-        'ace',
+        'pro',
       );
 
       const result = await service.getMyPlan({
@@ -412,7 +406,7 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(true);
       const plan = expectSuccess(result);
-      expect(plan.key).toBe('ace');
+      expect(plan.key).toBe('pro');
       // features/limits are the effective resolved set: the seat's ai.chat is
       // not in the launch ceiling, so it is not effective; the user-scope
       // limits are max(org, seat, personal) and org-scope limits stay the org's.
@@ -422,8 +416,8 @@ describe('SubscriptionPlanService', () => {
       expect(plan.limits.max_students).toBe(5);
       expect(plan.sources).toEqual([
         { planKey: 'launch', origin: 'org' },
-        { planKey: 'ace', origin: 'seat' },
-        { planKey: 'base', origin: 'personal' },
+        { planKey: 'pro', origin: 'seat' },
+        { planKey: 'free', origin: 'personal' },
       ]);
     });
 
@@ -460,9 +454,9 @@ describe('SubscriptionPlanService', () => {
           orgPlan: 'hub',
           roleProfile: 'learner',
           seatPlanKey: null,
-          personalPlanKey: 'pro',
+          personalPlanKey: 'max',
         },
-        'pro',
+        'max',
         'personal',
         'student',
       );
@@ -475,14 +469,14 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('pro');
+      expect(expectSuccess(result).key).toBe('max');
     });
 
     it('returns the personal plan for an unseated student member, #181', async () => {
       mockPlanTables(
         mock,
-        { orgPlan: 'launch', roleProfile: 'learner', personalPlanKey: 'base' },
-        'base',
+        { orgPlan: 'launch', roleProfile: 'learner', personalPlanKey: 'free' },
+        'free',
         'student',
       );
 
@@ -493,7 +487,7 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('base');
+      expect(expectSuccess(result).key).toBe('free');
     });
 
     it('a forged active_org_id with a stale seat row resolves the personal plan, never the seat, 3b', async () => {
@@ -503,10 +497,10 @@ describe('SubscriptionPlanService', () => {
           member: false, // no org_members row for the cookie's org
           orgPlan: 'hub',
           roleProfile: 'all',
-          seatPlanKey: 'ace', // stale seat row in the foreign org
-          personalPlanKey: 'base',
+          seatPlanKey: 'pro', // stale seat row in the foreign org
+          personalPlanKey: 'free',
         },
-        'base',
+        'free',
         'student',
       );
 
@@ -517,7 +511,7 @@ describe('SubscriptionPlanService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(expectSuccess(result).key).toBe('base');
+      expect(expectSuccess(result).key).toBe('free');
       expect(mock.from).not.toHaveBeenCalledWith('org_seat_assignments');
     });
 
@@ -571,7 +565,7 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('returns NOT_FOUND when the resolved plan key has no catalog row', async () => {
-      mockPlanTables(mock, { personalPlanKey: 'base' }, null);
+      mockPlanTables(mock, { personalPlanKey: 'free' }, null);
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: null });
 
@@ -618,7 +612,6 @@ describe('SubscriptionPlanService', () => {
         sort_order: 9,
         is_active: true,
         scope: 'organization',
-        audience: null,
       };
       mock.from
         .mockReturnValueOnce(qb({ personal_plan_key: 'hub' }))
@@ -646,7 +639,6 @@ describe('SubscriptionPlanService', () => {
         sort_order: 13,
         is_active: true,
         scope: 'personal',
-        audience: 'manager',
       };
       mock.from
         .mockReturnValueOnce(qb({ personal_plan_key: 'solo' }))
@@ -673,7 +665,7 @@ describe('SubscriptionPlanService', () => {
 
   describe('getAllAdmin', () => {
     it('returns all plans', async () => {
-      const plansQb = qb([{ id: 'p-1', key: 'base', name: 'Base' }]);
+      const plansQb = qb([{ id: 'p-1', key: 'free', name: 'Base' }]);
       mock.from.mockReturnValueOnce(plansQb);
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -682,7 +674,7 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(true);
       expect(plansQb.order).toHaveBeenCalledWith('sort_order', { ascending: true });
-      expect(expectSuccess(result).map((plan) => plan.key)).toEqual(['base']);
+      expect(expectSuccess(result).map((plan) => plan.key)).toEqual(['free']);
     });
   });
 
@@ -690,7 +682,7 @@ describe('SubscriptionPlanService', () => {
     it('returns plan by key', async () => {
       const plan = {
         id: 'p-1',
-        key: 'base',
+        key: 'free',
         name: 'Base',
         description: null,
         price_monthly: 0,
@@ -704,27 +696,27 @@ describe('SubscriptionPlanService', () => {
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.getByKey('base');
+      const result = await service.getByKey('free');
 
       expect(result.success).toBe(true);
-      expect(plansQb.eq).toHaveBeenCalledWith('key', 'base');
-      expect(expectSuccess(result).key).toBe('base');
+      expect(plansQb.eq).toHaveBeenCalledWith('key', 'free');
+      expect(expectSuccess(result).key).toBe('free');
     });
 
     it('applies the same public filter as the list', async () => {
-      const plan = planRow('pro');
+      const plan = planRow('max');
       const features = [
         {
-          plan_key: 'pro',
+          plan_key: 'max',
           entitlement_key: 'voice.probe',
           entitlement_catalog: { seat_eligible: true },
         },
         {
-          plan_key: 'pro',
+          plan_key: 'max',
           entitlement_key: 'stats.insights',
           entitlement_catalog: { seat_eligible: true },
         },
-        { plan_key: 'pro', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
+        { plan_key: 'max', entitlement_key: 'quiz', entitlement_catalog: { seat_eligible: true } },
       ];
       mock.from.mockReturnValueOnce(qb(plan));
       mock.from.mockReturnValueOnce(qb(features));
@@ -736,7 +728,7 @@ describe('SubscriptionPlanService', () => {
       );
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.getByKey('pro');
+      const result = await service.getByKey('max');
 
       expect(expectSuccess(result).features).toEqual(['quiz']);
     });
@@ -753,7 +745,7 @@ describe('SubscriptionPlanService', () => {
 
   describe('getById', () => {
     it('returns plan by id', async () => {
-      const plan = { id: 'p-1', key: 'base' };
+      const plan = { id: 'p-1', key: 'free' };
       const findQb = qb(plan);
       mock.from.mockReturnValueOnce(findQb);
 
@@ -789,30 +781,26 @@ describe('SubscriptionPlanService', () => {
       );
     });
 
-    it('writes scope and the null audience from the input', async () => {
+    it('writes scope from the input', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
       await service.create({ key: 'hub', name: 'Hub', scope: 'organization' });
 
-      expect(b.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'organization', audience: null }),
-      );
+      expect(b.insert).toHaveBeenCalledWith(expect.objectContaining({ scope: 'organization' }));
 
       const b2 = qb({ id: 'p-2' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.create({ key: 'pro', name: 'Pro', scope: 'personal', audience: null });
+      await service.create({ key: 'max', name: 'Max', scope: 'personal' });
 
-      expect(b2.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'personal', audience: null }),
-      );
+      expect(b2.insert).toHaveBeenCalledWith(expect.objectContaining({ scope: 'personal' }));
     });
   });
 
   describe('update', () => {
     it('updates a plan', async () => {
-      const plan = { id: 'p-1', key: 'base', name: 'Updated' };
+      const plan = { id: 'p-1', key: 'free', name: 'Updated' };
       const updateQb = qb(plan);
       mock.from.mockReturnValueOnce(updateQb);
 
@@ -823,7 +811,7 @@ describe('SubscriptionPlanService', () => {
       expect(updateQb.eq).toHaveBeenCalledWith('id', 'p-1');
     });
 
-    it('only writes scope/audience when explicitly provided', async () => {
+    it('only writes scope when explicitly provided', async () => {
       const b = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b);
 
@@ -832,16 +820,13 @@ describe('SubscriptionPlanService', () => {
       expect(b.update).toHaveBeenCalledWith(
         expect.not.objectContaining({ scope: expect.anything() as unknown }) as unknown,
       );
-      expect(b.update).toHaveBeenCalledWith(
-        expect.not.objectContaining({ audience: expect.anything() as unknown }) as unknown,
-      );
 
       const b2 = qb({ id: 'p-1' });
       mock.from.mockReturnValueOnce(b2);
 
-      await service.update('p-1', { audience: null });
+      await service.update('p-1', { scope: 'organization' });
 
-      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ audience: null }));
+      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ scope: 'organization' }));
     });
   });
 

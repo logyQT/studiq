@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-T1 (rola organizacyjna `teacher` – `group.manage`; plan osobisty `base`).
+T1 (rola organizacyjna `teacher` – `group.manage`; plan osobisty `free`).
 
 ## Steps
 

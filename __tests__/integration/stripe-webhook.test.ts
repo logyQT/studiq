@@ -217,7 +217,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     await service.from('payments').delete().in('user_id', [student.id, manager.id]);
     await service.from('billing_customers').delete().in('user_id', [student.id, manager.id]);
 
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', student.id);
+    await service.from('profiles').update({ personal_plan_key: 'free' }).eq('id', student.id);
     await service.from('profiles').update({ personal_plan_key: 'launch' }).eq('id', manager.id);
 
     const { data: org, error: orgError } = await service
@@ -259,7 +259,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     if (customerIds.length > 0) {
       await service.from('billing_customers').delete().in('stripe_customer_id', customerIds);
     }
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', student.id);
+    await service.from('profiles').update({ personal_plan_key: 'free' }).eq('id', student.id);
     await service.from('profiles').update({ personal_plan_key: 'launch' }).eq('id', manager.id);
     if (orgId) await cleanupOrganizationDeep(orgId);
     for (const user of [student, manager]) {
@@ -276,7 +276,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     subscriptionIds.push(stripeSubscriptionId);
     customerIds.push(stripeCustomerId);
 
-    const metadata = userMetadata(student.id, 'spark');
+    const metadata = userMetadata(student.id, 'plus');
     currentSubscription = subscriptionFixture({
       id: stripeSubscriptionId,
       customer: stripeCustomerId,
@@ -303,14 +303,14 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       success: true,
       data: { received: true },
     });
-    expect(await profilePlan(student.id)).toBe('spark');
+    expect(await profilePlan(student.id)).toBe('plus');
     expect((await eventRow(eventId)).status).toBe('processed');
 
     // Replay the same event id: no second entitlement write can be observed,
     // and the event table answers duplicate instead of re-running.
     const replay = await deliver(checkout);
     expect(replay).toEqual({ success: true, data: { received: true, duplicate: true } });
-    expect(await profilePlan(student.id)).toBe('spark');
+    expect(await profilePlan(student.id)).toBe('plus');
 
     const mirrors = await subscriptionsFor(stripeSubscriptionId);
     expect(mirrors).toHaveLength(1);
@@ -318,11 +318,11 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       user_id: student.id,
       organization_id: null,
       checkout_session_id: sessionId,
-      plan_key: 'spark',
+      plan_key: 'plus',
       status: 'active',
     });
     // The success page waits for this marker, not the billed mirror row.
-    expect(requiredAt(mirrors, 0, 'billing mirror').entitlement_applied_plan_key).toBe('spark');
+    expect(requiredAt(mirrors, 0, 'billing mirror').entitlement_applied_plan_key).toBe('plus');
 
     // customer.subscription.deleted → the free student tier.
     currentSubscription = subscriptionFixture({
@@ -344,7 +344,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       }),
     );
 
-    expect(await profilePlan(student.id)).toBe('base');
+    expect(await profilePlan(student.id)).toBe('free');
   });
 
   it('clears the pending marker only when it matches and preserves freshness', async () => {
@@ -386,10 +386,10 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       stripe_subscription_id: stripeSubscriptionId,
       billing_customer_id: billingCustomerId,
       user_id: student.id,
-      plan_key: 'spark',
+      plan_key: 'plus',
       price_id: 'price_marker_test',
       status: 'active',
-      pending_plan_key: 'ace',
+      pending_plan_key: 'pro',
       last_event_created: 4242,
       livemode: false,
     });
@@ -408,17 +408,17 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     try {
       // A different target must not be discarded by a stale release request.
       await expect(
-        repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'spark'),
+        repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'plus'),
       ).resolves.toEqual(success(undefined));
       expect(await markerRow()).toMatchObject({
-        pending_plan_key: 'ace',
+        pending_plan_key: 'pro',
         last_event_created: 4242,
       });
 
       // Matching target clears, and the freshness value is untouched (the clear
       // must never masquerade as a newer Stripe event).
       await expect(
-        repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'ace'),
+        repository.clearPendingPlanIfApplied(stripeSubscriptionId, 'pro'),
       ).resolves.toEqual(success(undefined));
       expect(await markerRow()).toMatchObject({
         pending_plan_key: null,
@@ -444,7 +444,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     subscriptionIds.push(stripeSubscriptionId);
     customerIds.push(stripeCustomerId);
 
-    const metadata = userMetadata(student.id, 'spark');
+    const metadata = userMetadata(student.id, 'plus');
     currentSubscription = subscriptionFixture({
       id: stripeSubscriptionId,
       customer: stripeCustomerId,
@@ -495,7 +495,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
     expect(rows[0]).toMatchObject({
       user_id: student.id,
       organization_id: null,
-      plan_key: 'spark',
+      plan_key: 'plus',
       provider: 'stripe',
       amount: 999,
       currency: 'PLN',
@@ -566,7 +566,7 @@ describe('Stripe webhook → entitlement sync (#662 §10.2)', () => {
       }),
     );
 
-    expect(await profilePlan(student.id)).toBe('spark');
+    expect(await profilePlan(student.id)).toBe('plus');
     const mirrors = await subscriptionsFor(stripeSubscriptionId);
     expect(requiredAt(mirrors, 0, 'billing mirror').status).toBe('past_due');
     expect(await paymentsForInvoice(failedInvoiceId)).toHaveLength(0);

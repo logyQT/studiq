@@ -54,7 +54,7 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 
 1. Sprawdź, że strona pokazuje obie tabele i nie ma przycisków zakupu ani przydziału.
 2. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
-   `{"planKey":"ace","quantity":3}`.
+   `{"planKey":"pro","quantity":3}`.
 3. Spróbuj ilości 0 oraz ujemnej tym samym żądaniem.
 
 ## Expected result
@@ -74,7 +74,7 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   „Przydziałów” nie mają akcji „Zwolnij miejsce”. Widoczna jest notka „Sprzedaż miejsc
   jest wstrzymana do czasu wprowadzenia licencji organizacji.”. Obie tabele i wszystkie
   `GET` działają.
-- Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"ace","quantity":3}` →
+- Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"pro","quantity":3}` →
   **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz „StudiQ Pro”
   z wartościami **3 / 0 / 3**. Wartości są liczone po stronie serwera (`total` /
   `assigned`), a „Dostępne” to `total - assigned`.

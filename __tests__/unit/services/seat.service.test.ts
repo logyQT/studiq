@@ -129,11 +129,11 @@ describe('SeatService', () => {
   });
 
   describe('addPool', () => {
-    const input = { planKey: 'ace', quantity: 5 };
+    const input = { planKey: 'pro', quantity: 5 };
 
     /** A personal, active plan whose keys are all seat-eligible (catalog embed). */
     const licencePlan = {
-      key: 'ace',
+      key: 'pro',
       is_active: true,
       scope: 'personal',
       plan_entitlements: [
@@ -145,17 +145,17 @@ describe('SeatService', () => {
     it('creates a pool when the plan is a valid licence and none exists for it', async () => {
       const plan = chain(licencePlan);
       const read = chain(null);
-      const write = chain({ id: 'pool-1', plan_key: 'ace', total: 5, assigned: 0 });
+      const write = chain({ id: 'pool-1', plan_key: 'pro', total: 5, assigned: 0 });
       mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
       const result = await service.addPool(ctx, input);
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data).toEqual({ id: 'pool-1', planKey: 'ace', total: 5, assigned: 0 });
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'pro', total: 5, assigned: 0 });
       expect(write.insert).toHaveBeenCalledWith({
         organization_id: orgId,
-        plan_key: 'ace',
+        plan_key: 'pro',
         total: 5,
       });
       expect(write.update).not.toHaveBeenCalled();
@@ -164,10 +164,10 @@ describe('SeatService', () => {
     it('increments an existing pool', async () => {
       const plan = chain(licencePlan);
       const read = chain({ id: 'pool-1', total: 5 });
-      const write = chain({ id: 'pool-1', plan_key: 'ace', total: 8, assigned: 0 });
+      const write = chain({ id: 'pool-1', plan_key: 'pro', total: 8, assigned: 0 });
       mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
-      const result = await service.addPool(ctx, { planKey: 'ace', quantity: 3 });
+      const result = await service.addPool(ctx, { planKey: 'pro', quantity: 3 });
 
       expect(result.success).toBe(true);
       if (!result.success) return;
@@ -180,14 +180,14 @@ describe('SeatService', () => {
       const read = chain({ id: 'pool-1', total: 5 });
       const write = chain({
         id: 'pool-1',
-        plan_key: 'ace',
+        plan_key: 'pro',
         total: MAX_SEAT_POOL_TOTAL,
         assigned: 0,
       });
       mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read).mockReturnValueOnce(write);
 
       const result = await service.addPool(ctx, {
-        planKey: 'ace',
+        planKey: 'pro',
         quantity: MAX_SEAT_POOL_TOTAL - 5,
       });
 
@@ -201,7 +201,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValueOnce(plan).mockReturnValueOnce(read);
 
       const result = await service.addPool(ctx, {
-        planKey: 'ace',
+        planKey: 'pro',
         quantity: MAX_SEAT_POOL_TOTAL,
       });
 
@@ -287,7 +287,7 @@ describe('SeatService', () => {
 
     it('refuses an inactive or unknown plan before writing (#1145)', async () => {
       const inactive = chain({
-        key: 'ace',
+        key: 'pro',
         is_active: false,
         scope: 'personal',
         plan_entitlements: licencePlan.plan_entitlements,
@@ -368,14 +368,14 @@ describe('SeatService', () => {
     });
 
     it('accepts a total equal to the assigned count', async () => {
-      const write = chain({ id: 'pool-1', plan_key: 'pro', total: 3, assigned: 3 });
+      const write = chain({ id: 'pool-1', plan_key: 'max', total: 3, assigned: 3 });
       mock.from.mockReturnValueOnce(write);
 
       const result = await service.updatePool(ctx, 'pool-1', { total: 3 });
 
       expect(result.success).toBe(true);
       if (!result.success) return;
-      expect(result.data).toEqual({ id: 'pool-1', planKey: 'pro', total: 3, assigned: 3 });
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'max', total: 3, assigned: 3 });
       expect(write.update).toHaveBeenCalledWith({ total: 3 });
     });
 
@@ -483,7 +483,7 @@ describe('SeatService', () => {
           user_id: 'user-orphan',
           pool_id: 'pool-1',
           assigned_at: '2024-01-01T00:00:00Z',
-          pool: { plan_key: 'pro' },
+          pool: { plan_key: 'max' },
           profile: null,
         },
       ];
@@ -499,7 +499,7 @@ describe('SeatService', () => {
           id: 'assign-orphan',
           userId: 'user-orphan',
           poolId: 'pool-1',
-          planKey: 'pro',
+          planKey: 'max',
           userEmail: '',
           userFullName: null,
           assignedAt: '2024-01-01T00:00:00Z',
@@ -527,7 +527,7 @@ describe('SeatService', () => {
     /** A personal-plan pool; the plan has no audience since #1193. */
     const personalPool = {
       id: 'pool-1',
-      plan_key: 'ace',
+      plan_key: 'pro',
     };
 
     it('assigns a seat on a personal-plan pool', async () => {
@@ -553,7 +553,7 @@ describe('SeatService', () => {
         id: 'assign-new',
         userId: input.userId,
         poolId: input.poolId,
-        planKey: 'ace',
+        planKey: 'pro',
         userEmail: 'user@test.com',
         assignedAt: '2024-01-01T00:00:00Z',
       });

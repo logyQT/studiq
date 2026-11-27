@@ -9,11 +9,11 @@
 
 ## Prerequisite (verbatim)
 
-Konto TS (test-student@dev.local, plan Base, brak treści). Dostęp do Supabase Studio: http://127.0.0.1:54323 → SQL Editor. Na koniec zrób bunx supabase db reset, aby przywrócić limity.
+Konto TS (test-student@dev.local, plan Free, brak treści). Dostęp do Supabase Studio: http://127.0.0.1:54323 → SQL Editor. Na koniec zrób bunx supabase db reset, aby przywrócić limity.
 
 ## Steps
 
-1. W SQL Editor wykonaj: update plan_limits set limit_value = 2 where plan_key = 'base' and limit_key in ('max_decks', 'max_flashcards', 'max_questions', 'max_question_banks');
+1. W SQL Editor wykonaj: update plan_limits set limit_value = 2 where plan_key = 'free' and limit_key in ('max_decks', 'max_flashcards', 'max_questions', 'max_question_banks');
 2. Jako TS utwórz 2 talie, następnie spróbuj utworzyć 3. talię.
 3. W jednej talii dodaj 2 fiszki, następnie spróbuj dodać 3. (ręcznie).
 4. Utwórz 2 banki pytań i spróbuj utworzyć 3. bank.
@@ -27,15 +27,15 @@ Konto TS (test-student@dev.local, plan Base, brak treści). Dostęp do Supabase 
 ## Seed (QA-suite tenant)
 
 Automatyzacja nie używa kont z ręcznego seeda (`test-student@dev.local`, `pass`) ani
-Supabase Studio. Krok 1 (globalna zmiana `plan_limits` dla planu `base`) **nie jest
+Supabase Studio. Krok 1 (globalna zmiana `plan_limits` dla planu `free`) **nie jest
 odtwarzany**: `plan_limits` to współdzielony katalog planów, z którego liczą się limity
 wszystkich tenantów na wspólnej bazie QA — obniżenie go do 2 zepsułoby każdy inny
 przypadek (m.in. LIM-03) i wymagałoby resetu bazy. Zamiast tego spec zapełnia **własny
-tenant** do rzeczywistego limitu Base i sprawdza odrzucenie `(limit + 1)`-ego elementu —
+tenant** do rzeczywistego limitu Free i sprawdza odrzucenie `(limit + 1)`-ego elementu —
 ta sama ścieżka egzekwowania, tylko w skali planu zamiast sztucznych „2” (identycznie jak
 `org-limit` w ONB-10: org jeden etat poniżej limitu zamiast zmiany limitu globalnego).
 
-Tenant: jeden samodzielny student na darmowym planie Base, bez organizacji, bez grup i bez
+Tenant: jeden samodzielny student na darmowym planie Free, bez organizacji, bez grup i bez
 treści — dokładnie konto „TS” z warunku wstępnego.
 
 ```bash
@@ -47,7 +47,7 @@ bun scripts/qa-tenant.ts LIM-02 --fresh   # profil: __tests__/qa/profiles/LIM-02
   `org_members`; `personal_plan_key = base` ustawia trigger `handle_new_user`. `--fresh`
   nadaje nowy sufiks przebiegu, więc każdy niezależny przebieg dostaje świeże konto bez
   treści (5 przebiegów = 5 sufiksów).
-- Limit Base (`GET /api/v1/me/personal-plan`, wartości z katalogu planów widoczne w `/app/billing`): talie 10, fiszki 100,
+- Limit Free (`GET /api/v1/me/personal-plan`, wartości z katalogu planów widoczne w `/app/billing`): talie 10, fiszki 100,
   pytania 50, banki pytań 5. Spec tworzy treść wyłącznie przez API produktu:
   10 talii (`POST /api/v1/flashcards/decks`), 100 fiszek w jednej talii
   (`POST /api/v1/flashcards/batch/create`), 5 banków (`POST /api/v1/questions/banks`) i 50

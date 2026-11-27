@@ -78,5 +78,5 @@ bun scripts/qa-tenant.ts LIM-05 --fresh
 > **2026-11-25 (6d).** The „Subskrypcja” badge now names every layer of
 > `/me/plan`'s union, so it reads „StudiQ Launch (organizacja) + StudiQ Free (plan
 > osobisty)” before the upgrade and „StudiQ Hub (organizacja) + StudiQ Free (plan
-> osobisty)” after it — the personal `base` layer is part of a manager's plan.
+> osobisty)” after it — the personal `free` layer is part of a manager's plan.
 > The spec asserts the org layer as a substring of `[data-plan-union]`.

@@ -120,7 +120,7 @@ describe('active_org_id membership gate (#186)', () => {
       orgRoleId: memberRole.id,
     });
 
-    // Seated member (#270): a StudiQ Ace seat makes the seat plan the member's
+    // Seated member (#270): a StudiQ Pro seat makes the seat plan the member's
     // effective plan for features and limits, so `/me/plan` must serve it too.
     const seatedUser = await createTestUser({ role: 'student', password: PASSWORD });
     await seedOrgMembership({
@@ -131,7 +131,7 @@ describe('active_org_id membership gate (#186)', () => {
 
     const { data: seatPool, error: poolError } = await service
       .from('org_seat_pools')
-      .insert({ organization_id: orgId, plan_key: 'ace', total: 1 })
+      .insert({ organization_id: orgId, plan_key: 'pro', total: 1 })
       .select('id')
       .single();
     if (poolError) {
@@ -175,7 +175,7 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('base');
+    expect(body.data.key).toBe('free');
   });
 
   it('serves the seat plan to a seated student member (#270)', async () => {
@@ -186,7 +186,7 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('ace');
+    expect(body.data.key).toBe('pro');
     expect(body.data.limits.max_ai_tokens_per_day).toBe(250000);
     expect(body.data.limits.max_decks).toBe(500);
     // The organization ladder is capacity only (#1493): the seat ∩ hub ceiling
@@ -214,7 +214,7 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('base');
+    expect(body.data.key).toBe('free');
   });
 
   it('ignores a forged active_org_id cookie for an outsider manager', async () => {
@@ -224,10 +224,10 @@ describe('active_org_id membership gate (#186)', () => {
     );
     const body = await json<MyPlanBody>(res);
 
-    expect(res.status).toBe(200);
-    // No membership ⇒ no org layer: the personal plan, which is `base` for
-    // every persona since #1193, never the forged org's `launch`.
-    expect(body.data.key).toBe('base');
+    // A manager holds no personal plan (ADR-0007) and no membership here, so
+    // the forged org's `launch` is never reached and nothing resolves.
+    expect(res.status).toBe(404);
+    expect(body.data).toBeUndefined();
   });
 
   it('does not report the forged org as active in /me/orgs', async () => {

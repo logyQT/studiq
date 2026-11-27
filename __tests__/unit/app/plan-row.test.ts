@@ -11,8 +11,8 @@ const t = createTranslator({ locale, messages: pl, namespace: 'PricingPage' });
 
 function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   return {
-    id: 'plan-spark',
-    key: 'spark',
+    id: 'plan-plus',
+    key: 'plus',
     name: 'StudiQ Plus',
     description: null,
     priceMonthly: 1999,
@@ -23,17 +23,16 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 2,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
     ...overrides,
   };
 }
 
 const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
-  { key: 'base', name: 'StudiQ Free', priceMonthly: 0 },
-  { key: 'spark', name: 'StudiQ Plus', priceMonthly: 1999 },
-  { key: 'ace', name: 'StudiQ Pro', priceMonthly: 3999 },
-  { key: 'pro', name: 'StudiQ Max', priceMonthly: 7999 },
+  { key: 'free', name: 'StudiQ Free', priceMonthly: 0 },
+  { key: 'plus', name: 'StudiQ Plus', priceMonthly: 1999 },
+  { key: 'pro', name: 'StudiQ Pro', priceMonthly: 3999 },
+  { key: 'max', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
 /** The organization ladder: a free tier, the recommended Hub and sales-led Campus. */
@@ -53,7 +52,7 @@ interface RowOptions {
 }
 
 function rowElement({
-  planKey = 'spark',
+  planKey = 'plus',
   isCurrent = false,
   signedIn = true,
   hasActivePlan,
@@ -135,7 +134,7 @@ describe('PlanRow action', () => {
     // no longer carry the same phrase.
     expect(markup.split(t('current_plan_badge')).length - 1).toBe(1);
     expect(markup.match(/<button[^>]*disabled[^>]*>([^<]*)<\/button>/)?.[1]).toBe(t('cta_current'));
-    expect(markup).not.toContain(t('cta_spark'));
+    expect(markup).not.toContain(t('cta_plus'));
     expect(markup).not.toContain('href="/app/billing"');
     // A disabled control answers no pointer, so the quiet tone's hover fill has no
     // element to tint.
@@ -148,12 +147,12 @@ describe('PlanRow action', () => {
 
     expect(markup).toContain('href="/app/billing"');
     expect(markup).toContain(t('cta_change_plan'));
-    expect(markup).not.toContain(t('cta_spark'));
+    expect(markup).not.toContain(t('cta_plus'));
     expect(markup).not.toContain(t('cta_current'));
   });
 
   it('gives the recommended paid plan the single signal fill', () => {
-    const classes = actionClasses(render({ planKey: 'ace', hasActivePlan: false }));
+    const classes = actionClasses(render({ planKey: 'pro', hasActivePlan: false }));
 
     expect(classes).toHaveLength(1);
     expect(toneTokens(classes[0])).toContain('bg-signal');
@@ -162,7 +161,7 @@ describe('PlanRow action', () => {
   });
 
   it('keeps every other paid plan quiet', () => {
-    const classes = actionClasses(render({ planKey: 'spark', hasActivePlan: false }));
+    const classes = actionClasses(render({ planKey: 'plus', hasActivePlan: false }));
 
     expect(classes).toHaveLength(1);
     expect(toneTokens(classes[0])).toContain('border-input');
@@ -172,7 +171,7 @@ describe('PlanRow action', () => {
   });
 
   it('keeps the current plan disabled and quiet even when the ladder recommends it', () => {
-    const markup = render({ planKey: 'ace', isCurrent: true, hasActivePlan: true });
+    const markup = render({ planKey: 'pro', isCurrent: true, hasActivePlan: true });
     const classes = actionClasses(markup);
 
     expect(classes).toHaveLength(1);
@@ -183,7 +182,7 @@ describe('PlanRow action', () => {
 
   it('keeps the free register action quiet for a signed-out reader', () => {
     const classes = actionClasses(
-      render({ planKey: 'base', signedIn: false, hasActivePlan: null }),
+      render({ planKey: 'free', signedIn: false, hasActivePlan: null }),
     );
 
     expect(classes).toHaveLength(1);
@@ -192,7 +191,7 @@ describe('PlanRow action', () => {
   });
 
   it('sends the subscriber’s free row to the billing downgrade', () => {
-    const markup = render({ planKey: 'base', hasActivePlan: true });
+    const markup = render({ planKey: 'free', hasActivePlan: true });
 
     expect(markup).toContain('href="/app/billing"');
     expect(markup).toContain(t('cta_change_plan'));
@@ -227,7 +226,7 @@ describe('PlanRow action', () => {
   });
 
   it('shares one control class and one signal fill across the whole ladder', () => {
-    const classes = actionClasses(ladderMarkup(LADDER, { isCurrentKey: 'base' }));
+    const classes = actionClasses(ladderMarkup(LADDER, { isCurrentKey: 'free' }));
 
     expect(classes).toHaveLength(LADDER.length);
     for (const action of classes) {

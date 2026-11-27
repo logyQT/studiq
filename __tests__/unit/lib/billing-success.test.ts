@@ -11,11 +11,11 @@ import { firstRecorded } from '#test/mocks/recorded';
 function view(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscriptionView {
   return {
     provider: 'stripe',
-    planKey: 'spark',
-    planName: 'StudiQ Spark',
-    billedPlanKey: 'spark',
-    billedPlanName: 'StudiQ Spark',
-    entitlementAppliedPlanKey: 'spark',
+    planKey: 'plus',
+    planName: 'StudiQ Plus',
+    billedPlanKey: 'plus',
+    billedPlanName: 'StudiQ Plus',
+    entitlementAppliedPlanKey: 'plus',
     status: 'active',
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
@@ -42,7 +42,7 @@ function deps(overrides: Partial<Deps> = {}): Deps {
   return {
     reconcile: vi.fn().mockResolvedValue(undefined),
     readSubscription: vi.fn().mockResolvedValue(view()),
-    expectedPlanKey: 'spark',
+    expectedPlanKey: 'plus',
     sleep: vi.fn().mockResolvedValue(undefined),
     isCancelled: vi.fn().mockReturnValue(false),
     ...overrides,
@@ -85,8 +85,8 @@ describe('pollBillingActivation', () => {
 
   it('requires the polled plan to match the purchased plan', async () => {
     const d = deps({
-      expectedPlanKey: 'ace',
-      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'spark' })),
+      expectedPlanKey: 'pro',
+      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'plus' })),
     });
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
@@ -95,12 +95,10 @@ describe('pollBillingActivation', () => {
 
   it('matches a purchased plan even when the effective plan is a seat plan', async () => {
     const d = deps({
-      expectedPlanKey: 'spark',
+      expectedPlanKey: 'plus',
       readSubscription: vi
         .fn()
-        .mockResolvedValue(
-          view({ planKey: 'ace', planName: 'StudiQ Ace', billedPlanKey: 'spark' }),
-        ),
+        .mockResolvedValue(view({ planKey: 'pro', planName: 'StudiQ Pro', billedPlanKey: 'plus' })),
     });
 
     await expect(pollBillingActivation(d)).resolves.toMatchObject({ state: 'activated' });
@@ -108,8 +106,8 @@ describe('pollBillingActivation', () => {
 
   it('does not treat the effective plan as the billed plan', async () => {
     const d = deps({
-      expectedPlanKey: 'ace',
-      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'ace', billedPlanKey: 'spark' })),
+      expectedPlanKey: 'pro',
+      readSubscription: vi.fn().mockResolvedValue(view({ planKey: 'pro', billedPlanKey: 'plus' })),
     });
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'timeout' });
@@ -117,13 +115,13 @@ describe('pollBillingActivation', () => {
 
   it('does not activate on a matching billed mirror before the entitlement commits', async () => {
     const d = deps({
-      expectedPlanKey: 'spark',
+      expectedPlanKey: 'plus',
       readSubscription: vi.fn().mockResolvedValue(
         view({
-          planKey: 'base',
+          planKey: 'free',
           planName: 'StudiQ Base',
-          billedPlanKey: 'spark',
-          billedPlanName: 'StudiQ Spark',
+          billedPlanKey: 'plus',
+          billedPlanName: 'StudiQ Plus',
           entitlementAppliedPlanKey: null,
           status: 'active',
         }),
@@ -144,7 +142,7 @@ describe('pollBillingActivation', () => {
     const d = deps({
       readSubscription: vi
         .fn()
-        .mockResolvedValueOnce(view({ planKey: 'base', status: 'free' }))
+        .mockResolvedValueOnce(view({ planKey: 'free', status: 'free' }))
         .mockResolvedValueOnce(view({ status: 'active' })),
     });
 

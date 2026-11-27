@@ -110,11 +110,11 @@ LIMITS       = f(org plan, seat, personal plan)        // quotas
 We keep the three persona values because onboarding, pricing families and default
 dashboards need them. We stop using them as an authorization mechanism.
 
-| Persona    | Still decides                                                                                                                   | No longer decides                         |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `student`  | default dashboard, personal plan catalogue (`base/spark/ace/pro`)                                                               | which org resources they may touch        |
-| `educator` | default dashboard, personal plan catalogue (`lite/guide/creator/master`), default group role `teacher` when they create a class | org authority                             |
-| `manager`  | default dashboard, personal plan catalogue (`solo`), default role assignment when creating an org (`Admin`)                     | org authority, member management, billing |
+| Persona    | Still decides                                                                                                           | No longer decides                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `student`  | default dashboard, personal plan catalogue (`free/plus/pro/max`)                                                        | which org resources they may touch        |
+| `educator` | default dashboard, personal plan catalogue (`free/plus/pro/max`), default group role `teacher` when they create a class | org authority                             |
+| `manager`  | default dashboard, organization plan catalogue, default role assignment when creating an org (`Admin`)                  | org authority, member management, billing |
 
 Rules:
 
@@ -456,30 +456,26 @@ it has a surface.
 Add to `subscription_plans`:
 
 - `scope text not null check (scope in ('personal','organization'))`
-- `audience text check (audience in ('student','educator','manager'))` — null
-  for organization plans
 
-| Plan      | scope        | audience |
-| --------- | ------------ | -------- |
-| `base`    | personal     | student  |
-| `lite`    | personal     | educator |
-| `spark`   | personal     | student  |
-| `guide`   | personal     | educator |
-| `ace`     | personal     | student  |
-| `creator` | personal     | educator |
-| `pro`     | personal     | student  |
-| `master`  | personal     | educator |
-| `solo`    | personal     | manager  |
-| `launch`  | organization | null     |
-| `team`    | organization | null     |
-| `hub`     | organization | null     |
-| `campus`  | organization | null     |
+There is no `audience` column: a plan carries no persona dimension. The table
+below is the matrix the cleanup migration
+(`20261126170000_plan_key_rename_manager_plan.sql`) owns; `audience` was added
+for phase 4a, stopped keying anything in B1, and was dropped in the cleanup.
 
-`solo` is a new free manager personal plan (baseline entitlements only).
+| Plan     | scope        |
+| -------- | ------------ |
+| `free`   | personal     |
+| `plus`   | personal     |
+| `pro`    | personal     |
+| `max`    | personal     |
+| `launch` | organization |
+| `hub`    | organization |
+| `campus` | organization |
 
-`launch` is no longer both the free manager personal plan and the default org
-plan. A manager without an org gets `solo` (baseline entitlements only). This
-removes the ADR-0007 dual-purpose problem without adding a paid manager family.
+A manager holds no personal plan at all (ADR-0007): `personal_plan_key` is
+nullable, and a manager buys an organization plan for an organization where
+they hold `org.billing.manage`. This removes the ADR-0007 dual-purpose problem
+without adding a manager plan family.
 
 > **2026-11-22 (phase 4a, D32).** Shipped as specified:
 > `subscription_plans.scope`/`audience` replace `for_account_type` (dropped in
@@ -570,9 +566,9 @@ A seat is a per-member personal-plan grant within the org's license.
 - The pool is the licence: creating a pool of N seats is buying N licences.
   There is no per-org licence table and no plan-seeded count to validate
   against (D15).
-- `assignSeat` validates the target's persona against the plan `audience`, not
-  against a hardcoded role-name tier map. This is the **one** server-side use of
-  `audience`; it does not gate a purchase (D14).
+- `assignSeat` checks no persona: a plan carries no `audience` (B1 retired the
+  D33 check), so a pool is offered to any member of the organization. The
+  licence rules are the plan's `scope` and its `seatEligible` keys.
 - Seat entitlements are intersected with the org ceiling: a seat cannot grant an
   entitlement the org did not buy.
 - Seats never grant permissions and never raise `scope: 'org'` limits.
@@ -600,10 +596,10 @@ personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
 - Outside an org: personal entitlements + personal limits.
 - Inside an org: personal plans are additive for `personalPortable` keys only
   (the #971 intent). They never add org-scoped entitlements or org capacity.
-- Managers inside an org: personal plan does not apply (ADR-0007 kept); outside
-  an org they use `solo`.
-- Legacy paid manager rows in `personal_plan_key` are backfilled to `solo`
-  (pre-market: no compatibility constraint).
+- Managers hold no personal plan (ADR-0007): a manager is an organization
+  buyer, and the checkout refuses a personal plan for one. Legacy rows are
+  cleared to NULL by the cleanup migration (pre-market: no compatibility
+  constraint).
 
 > **2026-11-22 (phase 4a, D34).** The persona branch is gone: inside a
 > **verified** org a personal plan whose own `scope='organization'` does not
@@ -1667,17 +1663,25 @@ interpretation.
 > schema changes keep the manual pinned-CLI regeneration, reviewed by the
 > integrator. (Phase 8, `feat/authority-8`.)
 
-> **2026-11-26 (B1, #1193).** One individual ladder supersedes D2, D14 and D32
-> where they make a personal plan's `audience` significant. A personal plan
-> carries no audience (`audience = NULL`, the same shape an organization plan
-> has); `audience` no longer keys a ladder, a checkout, a seat pool or a free-plan
-> fallback. The personal plans are Free / Plus / Pro / Max on the keys
-> `base` / `spark` / `ace` / `pro`; `lite`, `guide`, `creator`, `master` and
-> `solo` retire to `base`. Persona no longer filters a plan purchase: any
-> signed-in reader may buy any active personal plan, and `handle_new_user()`
-> mints `base` for every persona, managers included. Authority is still the
-> permission and entitlement layer, never the persona. The organization ladder
-> keeps its scope/audience shape.
+> **2026-11-26 (B1, #1193; corrected by the plan cleanup).** One individual
+> ladder supersedes D2, D14 and D32 where they make a personal plan's `audience`
+> significant. `audience` no longer keys a ladder, a checkout, a seat pool or a
+> free-plan fallback, and the cleanup dropped the column: a plan has a `scope`
+> and nothing persona-shaped. The personal plans are Free / Plus / Pro / Max on
+> the keys `free` / `plus` / `pro` / `max` (the cleanup renamed them from
+> `base` / `spark` / `ace` / `pro`); `lite`, `guide`, `creator`, `master` and
+> `solo` retire to `free`. Persona no longer filters a plan purchase: any
+> **content subscriber** may buy any active personal plan. Authority is still
+> the permission and entitlement layer, never the persona.
+>
+> A manager is not a content subscriber: ADR-0007 stands again. `handle_new_user()`
+> mints `free` for a student or an educator and NULL for a manager;
+> `profiles.personal_plan_key` is nullable; `resolveApplicablePlan` refuses a
+> personal plan for `account_type = 'manager'`, and a manager buys only an
+> organization plan for an organization where they hold `org.billing.manage`
+> (the Admin role). The individual pricing and upgrade surfaces print no
+> personal purchase or change action for a manager, and `/app` and `/edu`
+> billing/upgrade send a manager to `/manage`.
 >
 > This retires D33's seat persona check: `assignSeat` no longer compares the
 > target's `profiles.account_type` to the pool plan's `audience`, because a
@@ -1700,7 +1704,7 @@ interpretation.
 > org member and would need a resolver change. No organization plan carries
 > `max_ai_tokens_per_day`; a missing row is 0.
 >
-> The interim for features is the personal plan: a member on `spark`/`ace`/`pro`
+> The interim for features is the personal plan: a member on `plus`/`pro`/`max`
 > keeps `ai.chat`, `quiz.templates` and `stats.insights` inside an organization
 > through `personalPortable`. Organization-funded AI and other per-seat licences
 > are #1511, which depends on this shape; no organization entitlement returns

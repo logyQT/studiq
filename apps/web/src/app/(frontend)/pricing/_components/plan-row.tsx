@@ -21,6 +21,8 @@ interface PlanRowProps {
   billingHref: string;
   /** Active organization; organization plans are bought for it. */
   orgId?: string;
+  /** The ladder on screen sells nothing to this reader (a manager on the individual ladder). */
+  purchaseBlocked?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export function PlanRow({
   hasActivePlan,
   billingHref,
   orgId,
+  purchaseBlocked = false,
 }: PlanRowProps) {
   const t = useTranslations('PricingPage');
   const locale = useLocale();
@@ -46,7 +49,14 @@ export function PlanRow({
   const { description, note } = planCopy(t, plan);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
-  const action = pricingPlanAction({ signedIn, isCurrent, isFree, contactOnly, hasActivePlan });
+  const action = pricingPlanAction({
+    signedIn,
+    isCurrent,
+    isFree,
+    contactOnly,
+    hasActivePlan,
+    purchaseBlocked,
+  });
 
   return (
     <li className="border-b border-border py-6 md:grid md:grid-cols-12 md:items-start md:gap-x-8">

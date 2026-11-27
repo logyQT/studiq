@@ -41,8 +41,8 @@ function subscriptionRow(overrides: Record<string, unknown> = {}) {
     user_id: owner.id,
     purchaser_user_id: owner.id,
     checkout_session_id: `cs_test_${tag('owner')}`,
-    plan_key: 'spark',
-    price_id: `price_test_${tag('spark')}`,
+    plan_key: 'plus',
+    price_id: `price_test_${tag('plus')}`,
     status: 'active',
     current_period_start: new Date().toISOString(),
     current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -241,7 +241,7 @@ describe('billing schema (#662)', () => {
 
       const update = await ownerSession
         .from('billing_subscriptions')
-        .update({ plan_key: 'ace' })
+        .update({ plan_key: 'pro' })
         .eq('id', ownerSubscriptionId);
       expect(update.error?.code).toBe('42501');
     });
@@ -252,7 +252,7 @@ describe('billing schema (#662)', () => {
       const price = {
         plan_key: `plan_${RUN}`,
         billing_cycle: 'monthly',
-        stripe_price_id: `price_test_${tag('spark')}`,
+        stripe_price_id: `price_test_${tag('plus')}`,
         currency: 'PLN',
         unit_amount: 999,
         interval: 'month',
@@ -264,7 +264,7 @@ describe('billing schema (#662)', () => {
 
       const duplicateKey = await service.from('stripe_prices').insert({
         ...price,
-        stripe_price_id: `price_test_${tag('spark-2')}`,
+        stripe_price_id: `price_test_${tag('plus-2')}`,
       });
       expect(duplicateKey.error?.code).toBe('23505');
 
@@ -302,8 +302,8 @@ describe('billing schema (#662)', () => {
         .from('payments')
         .insert({
           user_id: owner.id,
-          plan_key: 'spark',
-          plan_name: 'StudiQ Spark',
+          plan_key: 'plus',
+          plan_name: 'StudiQ Plus',
           amount: 999,
           currency: 'PLN',
           provider: 'stripe',
@@ -322,8 +322,8 @@ describe('billing schema (#662)', () => {
       const invoiceId = `in_test_${tag('dup-invoice')}`;
       const row = {
         user_id: owner.id,
-        plan_key: 'spark',
-        plan_name: 'StudiQ Spark',
+        plan_key: 'plus',
+        plan_name: 'StudiQ Plus',
         amount: 999,
         currency: 'PLN',
         provider: 'stripe',
@@ -339,8 +339,8 @@ describe('billing schema (#662)', () => {
     it('rejects a row with no external reference and an unknown provider', async () => {
       const noRef = await service.from('payments').insert({
         user_id: owner.id,
-        plan_key: 'spark',
-        plan_name: 'StudiQ Spark',
+        plan_key: 'plus',
+        plan_name: 'StudiQ Plus',
         amount: 0,
         provider: 'stripe',
       });
@@ -348,8 +348,8 @@ describe('billing schema (#662)', () => {
 
       const badProvider = await service.from('payments').insert({
         user_id: owner.id,
-        plan_key: 'spark',
-        plan_name: 'StudiQ Spark',
+        plan_key: 'plus',
+        plan_name: 'StudiQ Plus',
         amount: 0,
         provider: 'paypal',
         session_id: `mock_${tag('bad-provider')}`,

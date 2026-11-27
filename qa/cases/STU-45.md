@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Konto S1 (plan Base – bez ai.chat).
+Konto S1 (plan Free – bez ai.chat).
 
 ## Steps
 
@@ -18,5 +18,5 @@ Konto S1 (plan Base – bez ai.chat).
 
 ## Expected result
 
-- Pozycja „Asystent Q” niewidoczna w menu dla planu Base.
+- Pozycja „Asystent Q” niewidoczna w menu dla planu Free.
 - Bezpośrednie wejście na /app/ai: zanotuj zachowanie (strona może się wyświetlić; wywołania API powinny być ograniczone planem/limitem tokenów = 0).

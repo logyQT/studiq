@@ -261,9 +261,9 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
-    // A personal plan carries no audience since #1193, so a pool is offerable
-    // to any member of the org. The licence rules (scope, seat eligibility)
-    // already held when the pool was created.
+    // A seat pool is offerable to any member of the org: the plan carries no
+    // persona dimension. The licence rules (scope, seat eligibility) already
+    // held when the pool was created.
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('email')

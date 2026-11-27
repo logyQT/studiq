@@ -53,7 +53,7 @@ async function signIn(email: string): Promise<SupabaseClient<Database>> {
   return client;
 }
 
-async function completeCheckout(user: TestUserFixture, sid: string, planId = 'spark') {
+async function completeCheckout(user: TestUserFixture, sid: string, planId = 'plus') {
   mockUser(user);
   return webhookPost(
     createNextRequest(`${BASE_URL}/api/v1/stripe/webhook`, {
@@ -103,7 +103,7 @@ describe('payment history (#392)', () => {
     expect(res.status).toBe(200);
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).toMatchObject({
-      planKey: 'spark',
+      planKey: 'plus',
       planName: 'StudiQ Plus',
       amount: 1999,
       currency: 'PLN',
@@ -143,7 +143,7 @@ describe('payment history (#392)', () => {
         body: JSON.stringify({
           type: 'checkout.session.completed',
           session_id: sid,
-          plan_id: 'spark',
+          plan_id: 'plus',
           user_id: other.id,
         }),
       }),
@@ -177,7 +177,7 @@ describe('payment history (#392)', () => {
 
     const insert = await buyerSession.from('payments').insert({
       user_id: buyer.id,
-      plan_key: 'spark',
+      plan_key: 'plus',
       plan_name: 'Forged',
       amount: 1,
       session_id: `forged-${Date.now()}`,

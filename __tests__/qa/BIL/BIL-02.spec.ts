@@ -21,9 +21,9 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * gives `qa-bil-02-<suffix>` (`tenantKey('qa/cases/BIL-02.md', 'BIL-02#<suffix>',
  * 'qa-shared')` + `tenantId` for every org/user/group id). The tenant's `student` is
  * an org member without a seat assignment, so `/api/v1/me/personal-plan` resolves
- * their **personal** plan — `profiles.personal_plan_key`, default `base`. The
+ * their **personal** plan — `profiles.personal_plan_key`, default `free`. The
  * tenant's `teacher` is an educator account with no seat assignment either, so
- * `/api/v1/me/plan` falls back to the same personal plan — `base`, the one free
+ * `/api/v1/me/plan` falls back to the same personal plan — `free`, the one free
  * tier `handle_new_user` writes for every persona since #1193. That is the
  * „StudiQ Free” plan both legs start from.
  *
@@ -33,7 +33,7 @@ import { loadTenant, loginAs, type QaRole } from '#test/qa/fixtures/tenant';
  * individual catalogue (StudiQ Free, Plus, Pro, Max). In both, the current plan's
  * card carries the „Obecny Plan” badge and every other card a purchase/selection
  * button („Wybierz Plus”, „Wybierz Pro”, „Wybierz Maks”). „Wybierz Plus” opens
- * `/checkout?session_id=…&plan_id=spark`. `/app` and `/edu` are auth-only areas
+ * `/checkout?session_id=…&plan_id=plus`. `/app` and `/edu` are auth-only areas
  * (ADR-0015 §7.1), so a student opening `/edu/upgrade` keeps the URL and sees the
  * same ladder; persona no longer filters a personal purchase.
  *
@@ -73,10 +73,10 @@ const PLAN_NAMES = ['StudiQ Free', 'StudiQ Plus', 'StudiQ Pro', 'StudiQ Max'] as
 
 /** Plan key → the purchase/selection label `PlanCard` renders for it. */
 const PLAN_CTA: Record<string, string> = {
-  base: pricingCopy('cta_free'),
-  spark: pricingCopy('cta_spark'),
-  ace: pricingCopy('cta_ace'),
+  free: pricingCopy('cta_free'),
+  plus: pricingCopy('cta_plus'),
   pro: pricingCopy('cta_pro'),
+  max: pricingCopy('cta_max'),
 };
 
 interface PlanInfo {
@@ -84,7 +84,6 @@ interface PlanInfo {
   name: string;
   priceMonthly: number;
   scope: string;
-  audience: string | null;
 }
 
 interface ApiEnvelope<T> {
@@ -156,7 +155,6 @@ async function expectPlanGrid(page: Page, plans: PlanInfo[], currentPlan: PlanIn
   ).toEqual([...PLAN_NAMES]);
   for (const plan of plans) {
     expect(plan.scope, `plan ${plan.key} is personal-scope`).toBe('personal');
-    expect(plan.audience, `plan ${plan.key} has no audience`).toBeNull();
   }
 
   await expect(planCards(page)).toHaveCount(PLAN_NAMES.length);
@@ -204,7 +202,7 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
 
     const plans = await fetchPlans(page);
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/personal-plan');
-    expect(currentPlan.key, 'the seeded student starts on the free Free plan').toBe('base');
+    expect(currentPlan.key, 'the seeded student starts on the Free plan').toBe('free');
 
     // --- Step 1: /app/upgrade -------------------------------------------------
     await page.goto('/app/upgrade');
@@ -213,11 +211,11 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
 
     // The purchase button starts a checkout for that very plan.
     await planCard(page, 'StudiQ Plus')
-      .getByRole('button', { name: PLAN_CTA.spark, exact: true })
+      .getByRole('button', { name: PLAN_CTA.plus, exact: true })
       .click();
     await page.waitForURL(/\/checkout\?/, { timeout: 20_000 });
     expect(new URL(page.url()).searchParams.get('plan_id'), 'the checkout targets Plus').toBe(
-      'spark',
+      'plus',
     );
     await expect(page.getByText('Podsumowanie zamówienia', { exact: true })).toBeVisible();
     await expect(page.getByText('StudiQ Plus', { exact: true }).first()).toBeVisible();
@@ -242,7 +240,7 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
     const plans = await fetchPlans(page);
     // Unseated educator: `/me/plan` falls back to the personal plan the trigger wrote.
     const currentPlan = await fetchCurrentPlan(page, '/api/v1/me/plan');
-    expect(currentPlan.key, 'the seeded educator starts on the free Free plan').toBe('base');
+    expect(currentPlan.key, 'the seeded educator starts on the Free plan').toBe('free');
 
     // --- Step 2: /edu/upgrade ------------------------------------------------
     await page.goto('/edu/upgrade');
@@ -271,9 +269,9 @@ test.describe('@case:BIL-02 @area:BIL @prio:P2 upgrade pages', () => {
     // A personal plan is purchasable from either area: the checkout no longer
     // refuses a plan by the caller's persona.
     await planCard(page, 'StudiQ Plus')
-      .getByRole('button', { name: PLAN_CTA.spark, exact: true })
+      .getByRole('button', { name: PLAN_CTA.plus, exact: true })
       .click();
     await page.waitForURL(/\/checkout\?/, { timeout: 20_000 });
-    expect(new URL(page.url()).searchParams.get('plan_id')).toBe('spark');
+    expect(new URL(page.url()).searchParams.get('plan_id')).toBe('plus');
   });
 });

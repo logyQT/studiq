@@ -147,7 +147,7 @@ not a hub/campus row. Resolution is a per-request composition
 | --------------------- | --------------------- | ----------------------------------------------------- |
 | `entitlement_catalog` | 1                     | —                                                     |
 | `entitlement_flags`   | 1                     | surface keys only (baseline keys are never gated, D9) |
-| `plan_entitlements`   | one per carrying plan | 2 today (`stats.insights` is on `ace` and `pro`)      |
+| `plan_entitlements`   | one per carrying plan | 2 today (`stats.insights` is on `pro` and `max`)      |
 | `limit_catalog`       | 0–1                   | only a key with a **new** quota limit                 |
 | `plan_limits`         | one per carrying plan | only that new limit key                               |
 
@@ -201,8 +201,8 @@ ADR-0015 amendment (a numbered decision), not a rule smuggled into §3.
   when TypeScript and the database disagree. Proven 2026-11-25 by a bogus TS key
   (`voice.bogus`, 2 assertions red) and a bogus DB row (1 assertion red), each
   reverted immediately.
-- `__tests__/integration/plan-catalog.test.ts` pins the eight-plan matrix
-  (scope/audience, each plan's entitlement set and limits) and re-applies the
+- `__tests__/integration/plan-catalog.test.ts` pins the seven-plan matrix
+  (scope, each plan's entitlement set and limits) and re-applies the
   owning migration twice to prove it is declarative and idempotent.
   `__tests__/unit/guards/seed-purity.test.ts` fails if any file under
   `supabase/seeds/` writes a configuration table (`permissions`,

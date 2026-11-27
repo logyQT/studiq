@@ -8,7 +8,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * The case was written against the legacy manual seed (`student1@dev.local`,
  * password `pass`); the suite version uses this case's own tenant and never the
  * legacy accounts. A `bare`/`student` tenant (`__tests__/qa/profiles/BIL-05.json`) is
- * one student with no organization, no group and the free `base` personal plan
+ * one student with no organization, no group and the free `free` personal plan
  * that the `handle_new_user` trigger writes — exactly the case's precondition
  * („Zalogowany student1”). Every independent run is seeded with a fresh run
  * suffix, so the student has never bought anything:
@@ -27,7 +27,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  * - posting the completed checkout for `campus` or `hub` (organization plans)
  *   answers `403 FORBIDDEN`; neither the personal plan nor the payment history
  *   changes;
- * - the same student's own personal plan (`spark`) still goes through, so the guard
+ * - the same student's own personal plan (`plus`) still goes through, so the guard
  *   keys on the plan scope rather than blocking every purchase.
  *
  * That is the intended behavior the case asks for („odrzucenie zakupu planu
@@ -86,7 +86,7 @@ test.describe('BIL-05 — plan must match the account type', () => {
     expect(tenant.org, 'the student under test belongs to no organization').toBeNull();
     expect(
       tenant.runSuffix,
-      'seed with --fresh: every independent run owns a new, still-Base student',
+      'seed with --fresh: every independent run owns a new, still-Free student',
     ).toBeTruthy();
     const student = tenantUser(tenant, 'student');
 
@@ -227,15 +227,15 @@ test.describe('BIL-05 — plan must match the account type', () => {
     const ownWebhook = await page.request.post('/api/v1/stripe/webhook', {
       data: {
         type: 'checkout.session.completed',
-        session_id: `${CASE}-spark-${crypto.randomUUID()}`,
-        plan_id: 'spark',
+        session_id: `${CASE}-plus-${crypto.randomUUID()}`,
+        plan_id: 'plus',
         user_id: student.id,
       },
     });
-    expect(ownWebhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);
+    expect(ownWebhook.status(), 'POST /api/v1/stripe/webhook (plus)').toBe(200);
 
     const planAfterPurchase = await personalPlan(page);
-    expect(planAfterPurchase.key, 'the student plan is granted').toBe('spark');
+    expect(planAfterPurchase.key, 'the student plan is granted').toBe('plus');
     expect(planAfterPurchase.name, 'the granted plan is the personal plan').toBe('StudiQ Plus');
 
     const paymentsAfter = await paymentHistory(page);
@@ -246,9 +246,9 @@ test.describe('BIL-05 — plan must match the account type', () => {
       paymentsAfter.filter((payment) => payment.planKey === 'campus' || payment.planKey === 'hub'),
       'no refused plan was ever recorded',
     ).toHaveLength(0);
-    const sparkPayments = paymentsAfter.filter((payment) => payment.planKey === 'spark');
+    const sparkPayments = paymentsAfter.filter((payment) => payment.planKey === 'plus');
     expect(sparkPayments, 'the accepted purchase is the student plan').toHaveLength(
-      paymentsBefore.filter((payment) => payment.planKey === 'spark').length + 1,
+      paymentsBefore.filter((payment) => payment.planKey === 'plus').length + 1,
     );
     expect(
       sparkPayments[0],

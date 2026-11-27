@@ -72,22 +72,6 @@ describe('SubscriptionPlanAdminController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
-    it('returns 422 on any plan that names an audience (#1193)', async () => {
-      const response = await controller.create({
-        key: 'org',
-        name: 'Org',
-        scope: 'personal',
-        audience: 'student',
-      });
-      expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(422);
-    });
-    it('creates a personal plan without an audience (#1193)', async () => {
-      mockService.create.mockResolvedValueOnce({ success: true, data: { id: 'p-1' } });
-      const response = await controller.create({ key: 'p', name: 'Pp', scope: 'personal' });
-      expect(response.success).toBe(true);
-      expect(response.statusCode).toBe(201);
-    });
   });
 
   describe('update', () => {

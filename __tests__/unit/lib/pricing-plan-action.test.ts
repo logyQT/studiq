@@ -40,6 +40,13 @@ describe('pricingPlanAction', () => {
     expect(action({ signedIn: true, isFree: true, hasActivePlan: false })).toBe('none');
   });
 
+  it('prints no action for a manager with a cached personal plan', () => {
+    // A manager holds no personal plan (ADR-0007), but a stale `/me/personal-plan`
+    // cache can still report one. `purchaseBlocked` sits above `hasActivePlan`, so
+    // the row stays empty instead of offering a change-plan the server refuses.
+    expect(action({ signedIn: true, purchaseBlocked: true, hasActivePlan: true })).toBe('none');
+  });
+
   it('marks the paid plan the reader owns as current', () => {
     expect(action({ signedIn: true, isCurrent: true, hasActivePlan: true })).toBe('current');
   });

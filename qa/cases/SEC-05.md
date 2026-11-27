@@ -10,7 +10,7 @@
 ## Amendment (2026-11-26, B2 #1493)
 
 Hub carries no paid feature. Only the educator gets the personal Plus plan
-(`personalPlan: "spark", personalRole: "teacher"`), so the positive control keeps `quiz.templates`
+(`personalPlan: "plus", personalRole: "teacher"`), so the positive control keeps `quiz.templates`
 while the student stays on the free personal plan and still 403s on the quiz create.
 
 ## Prerequisite (verbatim)

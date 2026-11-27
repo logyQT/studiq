@@ -86,8 +86,8 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
 
   it('row 1: no org — user keys come from the personal plan, org keys are 0', async () => {
     mockResolverTables(mock, {
-      personalPlanKey: 'base',
-      planLimits: { base: PERSONAL_LIMITS },
+      personalPlanKey: 'free',
+      planLimits: { free: PERSONAL_LIMITS },
     });
 
     const { limits } = await resolver.resolveEntitlements(baseCtx);
@@ -103,8 +103,8 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
-      personalPlanKey: 'base',
-      planLimits: { hub: ORG_LIMITS, base: PERSONAL_LIMITS },
+      personalPlanKey: 'free',
+      planLimits: { hub: ORG_LIMITS, free: PERSONAL_LIMITS },
     });
 
     const { limits } = await resolver.resolveEntitlements(memberCtx());
@@ -122,12 +122,12 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
-      seatPlanKey: 'base',
-      personalPlanKey: 'spark',
+      seatPlanKey: 'free',
+      personalPlanKey: 'plus',
       planLimits: {
         hub: ORG_LIMITS,
-        base: SEAT_LIMITS,
-        spark: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
+        free: SEAT_LIMITS,
+        plus: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
       },
     });
 
@@ -141,7 +141,7 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     // plan's 50/20, never the seat's "unlimited".
     expect(limits.max_students).toBe(50);
     expect(limits.max_groups).toBe(20);
-    expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+    expect(sources.seat).toEqual({ planKey: 'free', origin: 'seat' });
   });
 
   it('row 4: an organization-scope personal plan never applies inside an org (D34)', async () => {
@@ -171,17 +171,17 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'launch',
       roleProfile: 'learner',
-      personalPlanKey: 'pro', // scope='personal'
+      personalPlanKey: 'max', // scope='personal'
       planLimits: {
         launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
-        pro: { max_flashcards: -1, max_ai_tokens_per_day: -1 },
+        max: { max_flashcards: -1, max_ai_tokens_per_day: -1 },
       },
     });
 
     const { limits, sources } = await resolver.resolveEntitlements(memberCtx());
 
     expect(limits.max_flashcards).toBe(-1); // max(org 100, personal -1) — -1 wins
-    expect(sources.personal).toEqual({ planKey: 'pro', origin: 'personal' });
+    expect(sources.personal).toEqual({ planKey: 'max', origin: 'personal' });
   });
 
   it('row 5: forged active_org_id with a stale seat row — personal for user keys, 0 for org keys, the seat is never read', async () => {
@@ -189,9 +189,9 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
       member: false, // no org_members row for the cookie's org
       orgPlan: 'hub',
       roleProfile: 'all',
-      seatPlanKey: 'base', // stale seat row in the foreign org
-      personalPlanKey: 'base',
-      planLimits: { hub: ORG_LIMITS, base: PERSONAL_LIMITS },
+      seatPlanKey: 'free', // stale seat row in the foreign org
+      personalPlanKey: 'free',
+      planLimits: { hub: ORG_LIMITS, free: PERSONAL_LIMITS },
     });
 
     const { limits, sources } = await resolver.resolveEntitlements(memberCtx());
@@ -211,22 +211,22 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'launch',
       roleProfile: 'learner',
-      personalPlanKey: 'base',
+      personalPlanKey: 'free',
       // `launch` defines only max_flashcards; every other key is missing.
-      planLimits: { launch: { max_flashcards: 100 }, base: { max_decks: 10 } },
+      planLimits: { launch: { max_flashcards: 100 }, free: { max_decks: 10 } },
     });
 
     const { limits } = await resolver.resolveEntitlements(memberCtx());
 
     expect(limits.max_flashcards).toBe(100); // present row still resolves
-    expect(limits.max_decks).toBe(10); // personal `base` defines it, the org row is missing → max(0, 10)
+    expect(limits.max_decks).toBe(10); // personal `free` defines it, the org row is missing → max(0, 10)
     expect(limits.max_questions).toBe(0); // missing in both org and personal
     expect(limits.max_groups).toBe(0); // missing org-scope row
     expect(limits.max_ai_tokens_per_day).toBe(0);
   });
 
   it('row 6b: outside an org a personal plan missing the row is 0, not unlimited', async () => {
-    mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: {} } });
+    mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: {} } });
 
     const { limits } = await resolver.resolveEntitlements(baseCtx);
 
@@ -234,7 +234,7 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
   });
 
   it('ships every catalog limit key, so a quota-0 key is explainable from one payload', async () => {
-    mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: {} } });
+    mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: {} } });
 
     const { limits } = await resolver.resolveEntitlements(baseCtx);
 
@@ -245,12 +245,12 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
-      seatPlanKey: 'base',
-      personalPlanKey: 'pro',
+      seatPlanKey: 'free',
+      personalPlanKey: 'max',
       planLimits: {
         hub: ORG_LIMITS,
-        base: SEAT_LIMITS,
-        pro: { ...PERSONAL_LIMITS, max_flashcards: -1, max_ai_tokens_per_day: -1 },
+        free: SEAT_LIMITS,
+        max: { ...PERSONAL_LIMITS, max_flashcards: -1, max_ai_tokens_per_day: -1 },
       },
     });
 
@@ -266,17 +266,17 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
-      seatPlanKey: 'base',
-      personalPlanKey: 'spark',
+      seatPlanKey: 'free',
+      personalPlanKey: 'plus',
       planEntitlements: {
         hub: ['flashcards', 'quiz'],
-        base: ['flashcards', 'quiz'],
-        spark: ['flashcards', 'quiz', 'ai.chat'],
+        free: ['flashcards', 'quiz'],
+        plus: ['flashcards', 'quiz', 'ai.chat'],
       },
       planLimits: {
         hub: ORG_LIMITS,
-        base: SEAT_LIMITS,
-        spark: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
+        free: SEAT_LIMITS,
+        plus: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 100000 },
       },
     });
 
@@ -293,18 +293,18 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'launch',
       roleProfile: 'learner',
-      seatPlanKey: 'ace',
-      personalPlanKey: 'base',
+      seatPlanKey: 'pro',
+      personalPlanKey: 'free',
       planLimits: {
         launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
-        ace: { ...SEAT_LIMITS, max_flashcards: 2000, max_ai_tokens_per_day: 200000 },
-        base: PERSONAL_LIMITS,
+        pro: { ...SEAT_LIMITS, max_flashcards: 2000, max_ai_tokens_per_day: 200000 },
+        free: PERSONAL_LIMITS,
       },
     });
 
     const { limits } = await resolver.resolveEntitlements(memberCtx());
 
-    // max(launch 100, ace 2000, base 100) = 2000 — the seat is a layer, not a ceiling.
+    // max(launch 100, pro 2000, base 100) = 2000 — the seat is a layer, not a ceiling.
     expect(limits.max_flashcards).toBe(2000);
     expect(limits.max_ai_tokens_per_day).toBe(200000);
   });
@@ -313,17 +313,17 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'launch',
       roleProfile: 'learner',
-      personalPlanKey: 'pro',
-      planEntitlements: { launch: ['flashcards', 'quiz'], pro: ['flashcards', 'quiz', 'ai.chat'] },
+      personalPlanKey: 'max',
+      planEntitlements: { launch: ['flashcards', 'quiz'], max: ['flashcards', 'quiz', 'ai.chat'] },
       planLimits: {
         launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
-        pro: { ...PERSONAL_LIMITS, max_flashcards: -1, max_ai_tokens_per_day: -1 },
+        max: { ...PERSONAL_LIMITS, max_flashcards: -1, max_ai_tokens_per_day: -1 },
       },
     });
 
     const { limits } = await resolver.resolveEntitlements(memberCtx());
 
-    expect(limits.max_flashcards).toBe(-1); // pro raises the launch floor of 100
+    expect(limits.max_flashcards).toBe(-1); // max raises the launch floor of 100
     expect(limits.max_ai_tokens_per_day).toBe(-1);
   });
 
@@ -331,9 +331,9 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     mockResolverTables(mock, {
       orgPlan: 'hub',
       roleProfile: 'learner',
-      seatPlanKey: 'base',
-      personalPlanKey: 'pro',
-      planLimits: { hub: ORG_LIMITS, base: SEAT_LIMITS, pro: PERSONAL_LIMITS },
+      seatPlanKey: 'free',
+      personalPlanKey: 'max',
+      planLimits: { hub: ORG_LIMITS, free: SEAT_LIMITS, max: PERSONAL_LIMITS },
     });
 
     await resolver.resolveEntitlements(memberCtx());
@@ -357,7 +357,7 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
   });
 
   it('outside an org one resolution issues five queries (no org-layer reads at all)', async () => {
-    mockResolverTables(mock, { personalPlanKey: 'base', planLimits: { base: PERSONAL_LIMITS } });
+    mockResolverTables(mock, { personalPlanKey: 'free', planLimits: { free: PERSONAL_LIMITS } });
 
     await resolver.resolveEntitlements(baseCtx);
 
@@ -372,9 +372,9 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
       f.key === 'ai.chat' ? { ...f, is_enabled: false } : f,
     );
     mockResolverTables(mock, {
-      personalPlanKey: 'ace',
-      planEntitlements: { ace: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'] },
-      planLimits: { ace: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 200000 } },
+      personalPlanKey: 'pro',
+      planEntitlements: { pro: ['flashcards', 'quiz', 'ai.chat', 'stats.insights'] },
+      planLimits: { pro: { ...PERSONAL_LIMITS, max_ai_tokens_per_day: 200000 } },
       flags,
     });
 

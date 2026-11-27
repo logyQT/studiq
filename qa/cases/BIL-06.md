@@ -13,8 +13,8 @@ Brak sesji.
 
 ## Steps
 
-1. Otwórz /checkout?plan_id=spark i spróbuj dokończyć.
-2. Wywołaj POST /api/v1/stripe/webhook z JSON {"type":"checkout.session.completed","session_id":"x","plan_id":"pro","user_id":"<UUID student1>"} bez sesji (np. curl).
+1. Otwórz /checkout?plan_id=plus i spróbuj dokończyć.
+2. Wywołaj POST /api/v1/stripe/webhook z JSON {"type":"checkout.session.completed","session_id":"x","plan_id":"max","user_id":"<UUID student1>"} bez sesji (np. curl).
 
 ## Expected result
 
@@ -40,7 +40,7 @@ bun scripts/qa-tenant.ts BIL-06 --fresh
 - Użytkownicy: `manager` (org role `admin`), `teacher` (konto educator), `student`
   (konto student, członek `G1`), hasło `Seed4Test!`.
 - Wędrówka po wspólnej aplikacji potwierdziła oczekiwane zachowanie: `/checkout` bez sesji
-  przekierowuje na `/login?next=/checkout?plan_id=spark`, `POST /api/v1/stripe/webhook`
+  przekierowuje na `/login?next=/checkout?plan_id=plus`, `POST /api/v1/stripe/webhook`
   bez sesji zwraca 401 `UNAUTHORIZED` i nie zmienia niczyjego planu, a wywołanie z sesją
   ucznia dla `user_id` innego użytkownika zwraca 403 `FORBIDDEN`. Endpoint jest publiczny
   tylko na poziomie proxy — uwierzytelnia wywołującego sam i działa wyłącznie na jego

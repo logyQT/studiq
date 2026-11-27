@@ -9,7 +9,7 @@
 
 ## Prerequisite (verbatim)
 
-Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `base`) — bez entitlementu
+Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `free`) — bez entitlementu
 `quiz.templates`.
 
 ## Seed (QA-suite)
@@ -20,9 +20,9 @@ Nauczyciel na darmowym planie (organizacja `launch`, plan osobisty `base`) — b
   `bun scripts/qa-tenant.ts EDU-QZ-06 --fresh` — one fresh run suffix per independent run. All
   ids come from `tenantKey('qa/cases/EDU-QZ-06.md', 'EDU-QZ-06#<run>', 'qa-shared')` +
   `tenantId(key, entity)`; the spec reads them through `loadTenant('EDU-QZ-06')`.
-- Account: the tenant's `users.teacher` (educator, org role `teacher`, personal plan `base`),
+- Account: the tenant's `users.teacher` (educator, org role `teacher`, personal plan `free`),
   logged in with the tenant org as the active org (`loginAs(page, tenant, 'teacher',
-{ locale: 'pl' })`). The org's `launch` plan and the `base` personal plan both lack
+{ locale: 'pl' })`). The org's `launch` plan and the `free` personal plan both lack
   `quiz.templates`, so `GET /api/v1/me/entitlements` does not list it.
 - Organization: `qa-edu-qz-06-<suffix>` with a manager, an educator and a student, plus the
   default group `G1`. Nothing shared is read or written: no admin setting, feature flag, plan,

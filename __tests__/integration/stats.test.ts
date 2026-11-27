@@ -170,7 +170,7 @@ describe(`Stats Integration`, () => {
     // `stats.insights` surface reaches this member through their personal plan.
     const { error: memberPlanError } = await service
       .from('profiles')
-      .update({ personal_plan_key: 'ace' })
+      .update({ personal_plan_key: 'pro' })
       .eq('id', member.id);
     if (memberPlanError) throw new Error(`[setup] member plan: ${memberPlanError.message}`);
 

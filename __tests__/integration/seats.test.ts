@@ -79,15 +79,15 @@ describe(`Seats Integration`, () => {
     orgId = fixture.orgId!;
 
     // Create a pool via the API (no default pools after S1).
-    // Use 'base' (Free) — a personal, seat-eligible plan — for the pool the
-    // assignment tests share; the POST tests below buy `ace` fresh.
+    // Use 'free' (Free) — a personal, seat-eligible plan — for the pool the
+    // assignment tests share; the POST tests below buy `pro` fresh.
     mockUser(fixture.user);
     const createReq = createNextRequest(
       'http://localhost/api/v1/organization/seats/pools',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: 'base', quantity: 10 }),
+        body: JSON.stringify({ planKey: 'free', quantity: 10 }),
       },
       orgCookies(),
     );
@@ -132,7 +132,7 @@ describe(`Seats Integration`, () => {
       expect(body.data).toBeInstanceOf(Array);
       expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-      const pool = body.data.find((p) => p.planKey === 'base');
+      const pool = body.data.find((p) => p.planKey === 'free');
       expect(pool).toBeDefined();
       expect(pool!.total).toBe(10);
       expect(pool!.assigned).toBe(0);
@@ -165,7 +165,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'ace', quantity: 5 }),
+          body: JSON.stringify({ planKey: 'pro', quantity: 5 }),
         },
         orgCookies(),
       );
@@ -175,7 +175,7 @@ describe(`Seats Integration`, () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.planKey).toBe('ace');
+      expect(body.data.planKey).toBe('pro');
       expect(body.data.total).toBe(5);
     });
 
@@ -188,7 +188,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'ace', quantity: 3 }),
+          body: JSON.stringify({ planKey: 'pro', quantity: 3 }),
         },
         orgCookies(),
       );
@@ -265,7 +265,6 @@ describe(`Seats Integration`, () => {
           sort_order: 990,
           is_active: true,
           scope: 'personal',
-          audience: null,
         });
         expect(planError).toBeNull();
         const { error: entError } = await supabase
@@ -310,7 +309,7 @@ describe(`Seats Integration`, () => {
       }
     });
 
-    it('accepts a personal plan whose keys are all seat-eligible (ace)', async () => {
+    it('accepts a personal plan whose keys are all seat-eligible (pro)', async () => {
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -318,7 +317,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'ace', quantity: 1 }),
+          body: JSON.stringify({ planKey: 'pro', quantity: 1 }),
         },
         orgCookies(),
       );
@@ -327,7 +326,7 @@ describe(`Seats Integration`, () => {
       const body = await json<PoolBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.planKey).toBe('ace');
+      expect(body.data.planKey).toBe('pro');
     });
   });
 
@@ -436,7 +435,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'spark', quantity: 99_999_999_999 }),
+          body: JSON.stringify({ planKey: 'plus', quantity: 99_999_999_999 }),
         },
         orgCookies(),
       );
@@ -450,7 +449,7 @@ describe(`Seats Integration`, () => {
       expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
-      expect(pools.find((p) => p.planKey === 'spark')).toBeUndefined();
+      expect(pools.find((p) => p.planKey === 'plus')).toBeUndefined();
     });
 
     it('rejects an increment that would overflow int4 and leaves the pool unchanged', async () => {
@@ -462,7 +461,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 8 }),
+          body: JSON.stringify({ planKey: 'max', quantity: 8 }),
         },
         orgCookies(),
       );
@@ -474,7 +473,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: INT4_MAX }),
+          body: JSON.stringify({ planKey: 'max', quantity: INT4_MAX }),
         },
         orgCookies(),
       );
@@ -488,7 +487,7 @@ describe(`Seats Integration`, () => {
       expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
-      expect(pools.find((p) => p.planKey === 'pro')?.total).toBe(8);
+      expect(pools.find((p) => p.planKey === 'max')?.total).toBe(8);
     });
 
     it('returns 422 for a PUT above the int4 range and leaves the pool unchanged', async () => {
@@ -623,7 +622,7 @@ describe(`Seats Integration`, () => {
     });
 
     it('accepts a student account on a pool whose plan used to name another audience (#1193)', async () => {
-      // `ace` used to be student-audience and the pool once required a matching
+      // `pro` used to be student-audience and the pool once required a matching
       // persona. A personal plan carries no audience now, so the student is
       // accepted when the pool has room.
       const supabase = createSeedDb();
@@ -669,13 +668,13 @@ describe(`Seats Integration`, () => {
       const supabase = createSeedDb();
       mockUser(fixture.user);
 
-      // A `pro` pool (Max) — a valid licence for any member.
+      // A `max` pool (Max) — a valid licence for any member.
       const poolReq = createNextRequest(
         'http://localhost/api/v1/organization/seats/pools',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 2 }),
+          body: JSON.stringify({ planKey: 'max', quantity: 2 }),
         },
         orgCookies(),
       );
@@ -715,14 +714,14 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 1 }),
+          body: JSON.stringify({ planKey: 'max', quantity: 1 }),
         },
         orgCookies(),
       );
       const poolRes = await createPool(poolReq);
       const poolBody = await json<PoolBody>(poolRes);
       expect(poolRes.status).toBe(201);
-      expect(poolBody.data.planKey).toBe('pro');
+      expect(poolBody.data.planKey).toBe('max');
 
       const manager = await createTestUser({ role: 'manager' });
       const req = createNextRequest(
@@ -739,7 +738,7 @@ describe(`Seats Integration`, () => {
       const body = await json<AssignmentBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.planKey).toBe('pro');
+      expect(body.data.planKey).toBe('max');
       expect(body.data.userId).toBe(manager.id);
     });
   });

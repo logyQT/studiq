@@ -46,10 +46,10 @@ describe('PlanLimitService', () => {
 
   describe('getByPlanKey', () => {
     it('returns limits for plan key', async () => {
-      const limits = [{ id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
+      const limits = [{ id: 'l-1', plan_key: 'free', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(limits));
 
-      const result = await service.getByPlanKey('base');
+      const result = await service.getByPlanKey('free');
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(limits);
@@ -59,7 +59,7 @@ describe('PlanLimitService', () => {
     it('returns error on DB failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.getByPlanKey('base');
+      const result = await service.getByPlanKey('free');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
@@ -68,7 +68,7 @@ describe('PlanLimitService', () => {
 
   describe('getAll', () => {
     it('returns all limits', async () => {
-      const limits = [{ id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
+      const limits = [{ id: 'l-1', plan_key: 'free', limit_key: 'max_groups', limit_value: 3 }];
       const listQb = qb(limits);
       mock.from.mockReturnValueOnce(listQb);
 
@@ -91,11 +91,11 @@ describe('PlanLimitService', () => {
 
   describe('create', () => {
     it('creates a plan limit', async () => {
-      const limit = { id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 };
+      const limit = { id: 'l-1', plan_key: 'free', limit_key: 'max_groups', limit_value: 3 };
       mock.from.mockReturnValueOnce(qb(limit));
 
       const result = await service.create({
-        planKey: 'base',
+        planKey: 'free',
         limitKey: 'max_groups',
         limitValue: 3,
       });
@@ -109,7 +109,7 @@ describe('PlanLimitService', () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.create({
-        planKey: 'base',
+        planKey: 'free',
         limitKey: 'max_groups',
         limitValue: 3,
       });
@@ -121,7 +121,7 @@ describe('PlanLimitService', () => {
 
   describe('update', () => {
     it('updates a plan limit', async () => {
-      const limit = { id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 5 };
+      const limit = { id: 'l-1', plan_key: 'free', limit_key: 'max_groups', limit_value: 5 };
       const updateQb = qb(limit);
       mock.from.mockReturnValueOnce(updateQb);
 

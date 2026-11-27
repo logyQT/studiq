@@ -46,8 +46,8 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
   tenant's `teacher` (an `educator` account) is the „teacher1” leg.
 - **Plans the two legs start on**: the student is an org member without a seat
   assignment, so `/api/v1/me/personal-plan` resolves their personal plan
-  (`profiles.personal_plan_key`, default `base`). The teacher has no seat assignment
-  either, so `/api/v1/me/plan` falls back to the same personal plan — `base`, written by
+  (`profiles.personal_plan_key`, default `free`). The teacher has no seat assignment
+  either, so `/api/v1/me/plan` falls back to the same personal plan — `free`, written by
   the `handle_new_user` trigger for every account type since #1193. `--plan` is not needed.
 - **Read-only shared data**: the plan catalogue (`subscription_plans`, `plan_limits`) is
   global. The case can only exist against it, so the spec reads it through
@@ -65,7 +65,7 @@ bun scripts/qa-tenant.ts BIL-02 --fresh   # new org + users per independent run
   (39,99 zł/miesiąc, „Wybierz Pro”, „Zalecany”), StudiQ Max (79,99 zł/miesiąc, „Wybierz Maks”).
   The Free card carries the „Twój plan” badge on both pages.
 - The purchase buttons are live: „Wybierz Plus” creates a mock checkout session and
-  opens `/checkout?session_id=…&plan_id=spark` („Podsumowanie zamówienia”, „StudiQ
+  opens `/checkout?session_id=…&plan_id=plus` („Podsumowanie zamówienia”, „StudiQ
   Plus”).
 - Persona no longer filters the ladder or the purchase: a signed-in student opening
   `/edu/upgrade` keeps the URL and sees the same individual plans, and can start a

@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { useManagerRedirect } from '@/hooks/use-manager-redirect';
 import { apiPost, ApiError } from '@/lib/api';
 import { resolveCheckoutOrg, type CheckoutOrg, type OrgsStatus } from '@/lib/checkout-org';
 import { getHighlightedFeatures, sortFeaturesByPriority } from '@/lib/pricing-benefits';
@@ -81,6 +82,9 @@ export function CheckoutMockForm() {
   });
   const plan = planQuery.data;
   const isOrgPlan = plan?.scope === 'organization';
+  // A manager buys organization plans on `/manage`, not a personal checkout the
+  // API refuses (ADR-0007). Organization checkout stays available.
+  const managerBlocked = useManagerRedirect('/manage', plan?.scope === 'personal');
 
   // The target org comes from the self-scoped membership list (RLS: members
   // only) — never from the URL, which is user-editable and goes stale on a
@@ -160,6 +164,7 @@ export function CheckoutMockForm() {
   }
 
   if (!plan) return <FullPageSpinner />;
+  if (managerBlocked) return <FullPageSpinner />;
 
   // `requireAuth` on `/checkout` makes this unreachable in practice; fail
   // closed instead of rendering a form that cannot be submitted.

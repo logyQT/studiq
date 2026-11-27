@@ -26,22 +26,23 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
 
 | Table / column                                                          | Meaning                                                                                                                                                                                                                            |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`, `audience`; `scope='organization'` plans carry no audience — D32).                                                                                                                      |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`). A plan carries no persona dimension: the same keys form one personal ladder and one organization ladder.                                                                               |
 | `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                                                                                                       |
 | `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                                                                                                       |
-| `profiles.personal_plan_key`                                            | Personal plan (catalogue default `base`; every persona, a manager included, starts there — #1193). An organization purchase never writes it (#228).                                                                                |
+| `profiles.personal_plan_key`                                            | Personal plan, nullable. A student or an educator starts on the free plan; a manager holds none (ADR-0007) and buys only for an organization. An organization purchase never writes it (#228).                                     |
 | `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                                                                                                    |
 | `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. The UI no longer sells or assigns seats (#1493); the data path is kept for #1511. |
 | `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                                                                                                 |
 | `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                                                                                                          |
 
-The `base` / `launch` defaults come from the plan-catalogue migration
-(`supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql` →
-`ALTER TABLE … SET DEFAULT`), not from the original table migrations. The
-current matrix is `20261126130000_individual_plan_ladder.sql` (Free / Plus / Pro /
-Max) plus `20261126160000_organization_plan_ladder.sql` (Launch / Hub / Campus):
-every organization plan carries only `flashcards` + `quiz`, its capacity rows,
-and no `max_ai_tokens_per_day` row (AI is an organization licence in #1511).
+The `free` / `launch` defaults and the nullable manager plan come from the
+plan-catalogue migrations (`20261125170000_plan_catalog_owned_by_migrations.sql`
+and `20261126170000_plan_key_rename_manager_plan.sql`), not from the original
+table migrations. The current matrix is
+`20261126170000_plan_key_rename_manager_plan.sql`: Free / Plus / Pro / Max on
+`free` / `plus` / `pro` / `max`, plus Launch / Hub / Campus. Every organization
+plan carries only `flashcards` + `quiz`, its capacity rows, and no
+`max_ai_tokens_per_day` row (AI is an organization licence in #1511).
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -147,7 +148,7 @@ a wrapper over the single resolver's composed `limits`
 
 > **2026-11-21 (phase 3b, ADR-0015 §6.2):** the seat is no longer exclusive
 > (#233 Q1/Q3 reversed for user-scope keys): per-member keys now take
-> `max(org, seat, personal)` with `-1` short-circuiting, so a `base` seat in a
+> `max(org, seat, personal)` with `-1` short-circuiting, so a `free` seat in a
 > `hub` org keeps the hub flashcard allowance (2000) instead of the seat's 100.
 > `max_ai_tokens_per_day` now comes from the personal plan: no organization plan
 > carries an AI quota (#1493). Membership is
@@ -179,15 +180,15 @@ inside an org — it is the legacy org-buyer mirror (#228, D34). A missing
 seat plan: a spoofed org id has no row and falls back to the personal plan
 (user keys) or `0` (org keys), ignoring any stale seat row.
 
-**Managers (#1193):** a manager uses the same one individual ladder as every
-other signed-in reader and may buy Plus, Pro or Max as a personal plan. A new
-manager starts on the free `base` plan, the one `handle_new_user()` mints for
-every persona. In a verified org an organization-scope personal plan is
-excluded, so limits come from `max(org, seat, personal)` with the personal
-layer inert when its plan is organization-scope (#228, D34); the free personal
-plan applies fully when there is no active org. A legacy org-scope plan left in
-`personal_plan_key` cannot widen any org's limits — the 2026-11-22 backfill
-moves managers off those plans.
+**Managers (ADR-0007):** a manager is an organization buyer and holds no
+personal plan: `profiles.personal_plan_key` is NULL, `handle_new_user()` mints
+`free` only for a student or an educator, and the checkout refuses a personal
+plan for a manager. A manager buys and changes only an organization plan, for an
+organization where they hold `org.billing.manage` (the Admin role). Limits come
+from the org plan, plus a seat if one is assigned; outside every organization a
+manager resolves no plan, so user-scope limits are `0`. A legacy personal plan
+left on a manager profile is inert inside an org (an organization-scope plan is
+excluded) and is not reachable by a new purchase.
 
 `checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`

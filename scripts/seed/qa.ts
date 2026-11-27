@@ -9,7 +9,7 @@
  *   bun scripts/qa-tenant.ts ONB-04 --profile bare --role manager --fresh
  *   bun scripts/qa-tenant.ts ONB-10 --profile org-limit --fresh
  *   bun scripts/qa-tenant.ts MGR-ROL-02 --plan hub --fresh
- *   bun scripts/qa-tenant.ts MGR-02 --plan hub --personal-plan spark --fresh
+ *   bun scripts/qa-tenant.ts STU-47 --plan hub --personal-plan plus --fresh
  *
  * Security runs (see `qa/security/ROE.md`) must seed their own local stack:
  *
@@ -57,11 +57,13 @@
  * users (the profile field `personalPlan` does the same for the case's own
  * manifest). A paid surface inside an organization now comes from the member's
  * personal plan (`personalPortable`), so a case that needs `ai.chat`,
- * `quiz.templates` or `stats.insights` inside an org declares `spark`, `ace` or
+ * `quiz.templates` or `stats.insights` inside an org declares `plus`, `pro` or
  * `pro` here. `--personal-role manager|teacher|student` narrows the write to that
- * one tenant account; without it every seeded account gets the plan. The key
- * must exist and be `scope='personal'`; anything else fails the seed instead of
- * silently granting nothing. This is fixture data, not a product change.
+ * one tenant account; without it every seeded **non-manager** account gets the
+ * plan. A manager owns no personal plan (ADR-0007), so `manager` is refused
+ * here and in `applyPersonalPlan` instead of writing the forbidden column. The
+ * key must exist and be `scope='personal'`; anything else fails the seed instead
+ * of silently granting nothing. This is fixture data, not a product change.
  *
  * Profiles:
  * - `content` (default) — org + manager/teacher/student + a default group.
@@ -567,6 +569,7 @@ async function seedTwoOrg(
       .filter(([key]) => personalTargets.includes(key))
       .map(([, user]) => user.id),
     personalPlan,
+    personalRole,
   );
 
   const tenant = {
@@ -650,6 +653,7 @@ async function applyPersonalPlan(
   caseId: string,
   userIds: readonly string[],
   planKey: string | null | undefined,
+  personalRole?: 'manager' | 'teacher' | 'student' | null,
 ): Promise<void> {
   if (!planKey) return;
   if (userIds.length === 0) {
@@ -671,24 +675,54 @@ async function applyPersonalPlan(
     );
   }
 
+  const { data: profiles, error: profileError } = await db
+    .from('profiles')
+    .select('id, account_type')
+    .in('id', [...userIds]);
+  if (profileError) {
+    throw new Error(
+      `seed ${caseId}: read profiles for personal plan ${planKey} ${profileError.message}`,
+    );
+  }
+  const rows = profiles ?? [];
+  if (rows.length !== userIds.length) {
+    throw new Error(
+      `seed ${caseId}: personal plan ${planKey} found ${rows.length} of ${userIds.length} profiles`,
+    );
+  }
+
+  // A manager owns no personal plan (ADR-0007). The default target set leaves
+  // the manager out; an explicit selection that still reaches one is an error,
+  // never a silent write to the forbidden column.
+  const targets = personalRole ? rows : rows.filter((row) => row.account_type !== 'manager');
+  if (targets.some((row) => row.account_type === 'manager')) {
+    throw new Error(
+      `seed ${caseId}: a manager holds no personal plan, so ${planKey} cannot target one`,
+    );
+  }
+  const targetIds = targets.map((row) => row.id);
+  if (targetIds.length === 0) {
+    throw new Error(`seed ${caseId}: personal plan ${planKey} matched no non-manager tenant user`);
+  }
+
   const { error: writeError } = await db
     .from('profiles')
     .update({ personal_plan_key: planKey })
-    .in('id', userIds);
+    .in('id', targetIds);
   if (writeError) {
     throw new Error(`seed ${caseId}: set personal plan ${planKey} ${writeError.message}`);
   }
 
-  const { data: rows, error: readError } = await db
+  const { data: written, error: readError } = await db
     .from('profiles')
     .select('id, personal_plan_key')
-    .in('id', userIds);
+    .in('id', targetIds);
   if (readError) {
     throw new Error(`seed ${caseId}: verify personal plan ${planKey} ${readError.message}`);
   }
-  if ((rows ?? []).length !== userIds.length) {
+  if ((written ?? []).length !== targetIds.length) {
     throw new Error(
-      `seed ${caseId}: personal plan ${planKey} covered ${(rows ?? []).length} of ${userIds.length} profiles`,
+      `seed ${caseId}: personal plan ${planKey} covered ${(written ?? []).length} of ${targetIds.length} profiles`,
     );
   }
 }
@@ -719,6 +753,11 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
   }
   if (personalRole && !['manager', 'teacher', 'student'].includes(personalRole)) {
     throw new Error(`invalid personal role "${personalRole}"`);
+  }
+  if (personalPlan && personalRole === 'manager') {
+    throw new Error(
+      `seed ${caseId}: a manager holds no personal plan (ADR-0007); ${personalPlan} cannot target one`,
+    );
   }
   if (!existsSync(join(CASES, `${caseId}.md`))) {
     throw new Error(`unknown case ${caseId}: qa/cases/${caseId}.md is missing`);
@@ -786,6 +825,7 @@ async function seedCase(db: ReturnType<typeof createSeedDb>, caseId: string, opt
         .filter(([key]) => !personalRole || key === personalRole)
         .map(([, user]) => user.id),
       personalPlan,
+      personalRole,
     );
     tenant.personalPlan = personalPlan ?? null;
     tenant.personalRole = personalRole ?? null;

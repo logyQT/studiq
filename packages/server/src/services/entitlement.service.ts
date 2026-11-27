@@ -34,7 +34,6 @@ export type EntitlementApplyOutcome = 'applied' | 'stale';
 export interface EntitlementPlan {
   key: string;
   scope: string;
-  audience: string | null;
   priceMonthly: number;
   isActive: boolean;
 }
@@ -53,8 +52,8 @@ export interface EntitlementPlan {
  *
  * Writes are **absolute** (`set to X`), which is what makes replays and
  * duplicate deliveries harmless. ADR-0007 adds one guard: a paid organization
- * plan must never be written to a profile, because a manager's personal plan is
- * the free manager tier (`launch`) and applies only outside an organization.
+ * plan must never be written to a profile, because a manager holds no personal
+ * plan and buys only for an organization.
  */
 export class EntitlementService {
   constructor(
@@ -123,14 +122,13 @@ export class EntitlementService {
   }
 
   /**
-   * Downgrade to the free plan of the previous plan's scope: `base` for every
+   * Downgrade to the free plan of the previous plan's scope: `free` for every
    * personal plan, `launch` for an organization (D34).
    *
    * The scope comes from the catalog row of the plan being left, never from
    * the caller's claims: a `customer.subscription.deleted` payload does not
    * carry an account type, and the catalog is the single source of truth.
-   * Since #1193 a personal plan carries no audience, so the free match is one
-   * plan per scope.
+   * The personal and organization ladders each carry one free plan.
    */
   async downgradeToFree(
     owner: EntitlementOwner,
@@ -210,11 +208,10 @@ export class EntitlementService {
     }
 
     const admin = this.createAdminClient();
-    // One active free plan per scope since #1193. Read both and pick the
-    // scope in JS; the audience no longer partitions the personal ladder.
+    // One active free plan per scope. Read both and pick the scope in JS.
     const { data, error } = await admin
       .from('subscription_plans')
-      .select('key, scope, audience, price_monthly, is_active, sort_order')
+      .select('key, scope, price_monthly, is_active, sort_order')
       .eq('price_monthly', 0)
       .eq('is_active', true)
       .order('sort_order', { ascending: true });
@@ -230,7 +227,6 @@ export class EntitlementService {
     return success({
       key: freePlan.key,
       scope: freePlan.scope,
-      audience: freePlan.audience,
       priceMonthly: freePlan.price_monthly ?? 0,
       isActive: freePlan.is_active ?? true,
     });
@@ -240,7 +236,7 @@ export class EntitlementService {
     const admin = this.createAdminClient();
     const { data, error } = await admin
       .from('subscription_plans')
-      .select('key, scope, audience, price_monthly, is_active')
+      .select('key, scope, price_monthly, is_active')
       .eq('key', planKey)
       .maybeSingle();
 
@@ -250,7 +246,6 @@ export class EntitlementService {
     return success({
       key: data.key,
       scope: data.scope,
-      audience: data.audience,
       priceMonthly: data.price_monthly ?? 0,
       isActive: data.is_active ?? true,
     });

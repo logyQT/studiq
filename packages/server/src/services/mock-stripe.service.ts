@@ -71,7 +71,10 @@ export class MockStripeService {
   ): Promise<ServiceResult<void>> {
     if (event.type !== 'checkout.session.completed') return success(undefined);
 
-    const applicable = await resolveApplicablePlan(this.rules, event.plan_id);
+    const applicable = await resolveApplicablePlan(this.rules, event.plan_id, {
+      userId,
+      accountType,
+    });
     if (isFailure(applicable)) return applicable;
 
     const owner = await resolveCheckoutOwner(

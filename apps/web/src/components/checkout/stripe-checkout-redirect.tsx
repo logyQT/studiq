@@ -26,7 +26,7 @@ import { resolveDashboardArea } from '@/lib/dashboard-home';
 import { INDIVIDUAL_PRICING_URL, ORGANIZATION_PRICING_URL } from '@/lib/pricing-urls';
 
 interface StripeCheckoutRedirectProps {
-  /** Catalog plan key from `?plan_id=` (`spark`, `hub`, …). */
+  /** Catalog plan key from `?plan_id=` (`plus`, `hub`, …). */
   planKey: string;
   /** Organization from `?org_id=`; the server ignores it for personal plans. */
   orgId: string | null;

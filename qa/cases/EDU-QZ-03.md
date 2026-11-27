@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"`), not the org plan.
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`), not the org plan.
 
 ## Prerequisite (verbatim)
 
@@ -24,12 +24,12 @@ Quiz z ≥ 3 pytaniami.
   `tenantId(key, entity)`.
 - Accounts: the tenant's `users.teacher` is the educator editing the quiz — the
   legacy seed's `teacher1@dev.local` / `T1`, which the case implicitly assumes;
-  that account is on the free `base` personal plan today.
+  that account is on the free `free` personal plan today.
   No legacy/manual account or `pass` is used.
 - Organization: `qa-edu-qz-03-<suffix>` with a manager (admin), the teacher and the
   student, plus the default group `G1`. The tenant's active org is the tenant org, put on the
   **hub** plan by the profile
-  (`{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "teacher" }`
+  (`{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "teacher" }`
   in `__tests__/qa/profiles/EDU-QZ-03.json`, applied through the seeder's `--plan`). Hub is
   capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
   (phase 5d) comes from the educator's personal Plus plan; the educator passes the write gates on

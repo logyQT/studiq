@@ -13,13 +13,12 @@ import { MockStripeService } from '@studiq/server/services/mock-stripe.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const studentPlan: CatalogPlan = {
-  key: 'spark',
-  name: 'StudiQ Spark',
+  key: 'plus',
+  name: 'StudiQ Plus',
   priceMonthly: 999,
   currency: 'PLN',
   isActive: true,
   scope: 'personal',
-  audience: 'student',
   sortOrder: 1,
 };
 const orgPlan: CatalogPlan = {
@@ -29,17 +28,15 @@ const orgPlan: CatalogPlan = {
   currency: 'PLN',
   isActive: true,
   scope: 'organization',
-  audience: null,
   sortOrder: 8,
 };
 const freeStudentPlan: CatalogPlan = {
-  key: 'base',
+  key: 'free',
   name: 'StudiQ Base',
   priceMonthly: 0,
   currency: 'PLN',
   isActive: true,
   scope: 'personal',
-  audience: 'student',
   sortOrder: 0,
 };
 const freeOrgPlan: CatalogPlan = {
@@ -49,7 +46,6 @@ const freeOrgPlan: CatalogPlan = {
   currency: 'PLN',
   isActive: true,
   scope: 'organization',
-  audience: null,
   sortOrder: 3,
 };
 const inactivePlan: CatalogPlan = { ...studentPlan, key: 'old', isActive: false };
@@ -57,7 +53,7 @@ const inactivePlan: CatalogPlan = { ...studentPlan, key: 'old', isActive: false 
 const event = {
   type: 'checkout.session.completed',
   session_id: 's-1',
-  plan_id: 'spark',
+  plan_id: 'plus',
 };
 
 type Rules = Pick<StripeBillingRepository, 'getPlan' | 'canManageBilling'>;
@@ -105,27 +101,27 @@ describe('MockStripeService', () => {
       provider: 'mock',
       userId: 'u-1',
       organizationId: null,
-      planKey: 'spark',
-      planName: 'StudiQ Spark',
+      planKey: 'plus',
+      planName: 'StudiQ Plus',
       amount: 999,
       currency: 'PLN',
       sessionId: 's-1',
     } satisfies PaymentHistoryInput);
-    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'spark');
+    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'plus');
   });
 
   it('applies a free plan as a lifecycle change without a payment row', async () => {
     mockPlan(freeStudentPlan);
 
     const result = await service.handleWebhook(
-      { ...event, plan_id: 'base' },
+      { ...event, plan_id: 'free' },
       AccountType.STUDENT,
       'u-1',
     );
 
     expect(result).toEqual(success(undefined));
     expect(payments.record).not.toHaveBeenCalled();
-    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'base');
+    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'free');
   });
 
   describe('organization plans', () => {
@@ -143,7 +139,7 @@ describe('MockStripeService', () => {
         'campus',
       );
       // Only the organization owner is passed to the entitlement writer: the
-      // manager's personal plan stays `solo` (#228/D2).
+      // manager's personal plan stays untouched (#228/D2).
       expect(entitlements.applyPlan).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'user' }),
         expect.anything(),
@@ -236,14 +232,14 @@ describe('MockStripeService', () => {
     vi.mocked(payments.record).mockResolvedValue(
       success({
         outcome: 'duplicate',
-        existing: { userId: 'u-1', organizationId: null, planKey: 'spark' },
+        existing: { userId: 'u-1', organizationId: null, planKey: 'plus' },
       }),
     );
 
     const result = await service.handleWebhook(event, AccountType.STUDENT, 'u-1');
 
     expect(result).toEqual(success(undefined));
-    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'spark');
+    expect(entitlements.applyPlan).toHaveBeenCalledWith({ type: 'user', userId: 'u-1' }, 'plus');
   });
 
   it.each([
@@ -251,14 +247,14 @@ describe('MockStripeService', () => {
       'another owner',
       {
         outcome: 'duplicate' as const,
-        existing: { userId: 'victim', organizationId: null, planKey: 'spark' },
+        existing: { userId: 'victim', organizationId: null, planKey: 'plus' },
       },
     ],
     [
       'another plan',
       {
         outcome: 'duplicate' as const,
-        existing: { userId: 'u-1', organizationId: null, planKey: 'ace' },
+        existing: { userId: 'u-1', organizationId: null, planKey: 'pro' },
       },
     ],
     [

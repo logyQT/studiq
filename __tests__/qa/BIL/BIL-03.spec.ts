@@ -5,7 +5,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 /**
  * BIL-03 — Zakup planu studenta, ścieżka poprawna.
  *
- * A standalone student on the free `base` plan buys Plus (19,99 zł/mies.) from the
+ * A standalone student on the free `free` plan buys Plus (19,99 zł/mies.) from the
  * individual ladder of `/pricing`: the checkout summary shows the plan, its price and
  * „Razem”, the card fields format themselves, the „Zapłać” button unlocks only
  * when every field is valid, the simulated payment shows
@@ -20,7 +20,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * `bare`/`student` is the case's exact shape: one student, no organization and no
  * group, freshly created through `tenantKey('qa/cases/BIL-03.md', 'BIL-03#<run>',
- * 'qa-shared')` + `tenantId`, with the default `base` personal plan set by the
+ * 'qa-shared')` + `tenantId`, with the default `free` personal plan set by the
  * `handle_new_user` trigger. `--fresh` makes each run own a new account, so the
  * purchase never starts from an already-upgraded plan.
  *
@@ -84,27 +84,27 @@ test.describe('BIL-03 — student plan purchase', () => {
     expect(tenant.org, 'the student under test belongs to no organization').toBeNull();
     expect(
       tenant.runSuffix,
-      'seed with --fresh: every independent run owns a new, still-Base student',
+      'seed with --fresh: every independent run owns a new, still-Free student',
     ).toBeTruthy();
     const student = tenant.users.student;
     expect(student, `${CASE} seeds the student under test`).toBeTruthy();
 
-    // --- Precondition: a standalone student on the Base plan -------------
+    // --- Precondition: a standalone student on the Free plan -------------
     await loginAs(page, tenant, 'student', { locale: 'pl' });
     await expect(page).toHaveURL(/\/app$/, { timeout: 20_000 });
 
     const planBefore = await page.request.get('/api/v1/me/personal-plan');
     expect(planBefore.status(), 'GET /api/v1/me/personal-plan before the purchase').toBe(200);
     const basePlan = (await json<{ data: PlanResponse }>(planBefore)).data;
-    expect(basePlan.key, 'the case starts on the free Free plan').toBe('base');
+    expect(basePlan.key, 'the case starts on the Free plan').toBe('free');
 
     // --- Step 1: pick Plus on the /pricing individual ladder ----------------
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { name: UI.pricingTitle, exact: true })).toBeVisible();
 
-    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#spark') });
+    const sparkRow = page.locator('#pricing-plans li').filter({ has: page.locator('h3#plus') });
     await expect(sparkRow, 'one Plus plan row').toHaveCount(1);
-    await expect(sparkRow.locator('h3#spark'), 'the Plus row names the plan').toHaveText(
+    await expect(sparkRow.locator('h3#plus'), 'the Plus row names the plan').toHaveText(
       UI.sparkRowName,
     );
     await expect(sparkRow, 'the Plus row shows the monthly price').toContainText(/19,99/);
@@ -113,7 +113,7 @@ test.describe('BIL-03 — student plan purchase', () => {
     await sparkCta.click();
 
     // --- Step 2: order summary on /checkout ------------------------------
-    await expect(page).toHaveURL(/\/checkout\?.*plan_id=spark/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/\/checkout\?.*plan_id=plus/, { timeout: 20_000 });
 
     const summary = page.locator('[data-slot="card"]').filter({ hasText: UI.summary });
     await expect(summary, 'the checkout renders the order summary').toBeVisible();
@@ -195,7 +195,7 @@ test.describe('BIL-03 — student plan purchase', () => {
     const planAfter = await page.request.get('/api/v1/me/personal-plan');
     expect(planAfter.status(), 'GET /api/v1/me/personal-plan after the purchase').toBe(200);
     const sparkPlan = (await json<{ data: PlanResponse }>(planAfter)).data;
-    expect(sparkPlan.key, 'the student is on Plus').toBe('spark');
+    expect(sparkPlan.key, 'the student is on Plus').toBe('plus');
     expect(sparkPlan.name, 'Plus is the plan the summary showed').toBe(UI.sparkName);
     expect(sparkPlan.limits, 'the Plus limits from BIL-01').toMatchObject({
       max_flashcards: 1000,
@@ -224,9 +224,9 @@ test.describe('BIL-03 — student plan purchase', () => {
       .context()
       .addCookies([{ name: 'NEXT_LOCALE', value: 'pl', domain: HOST, path: '/' }]);
 
-    await page.goto('/checkout?plan_id=spark&session_id=qa-bil-03-anonymous');
+    await page.goto('/checkout?plan_id=plus&session_id=qa-bil-03-anonymous');
     await expect(page, 'an anonymous checkout deep link is sent to /login').toHaveURL(
-      /\/login\?next=%2Fcheckout%3Fplan_id%3Dspark%26session_id%3Dqa-bil-03-anonymous$/,
+      /\/login\?next=%2Fcheckout%3Fplan_id%3Dplus%26session_id%3Dqa-bil-03-anonymous$/,
     );
     await expect(page.getByText(UI.loginTitle, { exact: true })).toBeVisible();
     await expect(

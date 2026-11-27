@@ -4,8 +4,10 @@ import type { PlanInfo } from '@studiq/server/services/subscription-plan.service
 import { UpgradePlans } from '@/components/billing/upgrade-plans';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { useManagerRedirect } from '@/hooks/use-manager-redirect';
 
 export default function EduUpgradePage() {
+  const isManager = useManagerRedirect('/manage');
   const { user } = useAuth();
 
   // The badge keeps the effective plan (the seat plan of a seated teacher, #179);
@@ -13,14 +15,16 @@ export default function EduUpgradePage() {
   const { data: currentPlan } = useApiQuery<PlanInfo>({
     queryKey: ['me', 'plan'],
     url: '/api/v1/me/plan',
-    enabled: !!user,
+    enabled: !!user && !isManager,
   });
   const { data: personalPlan, isSuccess: personalLoaded } = useApiQuery<PlanInfo>({
     queryKey: ['me', 'personal-plan'],
     url: '/api/v1/me/personal-plan',
-    enabled: !!user,
+    enabled: !!user && !isManager,
   });
   const hasActivePlan = personalLoaded ? personalPlan.priceMonthly > 0 : null;
+
+  if (isManager) return null;
 
   return (
     <UpgradePlans

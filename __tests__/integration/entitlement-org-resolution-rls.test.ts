@@ -93,7 +93,7 @@ describe(`org entitlement resolution under RLS`, () => {
     hubMemberRole = await roleId(hubOrg, 'member');
 
     // A paid plan makes org-derived limits differ from the member's personal
-    // (`base`) plan, so an RLS-hidden `organizations` row cannot masquerade
+    // (`free`) plan, so an RLS-hidden `organizations` row cannot masquerade
     // as a correct answer in the resolver limit test below.
     const { error: planError } = await service
       .from('organizations')
@@ -170,7 +170,7 @@ describe(`org entitlement resolution under RLS`, () => {
       permissionScopes: {},
     };
 
-    // `hub` raises max_flashcards to 2000, while the member's personal `base`
+    // `hub` raises max_flashcards to 2000, while the member's personal `free`
     // plan caps it at 100. If RLS hid the `organizations` row the resolver
     // would silently fall back to 100 — the #124/#182 class of regression.
     const { limits } = await resolver.resolveEntitlements(ctx);
@@ -178,12 +178,12 @@ describe(`org entitlement resolution under RLS`, () => {
   });
 
   it('the resolver reads a seated member plan through the embed under RLS', async () => {
-    // An `ace` seat on the `launch` org: 5000 is the only max_flashcards
+    // An `pro` seat on the `launch` org: 5000 is the only max_flashcards
     // above launch's 100, so the value proves the member's own session could
     // read the assignment -> pool(plan_key) embed (and not just the org plan).
     const { data: pool, error: poolError } = await service
       .from('org_seat_pools')
-      .insert({ organization_id: org1, plan_key: 'ace', total: 1 })
+      .insert({ organization_id: org1, plan_key: 'pro', total: 1 })
       .select('id')
       .single();
     if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
@@ -207,7 +207,7 @@ describe(`org entitlement resolution under RLS`, () => {
 
     const { limits, sources } = await resolver.resolveEntitlements(ctx);
 
-    expect(sources.seat).toEqual({ planKey: 'ace', origin: 'seat' });
+    expect(sources.seat).toEqual({ planKey: 'pro', origin: 'seat' });
     expect(limits.max_flashcards).toBe(5000);
   });
 
@@ -226,7 +226,7 @@ describe(`org entitlement resolution under RLS`, () => {
     };
 
     // Not a member of the hub org: its plan row must stay invisible, so only
-    // the outsider's own `base` plan (max_flashcards 100) applies.
+    // the outsider's own `free` plan (max_flashcards 100) applies.
     const { limits } = await resolver.resolveEntitlements(ctx);
     expect(limits.max_flashcards).toBe(100);
   });

@@ -62,7 +62,7 @@ describe('POST /api/v1/stripe/webhook', () => {
     const body = {
       type: 'checkout.session.completed',
       session_id: 's-1',
-      plan_id: 'spark',
+      plan_id: 'plus',
       user_id: 'u-1',
     };
     const response = await POST(webhookRequest(body));

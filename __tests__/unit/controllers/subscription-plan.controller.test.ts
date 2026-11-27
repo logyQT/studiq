@@ -50,7 +50,7 @@ describe('SubscriptionPlanController', () => {
 
   describe('getMyPlan', () => {
     it('returns my plan', async () => {
-      mockService.getMyPlan.mockResolvedValueOnce({ success: true, data: { key: 'base' } });
+      mockService.getMyPlan.mockResolvedValueOnce({ success: true, data: { key: 'free' } });
       const response = await controller.getMyPlan(mockCtx);
       expect(response.success).toBe(true);
     });
@@ -63,11 +63,11 @@ describe('SubscriptionPlanController', () => {
 
   describe('getByKey', () => {
     it('returns plan by key', async () => {
-      mockService.getByKey.mockResolvedValueOnce({ success: true, data: { key: 'base' } });
-      const response = await controller.getByKey('base');
+      mockService.getByKey.mockResolvedValueOnce({ success: true, data: { key: 'free' } });
+      const response = await controller.getByKey('free');
       expect(response.success).toBe(true);
-      expect(mockService.getByKey).toHaveBeenCalledWith('base');
-      expect(response.data).toEqual({ key: 'base' });
+      expect(mockService.getByKey).toHaveBeenCalledWith('free');
+      expect(response.data).toEqual({ key: 'free' });
     });
     it('returns error on failure', async () => {
       mockService.getByKey.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
