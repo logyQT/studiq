@@ -29,6 +29,12 @@ export function isPubliclyListable(plan: { visibility: string }): boolean {
  * The org-independent half of "can be bought on this page": the plan is public
  * and its billing mode allows checkout. `PlanInfo.selfServe` is this value, and
  * the pricing surfaces read only that boolean.
+ *
+ * An assigned unlisted plan with `stripe` is therefore a deliberate pair: the
+ * checkout API accepts it for the assigned organization (`resolvePlanAssignment`
+ * answers the other half), while `selfServe` stays `false` — the self-serve UI
+ * prints no action for it, and the mock checkout form answers 404 because
+ * `getByKey` hides it. The contract is sold by sales, then applied.
  */
 export function isSelfServePlan(plan: { visibility: string; billingMode: string }): boolean {
   return isPubliclyListable(plan) && billingModeAllowsSelfServe(plan.billingMode);

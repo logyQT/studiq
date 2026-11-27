@@ -51,9 +51,10 @@ export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): bool
  * through checkout). A personal plan is applicable to a content subscriber; a
  * manager is an organization buyer and holds no personal plan (ADR-0007), so a
  * personal plan is refused for them. An organization plan is applicable too,
- * and the owner rule below decides who may buy it. Free plans are included:
- * they are reached by a lifecycle change (the mock's completion command,
- * Stripe's `customer.subscription.deleted`), not by a purchase.
+ * and the owner rule below decides who may buy it. A free plan is applicable
+ * only when its billing mode allows checkout (`stripe`): it is then reached by
+ * a lifecycle change (the mock's completion command, Stripe's
+ * `customer.subscription.deleted`), not by a purchase.
  */
 export async function resolveApplicablePlan(
   port: Pick<CheckoutRulePort, 'getPlan'>,
