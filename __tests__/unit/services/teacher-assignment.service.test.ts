@@ -1715,6 +1715,34 @@ describe('TeacherAssignmentService', () => {
       );
     });
 
+    it('lists the auto-graded items, never the open one (#1301)', async () => {
+      linkRows.rows = [];
+      vi.mocked(readAssignmentSnapshots).mockResolvedValueOnce({
+        success: true,
+        data: new Map(
+          ['mcq', 'true_false', 'open'].map((type) => [
+            `q-${type}`,
+            { id: `q-${type}`, content: type, type, question_answers: [] },
+          ]),
+        ),
+      });
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(chain(attempts));
+
+      const result = await service.getResults(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      // The per-question page hides its grading fields for exactly these ids.
+      expect(asJson<{ auto_graded_item_ids: string[] }>(result.data).auto_graded_item_ids).toEqual([
+        'q-mcq',
+        'q-true_false',
+      ]);
+    });
+
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 

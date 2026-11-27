@@ -58,6 +58,11 @@ interface ResultsRow {
   assignment_answer_images: Array<{ question_id: string; image_url: string }>;
 }
 
+interface ResultsPayload {
+  attempts: ResultsRow[];
+  auto_graded_item_ids: string[];
+}
+
 /**
  * Edits the live item the way the author editor does — a new stem and a fresh option set. The
  * published snapshot must keep serving the option the student picked (#1238).
@@ -97,7 +102,7 @@ describe('Teacher assignment results payload (#1230)', () => {
 
   const cookie = () => ({ active_org_id: teacher.orgId ?? '' });
 
-  async function results(): Promise<ResultsRow[]> {
+  async function resultsPayload(): Promise<ResultsPayload> {
     mockUser(teacher.user);
     const { request, params } = createNextRequestWithParams(
       `http://localhost/api/v1/teacher/assignments/${assignmentId}/results`,
@@ -107,7 +112,11 @@ describe('Teacher assignment results payload (#1230)', () => {
     );
     const response = await resultsGet(request, { params });
     expect(response.status, await response.clone().text()).toBe(200);
-    return (await json<{ data: { attempts: ResultsRow[] } }>(response)).data.attempts;
+    return (await json<{ data: ResultsPayload }>(response)).data;
+  }
+
+  async function results(): Promise<ResultsRow[]> {
+    return (await resultsPayload()).attempts;
   }
 
   async function start(user: BeforeResult): Promise<StartedAttempt> {
@@ -364,6 +373,10 @@ describe('Teacher assignment results payload (#1230)', () => {
     expect(await grade(answeringAttemptId, questionId, 1, 'x')).toBe(422);
 
     expect(await read()).toEqual(unchanged);
+  });
+
+  it('lists the choice item as auto-graded and leaves the open one out (#1301)', async () => {
+    expect((await resultsPayload()).auto_graded_item_ids).toEqual([questionId]);
   });
 
   it('shows a grade written through the per-attempt route on the next read', async () => {
