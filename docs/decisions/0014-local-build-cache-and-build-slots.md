@@ -456,7 +456,14 @@ differ in, so the seed adds nothing a rebuild does not already change.
    - **Kill and reclaim.** The build is spawned as its own process group and its
      `pgid` is recorded in the slot, together with the group leader's start time.
      On timeout, launcher exit or any exit path, send `SIGTERM` to the group, wait
-     a 10 s grace, then `SIGKILL`, and only then release the slot. A reclaim
+     a 10 s grace, then `SIGKILL`, and only then release the slot. If the system
+     still answers `EPERM` after `SIGKILL`, the group is not confirmed ended: the
+     command exits `6`. After its own build it keeps the slot (if it claimed one);
+     in a reclaim, the new build does not start. When the group can possibly write
+     this checkout's `.next`, `env:ensure` restores no previous build, starts no
+     web server and keeps the backup. A later reclaim of a kept slot signals the
+     group only while its identity holds: a lasting `EPERM` again blocks the new
+     build, and on a mismatch the slot is taken without a signal. A reclaim
      signals a recorded group only while that recorded identity still holds: a
      `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
      group. A leader that is gone leaves no start time to read, and the surviving
@@ -632,7 +639,8 @@ differ in, so the seed adds nothing a rebuild does not already change.
      the caller throws names the log: `build failed (exit 4); full log:
 .dev/env.log`. `.dev/env.log` holds every warning from a successful build
      and the full output of a failed one, ANSI-stripped. Build-path exit codes
-     are 4 (failed), 5 (timed out), 6 (refused) and 7 (queued too long).
+     are 4 (failed), 5 (timed out), 6 (refused, or a process group not confirmed
+     ended) and 7 (queued too long).
 
 7. **Blast-radius guard on Linux, not a watchdog anywhere.** Where the platform
    has an OOM killer and a score knob, set `oom_score_adj=1000` on the build

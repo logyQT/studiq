@@ -457,6 +457,8 @@ describe('the build result after a cleanup error (#1518)', () => {
     ).rejects.toBe(cleanupError);
 
     expect(stderr()).toContain('still compiling');
+    // The message gives the limit of this build, not the production default (#1525).
+    expect(stderr()).toContain("build: exceeded 1 s; killing the build's process group");
     expect(stderr()).toContain('the build command did not end in the time limit');
   });
 });
