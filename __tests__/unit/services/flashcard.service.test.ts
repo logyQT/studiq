@@ -575,11 +575,14 @@ describe('FlashcardService', () => {
     it.each(['copy', 'batchCopy'] as const)(
       '%s creates no card when the topic access read fails',
       async (method) => {
+        const steps = [
+          chain(method === 'copy' ? card : [card]),
+          chain({ id: 'd-1', visibility: 'personal' }),
+          chain([{ flashcard_id: 'fc-1', topic_id: 't-1' }]),
+          failingRead(),
+        ];
         const rest = chain([{ id: 'fc-new' }]);
-        mock.from.mockReturnValueOnce(chain(method === 'copy' ? card : [card]));
-        mock.from.mockReturnValueOnce(chain({ id: 'd-1', visibility: 'personal' }));
-        mock.from.mockReturnValueOnce(chain([{ flashcard_id: 'fc-1', topic_id: 't-1' }]));
-        mock.from.mockReturnValueOnce(failingRead());
+        for (const step of steps) mock.from.mockReturnValueOnce(step);
         mock.from.mockReturnValue(rest);
 
         const result =
@@ -588,8 +591,9 @@ describe('FlashcardService', () => {
             : await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
 
         expect(result.success).toBe(false);
-        // A retry after this error must not find a first copy already made.
-        expect(rest.insert).not.toHaveBeenCalled();
+        // A retry after this error must not find a first copy already made. Every query is
+        // checked: an insert before the failed read would sit on an earlier one.
+        expect([...steps, rest].flatMap((query) => query.insert.mock.calls)).toEqual([]);
         expect(mock.from).toHaveBeenCalledTimes(4);
       },
     );
