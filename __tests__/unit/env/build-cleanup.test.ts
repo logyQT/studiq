@@ -386,6 +386,38 @@ describe('spawnBuild always ends (#1518)', () => {
   }, 3_000);
 });
 
+describe('the progress line of a build (#1525)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts the time left from the limit of this build', async () => {
+    // Only the progress interval and the clock are fake: the child and the limit are real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    const stderr = captureStderr();
+    let group = 0;
+    const slot = {
+      setProcessGroup: (pgid: number) => {
+        group = pgid;
+      },
+      heartbeat: () => {},
+    };
+    const outcome = build.spawnBuild(slot, options, {
+      command: nodeCommand('setTimeout(() => {}, 30_000)'),
+      timeoutMs: 90_000,
+    });
+
+    try {
+      vi.advanceTimersByTime(30_000);
+
+      expect(stderr()).toContain('0:30 elapsed, 1:00 left');
+    } finally {
+      process.kill(-group, 'SIGKILL');
+      await outcome;
+    }
+  });
+});
+
 const artifactRoot = join(stateDir, 'artifact');
 const artifactDir = join(artifactRoot, '.next');
 

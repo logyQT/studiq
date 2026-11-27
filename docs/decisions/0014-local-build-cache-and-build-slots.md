@@ -461,11 +461,10 @@ differ in, so the seed adds nothing a rebuild does not already change.
      command exits `6`. After its own build it keeps the slot (if it claimed one);
      in a reclaim, the new build does not start. When the group can possibly write
      this checkout's `.next`, `env:ensure` restores no previous build, starts no
-     web server and keeps the backup. A later reclaim of a kept slot signals the
-     group only while its identity holds: a lasting `EPERM` again blocks the new
-     build, and on a mismatch the slot is taken without a signal. A reclaim
-     signals a recorded group only while that recorded identity still holds: a
-     `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
+     web server and keeps the backup. A later reclaim of a kept slot follows the
+     rule for every reclaim, and a lasting `EPERM` blocks the new build again. A
+     reclaim signals a recorded group only while that recorded identity still
+     holds: a `pgid` is a pid, so a recycled number must never `SIGTERM` an unrelated
      group. A leader that is gone leaves no start time to read, and the surviving
      group is still ours — the kernel keeps a group id allocated while the group
      exists — so the orphan is killed; a leader that is alive with a different
