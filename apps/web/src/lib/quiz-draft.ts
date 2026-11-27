@@ -65,6 +65,9 @@ export function toSaveAnswersPayload(
 /**
  * Positions (from 0) of the questions with no answer: no selected option, or no text beyond
  * whitespace. An attached photo also answers a question.
+ *
+ * This differs from `toSaveAnswersPayload` on a photo with no text: that payload marks the
+ * question skipped, because the photo is stored by its own upload, not by the submission.
  */
 export function unansweredIndexes(
   questions: DraftQuestion[],

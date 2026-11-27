@@ -65,6 +65,7 @@ export default function TakeAssignmentPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const autoSubmitted = useRef(false);
+  const questionCard = useRef<HTMLDivElement>(null);
 
   const deadlineParam = searchParams.get('deadline');
 
@@ -270,7 +271,12 @@ export default function TakeAssignmentPage() {
         />
       </div>
 
-      <div className="rounded-lg border p-6 space-y-6">
+      <div
+        ref={questionCard}
+        tabIndex={-1}
+        data-question-card=""
+        className="rounded-lg border p-6 space-y-6 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+      >
         <p className="text-lg font-medium">{question.content}</p>
 
         {isMcq && question.question_answers && (
@@ -383,6 +389,7 @@ export default function TakeAssignmentPage() {
         onOpenChange={setConfirmOpen}
         unanswered={unansweredIndexes(attempt.questions, answers, photos)}
         onJump={setCurrentIndex}
+        jumpTargetRef={questionCard}
         onConfirm={() => void handleSubmit()}
       />
     </div>

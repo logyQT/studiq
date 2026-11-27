@@ -12,6 +12,7 @@ import {
   Button,
 } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
+import { type RefObject, useRef } from 'react';
 
 interface SubmitConfirmDialogProps {
   open: boolean;
@@ -19,6 +20,8 @@ interface SubmitConfirmDialogProps {
   /** Positions (from 0) of the questions with no answer. */
   unanswered: number[];
   onJump: (index: number) => void;
+  /** Takes the focus after a jump: the button that opened the dialog is gone by then. */
+  jumpTargetRef: RefObject<HTMLElement | null>;
   onConfirm: () => void;
 }
 
@@ -28,13 +31,25 @@ export function SubmitConfirmDialog({
   onOpenChange,
   unanswered,
   onJump,
+  jumpTargetRef,
   onConfirm,
 }: SubmitConfirmDialogProps) {
   const t = useTranslations('AppAssignmentTakePage');
+  const jumped = useRef(false);
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      {/* One button per unanswered question: a long list must scroll, not push the actions
+          off a short screen. */}
+      <AlertDialogContent
+        className="max-h-[85vh] overflow-y-auto"
+        onCloseAutoFocus={(event) => {
+          if (!jumped.current) return;
+          jumped.current = false;
+          event.preventDefault();
+          jumpTargetRef.current?.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{t('confirm_title')}</AlertDialogTitle>
           <AlertDialogDescription>
@@ -51,6 +66,7 @@ export function SubmitConfirmDialog({
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  jumped.current = true;
                   onJump(index);
                   onOpenChange(false);
                 }}

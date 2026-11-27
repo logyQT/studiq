@@ -288,7 +288,21 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     ).toHaveCount(1);
 
     await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    // The dialog itself first: an empty count below it also holds when there is no dialog.
+    await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('button', { name: /^Pytanie \d$/ })).toHaveCount(0);
+
+    // Hold the submission. Leaving the page removes the dialog whatever the code does, so only
+    // a dialog that is gone while the take page is still open shows that the limit closed it.
+    const submitPath = `/api/v1/quiz/${attemptId}`;
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    await page.route(`**${submitPath}`, async (route) => {
+      if (route.request().method() === 'POST') await held;
+      await route.continue();
+    });
+    const submission = page.waitForRequest(
+      (request) => request.method() === 'POST' && new URL(request.url()).pathname === submitPath,
+    );
 
     // The time limit asks nothing: it submits while the confirmation is still open (#1353). The
     // take page reads the deadline from its URL, so moving it there runs the timer out without
@@ -298,6 +312,10 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
       url.searchParams.set('deadline', new Date().toISOString());
       window.history.replaceState(null, '', url);
     });
+    await submission;
+    await expect(dialog, 'the limit closed the dialog').toHaveCount(0);
+    await expect(page, 'still on the take page').toHaveURL(/\/take\?attemptId=/);
+    release();
     await page.waitForURL(new RegExp(`/app/assignments/${assignment.id}$`));
 
     // The attempt is completed and the result card replaces the start action.

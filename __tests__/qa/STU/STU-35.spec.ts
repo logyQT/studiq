@@ -456,6 +456,7 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
     await unanswered.getByRole('button', { name: 'Pytanie 1', exact: true }).click();
     await expect(unanswered).toHaveCount(0);
     await expect(page.getByText('1 / 3', { exact: true }), 'the jump opens it').toBeVisible();
+    await expect(page.locator('[data-question-card]'), 'the focus follows').toBeFocused();
 
     // --- Steps 2 + 4: answer each question, navigating back and forth -------
     const seen = new Set<string>();
