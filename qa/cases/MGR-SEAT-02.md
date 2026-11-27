@@ -118,7 +118,7 @@ seeded tenant instead:
   `limit: 500000, plan: 'hub'`. The unseated `student2` keeps
   `limit: 100000` and no `stats.insights`. Org-scoped entitlements are never _added_
   through a seat beyond what the learner profile already grants from the ceiling
-  (`branding` is in both).
+  (`branding` sits on Campus, so the Hub ceiling does not grant it).
 - The guards behind the pickers hold server-side too: a second seat for the
   already-seated member → **429** `USAGE_LIMIT_EXCEEDED`; a different member accepts
   any pool, including one whose plan used to name another persona → **201**.

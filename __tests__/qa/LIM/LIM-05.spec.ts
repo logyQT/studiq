@@ -6,17 +6,17 @@ import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 /**
  * LIM-05 — branding requires the `branding` feature (UI gate + API 403).
  *
- * Since #1493 no organization plan carries `branding` (the ladder is capacity
- * only), so the gate has no positive plan path left. The case keeps its subject:
- * without the entitlement the settings page is locked and both branding writes
- * are refused. The stored values are seeded directly on this tenant's row — the
- * state a plan that once carried branding would have left — to prove the gate,
+ * The organization ladder is cumulative: Campus is the one tier that carries
+ * `branding`, and Hub is the top self-serve tier without it. This tenant's org
+ * sits on Hub, so the gate has no plan path here: the settings page is locked
+ * and both branding writes are refused. The stored values are seeded directly
+ * on this tenant's row — the state a Campus org would have — to prove the gate,
  * not a missing value, is what hides them.
  *
  *   bun scripts/qa-tenant.ts LIM-05 --fresh
  *
  * `__tests__/qa/profiles/LIM-05.json` declares `{ profile: "content", plan: "hub" }`:
- * the tenant org sits on the top self-serve tier, so the lock is not a free-tier
+ * the top self-serve tier without branding, so the lock is not a free-tier
  * artefact. Nothing global is written; no plan catalogue row or flag is changed.
  */
 
@@ -81,9 +81,7 @@ function orgSwitcher(page: Page) {
   return page.locator('[data-slot="sidebar-header"] button[data-sidebar="menu-button"]').first();
 }
 
-test('holds the branding gate without a plan that grants it, and keeps stored values hidden', async ({
-  page,
-}) => {
+test('holds the branding gate on a Hub org, and keeps stored values hidden', async ({ page }) => {
   test.setTimeout(120_000);
 
   const tenant: QaTenant = loadTenant(CASE);
@@ -99,20 +97,23 @@ test('holds the branding gate without a plan that grants it, and keeps stored va
 
   await loginAs(page, tenant, 'manager', { locale: 'pl', waitFor: /\/manage(\/|$)/ });
 
-  // --- Prerequisite: no org plan sells branding, and the row has values ----
+  // --- Prerequisite: branding is the Campus tier, and this org is on Hub ----
   const catalogue = await getData<PlanInfo[]>(
     page,
     '/api/v1/subscription-plans?scope=organization',
   );
   expect(
-    catalogue.filter((plan) => plan.features.includes('branding')),
-    'no organization plan carries branding since #1493',
-  ).toEqual([]);
+    catalogue.filter((plan) => plan.features.includes('branding')).map((plan) => plan.key),
+    'Campus is the one organization plan that carries branding',
+  ).toEqual(['campus']);
+  const hub = catalogue.find((plan) => plan.key === 'hub');
+  if (!hub) throw new Error('the plan catalogue has no hub tier');
+  expect(hub.features, 'Hub is the top self-serve tier without branding').not.toContain('branding');
 
   const entitlements = await getData<{ entitlements: string[] }>(page, '/api/v1/me/entitlements');
   expect(entitlements.entitlements, 'Hub does not grant branding').not.toContain('branding');
 
-  // The stored values a branding plan would have left behind. The spec writes
+  // The stored values a Campus org would have left behind. The spec writes
   // this tenant's row only (a fixture, not a product path).
   const db = createQaSupabase();
   const storedLogo = STORED_LOGO(orgId);
@@ -161,6 +162,7 @@ test('holds the branding gate without a plan that grants it, and keeps stored va
   expect(await logoAttempt.json()).toEqual({ success: false, error: 'FORBIDDEN' });
 
   const afterRejections = await getData<OrganizationDetail>(page, ORG_API(orgId));
+  expect(afterRejections.plan, 'the tenant org stays on Hub').toBe('hub');
   expect(afterRejections.brand_color, 'the rejected colour changed nothing').toBe(STORED_COLOR);
   expect(afterRejections.logo_url, 'the rejected logo changed nothing').toBe(storedLogo);
 

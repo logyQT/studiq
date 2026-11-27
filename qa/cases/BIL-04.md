@@ -56,7 +56,7 @@ tenant is read or written.
 ## Expected result
 
 - Zakup przechodzi (komunikaty jak w BIL-03).
-- WERYFIKUJ I ZGŁOŚ: z kodu wynika, że symulowany webhook zmienia wyłącznie plan OSOBISTY użytkownika (profiles.personal_plan_key), a NIE plan organizacji. Oczekiwane (zgodnie ze specyfikacją): organizacja przechodzi na Hub i odblokowuje branding oraz kreator ról. Jeśli po zakupie organizacja nadal ma Launch (karta blokady brandingu widoczna), zgłoś jako defekt funkcjonalny.
+- WERYFIKUJ I ZGŁOŚ: z kodu wynika, że symulowany webhook zmienia wyłącznie plan OSOBISTY użytkownika (profiles.personal_plan_key), a NIE plan organizacji. Oczekiwane (zgodnie ze specyfikacją): organizacja przechodzi na Hub i odblokowuje kreator ról; branding pozostaje funkcją Campus, więc karta blokady brandingu zostaje. Jeśli po zakupie organizacja nadal ma Launch, zgłoś jako defekt funkcjonalny.
 
 ## Walk observation (shared app, pl)
 
@@ -111,5 +111,5 @@ Confirmed end to end on this case's tenant:
   > every layer of `/me/plan`'s union, so after the purchase it reads „StudiQ Hub
   > (organizacja) + StudiQ Free (plan osobisty)” — the personal `free` layer is part
   > of a manager's plan. The spec asserts „StudiQ Hub” as a substring of
-  > `[data-plan-union]`; the purchase, the payment row and the unlocked branding
-  > controls are unchanged.
+  > `[data-plan-union]`; the purchase, the payment row and the branding lock
+  > card are unchanged.

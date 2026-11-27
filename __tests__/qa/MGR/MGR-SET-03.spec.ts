@@ -6,11 +6,12 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * MGR-SET-03 — logo file validation is unreachable without the branding feature.
  *
  * The case used to try a `.txt`, an `.svg` and an oversized image through the
- * settings uploader. Since #1493 no organization plan carries `branding`, so the
- * uploader is not rendered and the API's entitlement gate answers **before** the
- * type/size validation: every file, valid or not, is 403 and nothing is stored.
- * The case keeps its subject — an invalid logo file cannot enter the
- * organization — and moves it to the shipped disabled state.
+ * settings uploader. `branding` is the Campus tier, and this tenant's org sits
+ * on Hub without it, so the uploader is not rendered and the API's entitlement
+ * gate answers **before** the type/size validation: every file, valid or not,
+ * is 403 and nothing is stored. The case keeps its subject — an invalid logo
+ * file cannot enter the organization — and moves it to the shipped locked
+ * state.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-03 --fresh
  *

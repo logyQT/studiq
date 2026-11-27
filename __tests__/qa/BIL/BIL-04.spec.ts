@@ -292,7 +292,7 @@ test.describe('BIL-04 — organization plan purchase', () => {
     await page.goto('/manage/settings');
     await expect(
       page.getByText(UI.brandingLockedTitle, { exact: true }),
-      'the branding lock card stays: no organization plan carries the feature',
+      'the branding lock card stays: this Hub org is below the Campus tier',
     ).toBeVisible();
     await expect(
       page.getByText(UI.brandingLockedDesc, { exact: true }),

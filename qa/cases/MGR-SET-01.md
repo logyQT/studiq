@@ -54,7 +54,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
 
 ## Expected result
 
-- Zamiast uploadu widoczna karta „Własny branding – Własny branding nie jest częścią obecnych planów”; brak pola koloru marki.
+- Zamiast uploadu widoczna karta „Własny branding – Własny branding jest dostępny w planie Campus”; brak pola koloru marki.
 - Przycisk prowadzi do /pricing?audience=organization.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)

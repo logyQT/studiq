@@ -9,9 +9,9 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-No organization plan carries `branding` since #1493, so „Kolor marki” is not rendered. The case
-checks the disabled state: the lock card replaces the colour field, a `PUT` with `brandColor`
-returns **403 FORBIDDEN**, and a colour seeded on the row (the state a branding plan would have
+`branding` is the Campus tier, so „Kolor marki” is not rendered on this Hub tenant. The case
+checks the locked state: the lock card replaces the colour field, a `PUT` with `brandColor`
+returns **403 FORBIDDEN**, and a colour seeded on the row (the state a Campus org would have
 left) is not painted into `--brand-accent`.
 
 ## Prerequisite (verbatim)
@@ -29,10 +29,10 @@ Plan z brandingiem.
 
 ## Seed (QA-suite tenant)
 
-Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Warunek
-wstępny przypadku — plan z brandingiem — jest ustawiany **wewnątrz tenanta przypadku**
-przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), a nie przez zmianę
-globalnego katalogu planów czy planu innej organizacji:
+Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). Przypadek bada
+stan tenanta na Hubie — planie bez `branding` — a plan jest ustawiany **wewnątrz tenanta
+przypadku** przez ten sam RPC, którego używa webhook płatności (`change_org_plan`), a nie przez
+zmianę globalnego katalogu planów czy planu innej organizacji:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-SET-04 --fresh
@@ -40,10 +40,10 @@ bun scripts/qa-tenant.ts MGR-SET-04 --fresh
 
 - `__tests__/qa/profiles/<CASE>.json` deklaruje `{ "profile": "content", "plan": "hub" }`, więc
   `--fresh` (i przebieg CI) seeduje profil `content` i przenosi **własną** organizację
-  tenanta na plan Hub. `change_org_plan` przenosi `organizations.plan` (warstwa
-  organizacji jest wyliczana na bieżąco, bez snapshotu), dzięki czemu rola `admin`
-  z profilem `all` dostaje `branding`; `/api/v1/me/entitlements` zwraca tę funkcję, a
-  `/manage/settings` pokazuje kontrolki logo i koloru marki zamiast karty blokady.
+  tenanta na plan Hub. Drabinka jest kumulatywna, ale `branding` ma tylko Campus: rola
+  `admin` z profilem `all` dostaje przecięcie z pułapem Hubu, więc
+  `/api/v1/me/entitlements` nie zawiera `branding`, a `/manage/settings` pokazuje kartę
+  blokady zamiast kontrolek logo i koloru marki.
 - Mapowanie starych skrótów: M1 → `users.manager` (admin organizacji). Przypadek jest
   wyłącznie managerski; T1/S1 nie są potrzebni, ale profil `content` ich tworzy.
 - Klucz tenanta: `MGR-SET-04.md::MGR-SET-04#<run>::qa-shared` —
@@ -63,9 +63,10 @@ bun scripts/qa-tenant.ts MGR-SET-04 --fresh
   flag funkcji, katalogu planów, ustawień admina, statystyk platformy ani wierszy
   singletonowych.
 
-## Observed (ręczny przebieg, 2026-10-28, qa-env-3)
+## Observed (ręczny przebieg, 2026-10-28, qa-env-3; plan names from the pre-#1493 matrix — Campus carries branding today)
 
-- `/manage/settings` na planie Hub pokazuje kartę „Profil uczelni” z sekcją „Logo” oraz
+- `/manage/settings` na planie z brandingiem (wtedy Hub; dziś **Campus**) pokazuje kartę
+  „Profil uczelni” z sekcją „Logo” oraz
   „Kolor marki”: `input[type=color]`, obok niego etykieta z aktualną wartością hex i
   przycisk „Zapisz”. Karta blokady brandingu („Własny branding”) się nie pojawia.
 - Świeża organizacja bez `brand_color` pokazuje domyślny `#000000` w polu i w etykiecie.

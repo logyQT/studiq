@@ -29,7 +29,7 @@ _Warunek wstępny: manager@dev.local, organizacja WSB Merito (Launch)._
 Expected:
 
 - Zakup przechodzi (komunikaty jak w BIL-03).
-- WERYFIKUJ I ZGŁOŚ: z kodu wynika, że symulowany webhook zmienia wyłącznie plan OSOBISTY użytkownika (profiles.personal_plan_key), a NIE plan organizacji. Oczekiwane (zgodnie ze specyfikacją): organizacja przechodzi na Hub i odblokowuje branding oraz kreator ról. Jeśli po zakupie organizacja nadal ma Launch (karta blokady brandingu widoczna), zgłoś jako defekt funkcjonalny.
+- WERYFIKUJ I ZGŁOŚ: z kodu wynika, że symulowany webhook zmienia wyłącznie plan OSOBISTY użytkownika (profiles.personal_plan_key), a NIE plan organizacji. Oczekiwane (zgodnie ze specyfikacją): organizacja przechodzi na Hub i odblokowuje kreator ról; branding pozostaje funkcją Campus, więc karta blokady brandingu zostaje. Jeśli po zakupie organizacja nadal ma Launch, zgłoś jako defekt funkcjonalny.
 
 ## Steps
 
