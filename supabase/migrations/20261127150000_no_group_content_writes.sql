@@ -9,9 +9,10 @@
 -- it from `allowed_scopes`: the role editor renders no `Grupa` radio for them,
 -- the save schema refuses the grant, `resolveStoredScope` resolves a surviving
 -- row to `null`, and this migration removes the rows that already exist. A
--- stored row is deleted and not only ignored because `rls_caller_has_permission`
--- checks the key and not the scope, so a surviving row would still satisfy a
--- content-write RLS policy.
+-- stored row is deleted and not only ignored because the grant path reads the
+-- stored scope: `grantDenied` in `org-role.service.ts` and `covers_permission`
+-- in SQL both rank the row the caller already holds, so a surviving
+-- `deck.update: group` would let its holder grant `own` and `group` in turn.
 --
 -- `permissions.allowed_scopes` is the single mirror of the TypeScript catalog:
 -- `__tests__/integration/catalog-invariants.test.ts` fails when any row
@@ -119,22 +120,6 @@ declare
   v_before bigint;
   v_after bigint;
 begin
-  -- The function and the trigger exist.
-  if to_regprocedure('public.guard_org_role_permission_scope()') is null then
-    raise exception 'guard: public.guard_org_role_permission_scope() is missing'
-      using errcode = '23514';
-  end if;
-
-  select count(*) into v_bad
-  from pg_trigger
-  where tgrelid = 'public.org_role_permissions'::regclass
-    and tgname = 'guard_org_role_permission_scope'
-    and not tgisinternal;
-  if v_bad <> 1 then
-    raise exception 'guard: % guard_org_role_permission_scope trigger(s) (expected 1)', v_bad
-      using errcode = '23514';
-  end if;
-
   -- The eleven rows carry exactly {own,organization}.
   select count(*) into v_bad
   from public.permissions p
