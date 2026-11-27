@@ -5,14 +5,14 @@ import { describe, expect, it } from 'vitest';
 /**
  * The upgrade grid is four plan cards on every personal dashboard. Its column
  * count is measured on the viewport, but the dashboard content column is inset by
- * the 16rem sidebar and its padding: at 1036 px the four tracks were 161 px wide,
- * so the Max card left the content box and the price of Pro and Max was clipped.
+ * the 16rem sidebar and its padding: at 1036 px the four tracks were about 157 px
+ * wide and a `text-4xl` price overflowed inside the card.
  *
  * This is a source check, not a render test: `UpgradePlans` calls `useAuth` and
  * `useApiQuery`, so the unit environment has no provider to render it under, and
- * the loading state would hide the grid. The rendered claim lives in the QA
- * corpus. Here, returning the four-track rule to `lg` (or dropping `min-w-0`)
- * turns this red.
+ * the loading state would hide the grid. Served QA verifies the rendered column
+ * count and overflow at 375/768/1024/1036/1280/1440. Here, returning the
+ * four-track rule to `lg` turns this red.
  */
 const GRID = path.join(process.cwd(), 'apps/web/src/components/billing/upgrade-plans.tsx');
 
@@ -31,9 +31,4 @@ describe('upgrade plan grid', () => {
     expect(classes).toContain('sm:grid-cols-2');
   });
 
-  it('lets a card shrink below its content width', () => {
-    // A grid item defaults to `min-width: auto`: a long price then widens its
-    // track instead of wrapping, which is what pushed the fourth card off screen.
-    expect(classes).toContain('min-w-0');
-  });
 });

@@ -47,7 +47,7 @@ export function PlanCard({
 
   return (
     <Card
-      className={`flex flex-col relative min-w-0 h-full ${recommended ? 'border-primary shadow-lg' : 'border-border/50'}`}
+      className={`flex flex-col relative ${recommended ? 'border-primary shadow-lg' : 'border-border/50'}`}
     >
       {recommended && !isCurrentPlan && (
         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
@@ -67,7 +67,7 @@ export function PlanCard({
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
       </CardHeader>
       <CardContent className="flex flex-col flex-1">
-        <div className="mb-6 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="mb-6 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="text-4xl font-bold break-words">
             {new Intl.NumberFormat(locale, {
               style: 'currency',

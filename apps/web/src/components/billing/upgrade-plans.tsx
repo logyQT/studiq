@@ -51,7 +51,7 @@ export function UpgradePlans({
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {(plans ?? []).map((plan) => (
             <PlanCard
               key={plan.key}

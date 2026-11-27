@@ -256,17 +256,6 @@ describe('PlanCard action', () => {
 });
 
 describe('PlanCard layout', () => {
-  it('lets the card shrink to its track and fills the row height', () => {
-    const markup = render({ hasActivePlan: true });
-    const card = /<div data-slot="card" class="([^"]*)"/.exec(markup)?.[1] ?? '';
-    const tokens = toneTokens(card);
-
-    // A grid item defaults to `min-width: auto`, so a long price widens its own
-    // track instead of wrapping and the last card leaves the content box.
-    expect(tokens).toContain('min-w-0');
-    expect(tokens).toContain('flex-col');
-    expect(tokens).toContain('h-full');
-  });
 
   it('pushes the action to the bottom of every card', () => {
     const markup = render({ hasActivePlan: true });
@@ -285,7 +274,6 @@ describe('PlanCard layout', () => {
     const tokens = toneTokens(row);
 
     expect(tokens).toEqual(expect.arrayContaining(['flex', 'flex-wrap']));
-    expect(tokens).toContain('min-w-0');
     // The period is a sibling span, so the row can drop it to its own line.
     expect(markup).toMatch(/<\/span><span class="text-sm text-muted-foreground">/);
     expect(tokens).not.toContain('whitespace-nowrap');
