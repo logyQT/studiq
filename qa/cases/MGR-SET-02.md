@@ -9,12 +9,12 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Since #1493 the organization ladder is capacity only: **no organization plan carries `branding`**.
-„Plan z brandingiem” no longer exists, so the uploader is not rendered and the logo route answers
-**403 FORBIDDEN** before type or size validation. The case therefore checks the shipped disabled
-state: `/manage/settings` shows the „Własny branding” lock card in place of the uploader, and a
-valid PNG is refused with no row change. Stored-values coverage lives in LIM-05/MGR-SET-04/05,
-which seed the row directly.
+Since #1493 the organization ladder is cumulative and `branding` is the **Campus** tier. This
+tenant's organization is on the seeder's default `launch` plan, so „Plan z brandingiem” is not its
+plan: the uploader is not rendered and the logo route answers **403 FORBIDDEN** before type or size
+validation. The case therefore checks the shipped locked state: `/manage/settings` shows the
+„Własny branding” lock card in place of the uploader, and a valid PNG is refused with no row change.
+Stored-values coverage lives in LIM-05/MGR-SET-04/05, which seed the row directly.
 
 ## Prerequisite (verbatim)
 

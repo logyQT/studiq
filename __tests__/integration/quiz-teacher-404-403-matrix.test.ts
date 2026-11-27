@@ -22,8 +22,9 @@ import { PUT as putQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/rout
  * (the same shape as `org-control-permission-api.test.ts`); the unit suite pins the same rows
  * for the read path (`getById`).
  *
- * The org plan is `hub`, which is capacity only since #1493, so the author's
- * personal `plus` plan carries `quiz.templates` into the org; the 403/404 rows
+ * The org plan is `hub`, which carries `quiz.templates` cumulatively since #1493; the
+ * author's `teacher` role resolves the whole ceiling, and the personal `plus` plan adds
+ * the portable `ai.chat`. The 403/404 rows
  * below are the permission derivation and not the entitlement gate that runs
  * first on writes.
  */
@@ -105,10 +106,10 @@ describe('quiz-teacher 403/404 matrix (ADR-0015 §7.1, D-5e2)', () => {
   beforeAll(async () => {
     const org = await seedOrganization(`quiz-matrix-${tag}`);
     orgId = org.org.id;
-    // The organization ladder is capacity only since #1493, so the author's
-    // personal Plus plan carries `quiz.templates` into the org; the write's
-    // entitlement gate passes and the status below is the permission
-    // derivation, not the plan gate.
+    // The organization ladder is cumulative since #1493; the author's `teacher`
+    // role resolves the whole `hub` ceiling, so `quiz.templates` comes from the
+    // org plan and the write's entitlement gate passes. The status below is the
+    // permission derivation, not the plan gate.
     await setOrgPlan(orgId, 'hub');
 
     const foreignOrg = await seedOrganization(`quiz-matrix-foreign-${tag}`);

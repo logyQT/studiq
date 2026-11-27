@@ -6,7 +6,7 @@ import { PlanAction } from '@/components/pricing/plan-action';
 import { PlanCapacity } from '@/components/pricing/plan-capacity';
 import { formatPlanPrice } from '@/lib/landing-pricing';
 import { planCopy } from '@/lib/pricing-copy';
-import { isRecommendedPlan, isSalesLedPlan, shortPlanName } from '@/lib/pricing-ladders';
+import { isRecommendedPlan, shortPlanName } from '@/lib/pricing-ladders';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
 
 interface PlanRowProps {
@@ -45,7 +45,6 @@ export function PlanRow({
 
   const recommended = isRecommendedPlan(plan.key);
   const isFree = plan.priceMonthly === 0;
-  const contactOnly = isSalesLedPlan(plan.key);
   const { description, note } = planCopy(t, plan);
   // A plan cannot be both: the reader's own subscription wins over the page's pick.
   const label = isCurrent ? t('current_plan_badge') : recommended ? t('recommended_badge') : null;
@@ -53,7 +52,6 @@ export function PlanRow({
     signedIn,
     isCurrent,
     isFree,
-    contactOnly,
     hasActivePlan,
     purchaseBlocked,
   });

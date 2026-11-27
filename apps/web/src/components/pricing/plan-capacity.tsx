@@ -21,11 +21,16 @@ export function PlanCapacity({ limits }: { limits: Record<string, number> }) {
 
   if (rows.length === 0) return null;
 
+  /*
+   * Plain text rows, not a nested list: `PlanRow` is itself the `<li>` of the
+   * price list, and a `<ul>` here adds two items per plan row to any
+   * `ul > li` count. The facts are still one line each, as they were.
+   */
   return (
-    <ul className="space-y-1 text-sm">
+    <div className="space-y-1 text-sm">
       {rows.map((row) => (
-        <li key={row}>{row}</li>
+        <p key={row}>{row}</p>
       ))}
-    </ul>
+    </div>
   );
 }

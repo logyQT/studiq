@@ -9,9 +9,9 @@
 
 ## Amendment (2026-11-26, B2 #1493 and the plan rename)
 
-Hub is capacity only. A manager holds no personal plan (ADR-0007), so this tenant carries no
-`ai.chat` licence: `/me/entitlements` omits it and `/ai/usage` answers 403. The AI licences
-(organization and per-seat) are #1511; this case asserts the menu, not them.
+No organization plan carries `ai.chat`. A manager holds no personal plan (ADR-0007), so this tenant
+carries no `ai.chat` licence: `/me/entitlements` omits it and `/ai/usage` answers 403. The AI
+licences (organization and per-seat) are #1511; this case asserts the menu, not them.
 
 ## Prerequisite (verbatim)
 
@@ -23,8 +23,8 @@ Automatyzacja nie używa kont z ręcznego seeda (`manager@dev.local`, `pass`). M
 managera jest budowane dla aktywnej organizacji menedżera, więc przypadek potrzebuje
 tenanta `content` na planie **Hub** — `__tests__/qa/profiles/MGR-02.json` deklaruje
 `{ "profile": "content", "plan": "hub" }`, więc seeder applying `change_org_plan` stawia
-organizację na Hub. Manager nie ma planu osobistego, a Hub jest pojemnościowy, więc tenant
-nie niesie `ai.chat`; licencje AI to #1511:
+organizację na Hub. Manager nie ma planu osobistego, a żaden plan organizacji nie niesie
+licencji AI, więc tenant nie niesie `ai.chat`; licencje AI to #1511:
 
 ```bash
 bun scripts/qa-tenant.ts MGR-02 --fresh
@@ -70,15 +70,15 @@ bun scripts/qa-tenant.ts MGR-02 --fresh
   „Asystent Q”: martwy link `/manage/ai` został usunięty w #134/#433 (commit
   `36689a6d`, „add /edu/ai route and drop dead /manage/ai nav link”), bo nie ma strony
   AI dla managera. API AI wymaga entitlementu `ai.chat` (ADR-0015 §7), a ten tenant go
-  nie niesie: manager nie ma planu osobistego, a Hub jest wyłącznie pojemnościowy.
-  Licencje AI to #1511. Lista sekcji w „Expected result” opisuje stan sprzed naprawy
+  nie niesie: manager nie ma planu osobistego, a żaden plan organizacji nie niesie
+  `ai.chat`. Licencje AI to #1511. Lista sekcji w „Expected result” opisuje stan sprzed naprawy
   (sam objaw defektu), a nie zachowanie zamierzone.
 - Wejście bezpośrednio na `/manage/ai` (spoza menu) zwraca **HTTP 404** i renderuje
   własną stronę 404 panelu managera: nagłówki „404” i „Nie znaleziono strony”, link
   „Wróć do panelu” → `/manage` oraz skróty „Przejdź do:” → `/manage`, `/manage/members`,
   `/manage/invites`, `/manage/settings`.
 - `GET /api/v1/me/entitlements` managera nie zawiera `ai.chat` (brak planu osobistego,
-  a plan `hub` jest pojemnościowy), a `GET /api/v1/ai/usage` zwraca **403**. Licencje AI
+  a żaden plan organizacji nie niesie `ai.chat`), a `GET /api/v1/ai/usage` zwraca **403**. Licencje AI
   to #1511, a bramkę AI pokrywa SEC-07; menu pozostaje przedmiotem przypadku.
 - Wszystkie osiem pozycji otwiera działającą stronę (`200`), bez strony 404:
 

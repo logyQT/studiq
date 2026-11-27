@@ -11,8 +11,8 @@ import {
 /**
  * MGR-SEAT-02 — assigning a seat to a member.
  *
- * The organization ladder is capacity only since #1493 and seats are frozen at
- * the UI: `/manage/seats` keeps the pools and assignments tables and every `GET`,
+ * The organization ladder is cumulative and seats are frozen at the UI:
+ * `/manage/seats` keeps the pools and assignments tables and every `GET`,
  * but hides the purchase, assign and release entries. The API routes stay — they
  * are the data path #1511 builds on — so this case drives the assignment through
  * the API and checks what a seat still changes: the member's effective plan and
@@ -21,9 +21,9 @@ import {
  * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
  * on the `hub` plan with an explicit roster (manager `admin`, teacher, `student`
  * and `student2`, both `member`) and `personalPlan: "plus"`, so every non-manager
- * member carries `ai.chat` and `quiz.templates` into the org (`personalPortable`).
- * A manager holds no personal plan (ADR-0007), so the seeder leaves the manager
- * out of that write:
+ * member carries the portable `ai.chat` and `quiz.templates` into the org
+ * (`personalPortable`) on top of the Hub ceiling. A manager holds no personal
+ * plan (ADR-0007), so the seeder leaves the manager out of that write:
  *
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
@@ -38,11 +38,11 @@ import {
  *    from 2/0/2 to 2/1/1, and the other pools keep their counters.
  * 3. The seated member's `/me/plan` is the seat plan `max`; the user-scope
  *    limits resolve `max(org, seat, personal)`, so `max_flashcards` is 25000 and
- *    `max_ai_tokens_per_day` is 500000. The org ceiling adds no paid key, so the
- *    member's entitlements are the personal plan's portable keys plus the two
- *    baseline keys, before and after the seat.
+ *    `max_ai_tokens_per_day` is 500000. The Max seat intersects the Hub ceiling, so
+ *    it adds `stats.insights` to the learner profile's two baseline keys; the
+ *    portable `ai.chat` and `quiz.templates` come from the personal Plus plan.
  * 4. The unseated control member (`student2`) keeps their personal plan and the
- *    hub floor (`max_flashcards` 2000, AI 100000): the seat is per-member.
+ *    hub floor (`max_flashcards` 5000, AI 100000): the seat is per-member.
  * 5. The server-side guards still hold: a second seat for the same member is
  *    429 `USAGE_LIMIT_EXCEEDED`, and another member accepts any pool (201).
  */

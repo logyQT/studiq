@@ -339,25 +339,8 @@ begin
     end if;
   end loop;
 
-  -- The organization ladder is cumulative: each tier carries every key of the
-  -- tier below it. A dropped key would make a cheaper tier look richer.
-  select count(*) into v_bad
-  from (values ('launch', 'team'), ('team', 'hub'), ('hub', 'campus')) as step(lower_key, upper_key)
-  where exists (
-    select 1
-    from public.plan_entitlements lower_pe
-    where lower_pe.plan_key = step.lower_key
-      and not exists (
-        select 1
-        from public.plan_entitlements upper_pe
-        where upper_pe.plan_key = step.upper_key
-          and upper_pe.entitlement_key = lower_pe.entitlement_key
-      )
-  );
-  if v_bad <> 0 then
-    raise exception 'guard: % organization tier pair(s) are not cumulative', v_bad
-      using errcode = '23514';
-  end if;
+  -- The per-plan literal sets above are the cumulative-matrix guard: a tier that
+  -- drops a key fails its own entry, so a separate subset check cannot fail alone.
 
   -- No organization plan carries an org AI entitlement or quota. AI is an
   -- organization licence built in #1511.

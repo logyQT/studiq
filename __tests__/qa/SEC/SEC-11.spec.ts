@@ -17,8 +17,8 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * SEC-11 — Przesyłanie plików: typy i rozmiary.
  *
  * Prerequisite (reconciled with the tenant seeder): an organization on the
- * `hub` plan (capacity only since #1493: the logo upload is refused because no
- * organization plan carries `branding`) with a manager, an educator and a
+ * `hub` plan (`branding` is the Campus tier, so the logo upload is refused on
+ * Hub) with a manager, an educator and a
  * student. The legacy manual seed
  * (`manager@dev.local`, `pass`, …) is never used.
  *

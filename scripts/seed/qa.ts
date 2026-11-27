@@ -50,15 +50,16 @@
  *
  * `--plan <key>` puts the tenant's own organization on that plan through the same
  * `change_org_plan` RPC the billing webhook calls. Since #1493 an organization
- * plan is capacity only, so this sets the organization's limits, not a feature
- * ceiling.
+ * plan carries its tier's cumulative features and limits, so this sets both the
+ * organization's limits and its feature ceiling.
  *
  * `--personal-plan <key>` sets `profiles.personal_plan_key` for the tenant's
  * users (the profile field `personalPlan` does the same for the case's own
- * manifest). A paid surface inside an organization now comes from the member's
- * personal plan (`personalPortable`), so a case that needs `ai.chat`,
- * `quiz.templates` or `stats.insights` inside an org declares `plus`, `pro` or
- * `pro` here. `--personal-role manager|teacher|student` narrows the write to that
+ * manifest). No organization plan carries `ai.chat`, and a `member` role
+ * resolves only the learner profile, so a key the org layer does not grant comes
+ * from the member's personal plan (`personalPortable`); a case that needs
+ * `ai.chat`, `quiz.templates` or `stats.insights` inside an org declares `plus`,
+ * `pro` or `pro` here. `--personal-role manager|teacher|student` narrows the write to that
  * one tenant account; without it every seeded **non-manager** account gets the
  * plan. A manager owns no personal plan (ADR-0007), so `manager` is refused
  * here and in `applyPersonalPlan` instead of writing the forbidden column. The

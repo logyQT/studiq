@@ -7,7 +7,6 @@ import {
   formatLimitValue,
   getPlanLadders,
   isRecommendedPlan,
-  isSalesLedPlan,
   shortPlanName,
   splitFeatureRows,
   splitLimitRows,
@@ -130,20 +129,10 @@ describe('ctaMessageKey', () => {
     expect(ctaMessageKey(plan('plus', 'personal', 2, { priceMonthly: 1999 }))).toBe('cta_plus');
   });
 
-  it('gives a sales-led plan the conversation the page already offers', () => {
-    // Every catalogue tier is self-serve, so the rule is exercised with a key
-    // the ladder does not own.
-    expect(isSalesLedPlan('campus')).toBe(false);
+  it('names an organization tier instead of borrowing the contact label', () => {
     expect(ctaMessageKey(plan('campus', 'organization', 8, { priceMonthly: 69900 }))).toBe(
       'cta_campus',
     );
-  });
-
-  it('keeps every catalogue plan self-serve, so none borrows the contact label', () => {
-    const paid = catalogue.filter((row) => row.priceMonthly > 0);
-
-    expect(paid.filter((row) => isSalesLedPlan(row.key))).toEqual([]);
-    expect(paid.map((row) => ctaMessageKey(row))).not.toContain('cta_contact');
   });
 
   it('resolves every catalogue plan to a label both locales carry', () => {

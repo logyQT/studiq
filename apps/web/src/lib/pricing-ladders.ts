@@ -14,19 +14,6 @@ export function isRecommendedPlan(key: string): boolean {
 }
 
 /**
- * Plans sold through a conversation rather than a checkout. No catalogue plan is
- * sales-led: the organization ladder sells all four tiers, and custom setup is a
- * separate CTA (`SalesCta`), not a plan card. The list stays because a sales-led
- * row must render a conversation in every state, and a plan added to it must not
- * quietly become a checkout.
- */
-const SALES_LED_PLAN_KEYS: readonly string[] = [];
-
-export function isSalesLedPlan(key: string): boolean {
-  return SALES_LED_PLAN_KEYS.includes(key);
-}
-
-/**
  * The message key of a plan's own action. A zero price is the free action every
  * free tier shares; a paid plan names itself, so the label cannot borrow another
  * tier's verb. Both the price list and the dashboard card ask this, so a new plan
@@ -34,7 +21,6 @@ export function isSalesLedPlan(key: string): boolean {
  */
 export function ctaMessageKey(plan: Pick<PlanInfo, 'key' | 'priceMonthly'>): string {
   if (plan.priceMonthly === 0) return 'cta_free';
-  if (isSalesLedPlan(plan.key)) return 'cta_contact';
   return `cta_${plan.key}`;
 }
 

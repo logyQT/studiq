@@ -297,9 +297,16 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     }
     expect(organizationHtml, 'with its price').toContain(copy('period_month'));
     expect(organizationHtml, 'and no individual row').not.toContain('id="free"');
-    expect(organizationHtml, 'the custom-setup band is in the server response too').toContain(
-      copy('sales_title'),
-    );
+    /*
+     * The custom-setup band is a rendered `<aside>` after the ladder. Its copy is
+     * in the `PricingPage` catalogue serialized into every `/pricing` response,
+     * so asserting the string proves nothing; the tag is what only the
+     * organization view renders.
+     */
+    expect(
+      organizationHtml.match(/<aside\b/g) ?? [],
+      'the custom-setup band is one rendered landmark in the organization response',
+    ).toHaveLength(1);
     const organizationRadioTag = /<input[^>]*value="organization"[^>]*>/.exec(
       organizationHtml,
     )?.[0];
@@ -323,7 +330,10 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     }
     expect(individualHtml, 'with prices').toContain(copy('period_month'));
     expect(individualHtml, 'and no organization row').not.toContain('id="launch"');
-    expect(individualHtml, 'and no custom-setup band').not.toContain(copy('sales_title'));
+    expect(
+      individualHtml.match(/<aside\b/g) ?? [],
+      'the individual response renders no custom-setup band',
+    ).toHaveLength(0);
     const individualRadioTag = /<input[^>]*value="individual"[^>]*>/.exec(individualHtml)?.[0];
     expect(individualRadioTag, 'the individual segment is the chosen one by default').toContain(
       'checked',

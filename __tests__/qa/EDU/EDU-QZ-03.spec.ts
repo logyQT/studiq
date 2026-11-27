@@ -16,9 +16,10 @@ import { FIXTURE_EXPLANATION } from '#test/helpers/question-text';
  * organization `qa-edu-qz-03-<suffix>` with a manager, the teacher and the student
  * plus the default group `G1`. The spec creates the quiz itself (bank + three
  * questions + quiz) through the product API with a per-execution tag, so repeated
- * runs against the same tenant stay independent. The teacher's personal Plus plan
- * carries `quiz.templates`, so the quiz writes pass the phase 5d gate; the hub
- * org plan is capacity only since #1493. Nothing global (admin setting, feature
+ * runs against the same tenant stay independent. Hub carries `quiz.templates` cumulatively
+ * since #1493 and the `teacher` role resolves the whole ceiling, so the quiz writes pass the
+ * phase 5d gate; the personal Plus plan adds the portable `ai.chat`. Nothing global (admin
+ * setting, feature
  * flag, plan, platform stat, singleton row) and no other tenant is
  * touched.
  *

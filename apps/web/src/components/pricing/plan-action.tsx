@@ -46,18 +46,6 @@ export function PlanAction({
   // One `signal` fill per surface, never on the plan the reader already owns.
   const tone = isRecommendedPlan(plan.key) && action !== 'current' ? 'signal' : 'quiet';
 
-  if (action === 'contact') {
-    // A sales-led plan is a conversation, not a self-serve checkout: the label
-    // says contact sales, so the action under it must too. `quiet` is explicit:
-    // the default fill is `signal`, and a sales link beside the ladder's
-    // recommended plan would be a second primary pointing away from the product.
-    return (
-      <CtaButton href="/contact" tone="quiet" fullWidth className={className}>
-        {label}
-      </CtaButton>
-    );
-  }
-
   if (action === 'current') {
     return (
       <CtaButton action="button" tone={tone} disabled fullWidth className={className}>

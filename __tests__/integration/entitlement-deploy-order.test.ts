@@ -22,9 +22,9 @@ import {
  *    `isEntitlementKey`, so nothing reaches `ENTITLEMENTS[key]`.
  *  - **A plan change backfills with no prune job** (cell D). Each layer is
  *    derived per request, so a plan that gains a key serves it on the next
- *    resolution — no row per org, no cache flush, no restart. Since #1493 the
- *    organization ladder is capacity only, so the probe is the personal plan
- *    (`plus`), whose portable keys reach the member inside the org.
+ *    resolution — no row per org, no cache flush, no restart. The probe is a
+ *    personal plan (`plus`), whose portable keys reach the member inside the
+ *    org; the Hub org plan supplies its own cumulative set.
  *
  * `entitlement_catalog` is deliberately not written here: `catalog-invariants`
  * asserts the DB set against `ENTITLEMENTS` and runs in a parallel file, so a

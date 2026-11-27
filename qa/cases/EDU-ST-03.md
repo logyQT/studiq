@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `stats.insights` gate passes through the educator's personal Pro plan (`personalPlan: "pro", personalRole: "teacher"`), not the org plan.
+Hub carries `stats.insights` cumulatively since #1493, and the `teacher` org role resolves the whole ceiling (`entitlement_profile: 'all'`), so the `stats.insights` gate passes through the org plan. The educator's personal Pro plan (`personalPlan: "pro", personalRole: "teacher"`) is tenant shape.
 
 ## Prerequisite (verbatim)
 
@@ -31,8 +31,9 @@ bun scripts/qa-tenant.ts EDU-ST-03 --fresh
 - the tenant's own organization sits on the **hub** plan (applied through the seeder's
   `--plan`): the case's range switcher (step 2) fires
   `/api/v1/stats/teacher/activity?range=…`, which phase 5d gates on the `stats.insights`
-  entitlement — with the query disabled on a plan without it, the request never fires. The
-  educator's personal Pro plan carries the key, so the educator passes the gate on every range.
+  entitlement — with the query disabled on a plan without it, the request never fires. Hub
+  carries `stats.insights` and the `teacher` role resolves the whole ceiling, so the org plan
+  grants the key on every range.
 - the educator logs in through the real `/api/v1/auth/login` (fixture password
   `Seed4Test!`) with `active_org_id` set to the tenant org; the student builds the
   activity in a second browser context

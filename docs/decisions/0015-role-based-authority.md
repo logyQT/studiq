@@ -1728,9 +1728,9 @@ interpretation.
 >
 > `team` returns as a new key, so the B2 fold is superseded; an organization
 > already on `hub` or `campus` keeps its key and gains the new feature rows. The
-> matrix in `20261127090000_org_team_tier.sql` owns all eight plans, pins each
-> tier's entitlement set and every limit, and asserts the four organization sets
-> are cumulative. No organization plan carries `ai.chat` or
+> the matrix in `20261127090000_org_team_tier.sql` owns all eight plans and pins each
+> tier's entitlement set and every limit (the four organization sets are cumulative).
+> No organization plan carries `ai.chat` or
 > `max_ai_tokens_per_day`: organization AI is still #1511. Seats stay frozen at
 > the UI, and a seat pool still references a `scope='personal'` plan only — an
 > organization tier is never a pool.

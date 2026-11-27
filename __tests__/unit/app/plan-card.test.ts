@@ -227,12 +227,11 @@ describe('PlanCard action', () => {
     const markup = gridMarkup(ORGANIZATION_LADDER);
     const links = linkClasses(markup);
 
-    // No tier is a sales conversation any more: Campus checks out like Team and
-    // Hub, and the separate custom-setup CTA is the only /contact link.
+    // Every organization tier is a self-serve checkout, and the separate
+    // custom-setup CTA is the only /contact link.
     expect(links.get('/contact')).toBeUndefined();
     expect(markup).toContain(t('cta_team'));
     expect(markup).toContain(t('cta_campus'));
-    expect(markup).not.toContain(t('cta_contact'));
 
     const classes = actionClasses(markup);
     expect(classes.filter((action) => toneTokens(action).includes('bg-signal'))).toHaveLength(1);

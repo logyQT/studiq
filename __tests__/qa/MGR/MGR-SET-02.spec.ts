@@ -5,12 +5,10 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
 /**
  * MGR-SET-02 — uploading a logo requires the `branding` feature.
  *
- * The case's prerequisite was „Organizacja na planie Hub/Campus”. Since #1493 no
- * organization plan carries `branding`: the ladder is capacity only and the
- * feature has no plan path left. The case therefore checks the disabled state
- * the product ships: `/manage/settings` shows the lock card in place of the
- * uploader, and the logo route refuses a valid PNG with 403, so no file reaches
- * validation or storage.
+ * The case's prerequisite was „Organizacja na planie Hub/Campus”. `branding` is the
+ * Campus tier, and the default `content` profile seeds this tenant's org on the
+ * trigger's `launch` plan, so the uploader is not rendered and the logo route
+ * refuses a valid PNG with 403: no file reaches validation or storage.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-02 --fresh
  *

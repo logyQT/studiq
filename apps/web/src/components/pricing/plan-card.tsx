@@ -7,7 +7,7 @@ import { useLocale } from 'next-intl';
 import { CtaButton } from '@/components/marketing/ui/cta-button';
 import { PlanAction } from '@/components/pricing/plan-action';
 import { PlanCapacity } from '@/components/pricing/plan-capacity';
-import { ctaMessageKey, isRecommendedPlan, isSalesLedPlan } from '@/lib/pricing-ladders';
+import { ctaMessageKey, isRecommendedPlan } from '@/lib/pricing-ladders';
 import { planCopy } from '@/lib/pricing-copy';
 import { getFeatureLabel, type PricingTranslator } from '@/lib/pricing-features';
 import { pricingPlanAction } from '@/lib/pricing-plan-action';
@@ -42,7 +42,6 @@ export function PlanCard({
     signedIn: Boolean(user),
     isCurrent: isCurrentPlan,
     isFree: !paid,
-    contactOnly: isSalesLedPlan(plan.key),
     hasActivePlan,
   });
 

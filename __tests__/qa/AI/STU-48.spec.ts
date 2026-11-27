@@ -13,7 +13,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Tenant: `bun scripts/qa-tenant.ts STU-48 --fresh` (`content` profile on the
  * `hub` plan with `personalPlan: "plus"`, so the student's personal Plus plan
- * carries `ai.chat` and its finite daily budget). The spec signs in as
+ * carries `ai.chat` and its finite daily budget into an organization whose plan has no AI
+ * licence). The spec signs in as
  * `users.student`.
  *
  * Reconciliation (walk on the app, 2026-11-15):

@@ -183,9 +183,10 @@ describe('Item states and versioning (#1171)', () => {
     if (!assignmentId || !teacher.orgId) throw new Error('assignment fixture missing');
 
     // Phase 5d: the quiz writes (create/addQuestions/createAssignment/bulk)
-    // are gated on the `quiz.templates` entitlement. The organization ladder is
-    // capacity only since #1493, so the author's personal Plus plan carries the
-    // key into the org (`personalPortable`); the org sits on `hub` for capacity.
+    // are gated on the `quiz.templates` entitlement. Hub carries the key
+    // cumulatively since #1493, so the `teacher` role's whole-ceiling profile
+    // grants it; the personal Plus plan is belt-and-braces, and the org sits on
+    // `hub` for capacity.
     await setOrgPlan(teacher.orgId, 'hub');
     const { error: personalError } = await service
       .from('profiles')
