@@ -582,7 +582,13 @@ The admin panel is the only writer:
 3. The assigned organization's managers see the plan as their current plan on
    `/manage/billing`. It never appears on `/pricing`, the upgrade grids, the
    seats picker or the public `GET /api/v1/subscription-plans` list, and
-   `GET /api/v1/subscription-plans/<key>` answers `404` for it.
+   `GET /api/v1/subscription-plans/<key>` answers `404` for it. The anonymous
+   database read is filtered too: the `anon` policies on `subscription_plans`,
+   `plan_entitlements` and `plan_limits` require a public, active plan, so the
+   publishable key returns no row for a contract plan or its rows. A signed-in
+   caller can still read the catalogue table directly, including an unlisted
+   plan — the pre-existing property D34 records; the service reads are filtered
+   for them and no page lists the plan.
 4. **To end a contract**, move the organization to another plan first (the
    `/orgs` plan picker, `PUT /api/v1/organizations/<id>/plan`, backed by
    `change_org_plan`), then remove the pin. Removing the pin while the
@@ -601,8 +607,12 @@ The admin panel is the only writer:
    with `403`.
 
 Deleting the plan still fails while an organization or an assignment
-references it (`409`). Seats need a bespoke personal seat-licence plan, which
-the seats picker cannot offer yet — see
+references it (`409`). Seats need a bespoke **personal** seat-licence plan
+(`scope = 'personal'`, `visibility = 'unlisted'`). It is **not** pinned: the pin
+and the move are organization-plan concepts, `assign_plan_to_org` refuses a
+personal plan, and no reader consults `plan_assignments` for one. The seats
+picker reads the public list, so it does not offer the plan yet; the operator
+bootstraps the pool manually — see
 [plans/extendability.md](plans/extendability.md#seats-in-a-contract-plan).
 
 ## Production Considerations
