@@ -192,4 +192,85 @@ describe('createDraftSaver (#1547)', () => {
 
     expect(started).toEqual(['a']);
   });
+
+  it('on leaving, drops a queued save that has not started', async () => {
+    const { saver, started, flush, settle, wait } = setup();
+
+    saver.change('a');
+    await wait(); // `a` is on its way
+    saver.change('ab');
+    await wait(); // `ab` waits behind it
+    saver.change('abc');
+    saver.leave();
+    await settle();
+
+    expect(flush).toHaveBeenCalledExactlyOnceWith('abc');
+    expect(started, '`ab` must not follow the newer `abc`').not.toContain('ab');
+  });
+
+  it('sends the newest again after a save already on its way, so that one is not last', async () => {
+    const { saver, started, settle, wait } = setup();
+
+    saver.change('a');
+    await wait();
+    saver.change('ab');
+    saver.leave(); // the leave request and `a` can arrive in either order
+    await settle();
+
+    expect(started).toEqual(['a', 'ab']);
+  });
+
+  it('keeps the answers unconfirmed while an older save is still open', async () => {
+    const { saver, flush, wait } = setup();
+
+    saver.change('a');
+    await wait(); // on its way
+    saver.change('seed');
+    await wait(); // the way back waits behind it
+    saver.change('seed'); // an edit that leaves the body as it was, such as a trailing space
+    saver.leave();
+
+    expect(flush).toHaveBeenCalledExactlyOnceWith('seed');
+  });
+
+  it('does not take an older, identical save as the confirmation of a newer one', async () => {
+    const { saver, flush, settle, wait } = setup();
+
+    for (const body of ['a', 'b', 'a']) {
+      saver.change(body);
+      await wait();
+    }
+    await settle(); // only the first `a`; `b` and the second `a` are still to come
+    saver.leave();
+
+    expect(flush).toHaveBeenCalledExactlyOnceWith('a');
+  });
+
+  it('saves again after a page that left comes back', async () => {
+    const { saver, started, settle, wait } = setup();
+
+    saver.change('a');
+    await wait();
+    saver.change('ab');
+    await wait();
+    saver.change('abc');
+    saver.leave(); // e.g. into the back-forward cache
+    saver.change('ab'); // restored, and the student goes back
+    await wait();
+    await settle(); // `a`
+    await settle(); // the resend of `abc`, if one was queued
+
+    expect(started.at(-1)).toBe('ab');
+  });
+
+  it('saves the way back after a restored page, once the leave request sent the change', async () => {
+    const { saver, started, wait } = setup();
+
+    saver.change('a');
+    saver.leave(); // only the leave request carries `a`; nothing was queued
+    saver.change('seed'); // restored, and the student undoes the change
+    await wait();
+
+    expect(started, 'the server may hold `a`, so `seed` has to be sent').toEqual(['seed']);
+  });
 });

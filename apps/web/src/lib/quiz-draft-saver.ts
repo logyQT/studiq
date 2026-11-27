@@ -16,9 +16,11 @@ export interface DraftSaverDeps {
  * - Saves run one after another: an older body cannot land after a newer one.
  * - `pending` is the newest body the server has not confirmed. Going back to an earlier answer
  *   replaces it, so a leave never sends a state the student has left.
+ * - A leave sends past the queue. It drops the saves that have not started, and repeats its
+ *   body after one that has, which can otherwise arrive last.
  */
 export function createDraftSaver({ put, flush, onFailure, delayMs }: DraftSaverDeps) {
-  /** The last body the server confirmed. */
+  /** The body the server is known to hold; null while a newer save has no answer. */
   let confirmed: string | null = null;
   /** The last body handed to the queue; the server will have it unless the save fails. */
   let queued: string | null = null;
@@ -27,28 +29,41 @@ export function createDraftSaver({ put, flush, onFailure, delayMs }: DraftSaverD
   let stopped = false;
   let failing = false;
   let queue: Promise<void> = Promise.resolve();
+  /** Saves are numbered: only the answer to the newest one says what the server holds. */
+  let newest = 0;
+  /** Saves numbered below this were overtaken by a leave and must not start. */
+  let firstWanted = 0;
+  let inFlight = false;
 
   /** Read through a call: `stop` can run while a save is waiting for its answer. */
   const isStopped = (): boolean => stopped;
 
-  async function save(body: string): Promise<void> {
-    if (isStopped()) return;
+  async function save(body: string, number: number): Promise<void> {
+    if (isStopped() || number < firstWanted) return;
+    inFlight = true;
     try {
       await put(body);
-      confirmed = body;
-      if (pending === body) pending = null;
+      if (number === newest) {
+        confirmed = body;
+        if (pending === body) pending = null;
+      }
       failing = false;
     } catch {
       // After a stop the refusal is expected: the submission has completed the attempt.
       if (isStopped() || failing) return;
       failing = true;
       onFailure();
+    } finally {
+      inFlight = false;
     }
   }
 
   function send(body: string): void {
     queued = body;
-    queue = queue.then(() => save(body));
+    confirmed = null;
+    newest += 1;
+    const number = newest;
+    queue = queue.then(() => save(body, number));
   }
 
   return {
@@ -72,7 +87,14 @@ export function createDraftSaver({ put, flush, onFailure, delayMs }: DraftSaverD
     /** The page is going away: send what the server has not confirmed. */
     leave(): void {
       clearTimeout(timer);
-      if (!stopped && pending !== null) flush(pending);
+      if (stopped || pending === null) return;
+      firstWanted = newest + 1;
+      flush(pending);
+      queued = pending;
+      confirmed = null;
+      // Leaving inside the app keeps this code running, so the repeat still goes out. After a
+      // reload or a closed tab it never does, and the leave request stands alone.
+      if (inFlight) send(pending);
     },
     /** Before a submission: no save may start or report a failure from here on. */
     stop(): void {
