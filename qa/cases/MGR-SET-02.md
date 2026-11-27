@@ -9,12 +9,12 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Since #1493 the organization ladder is capacity only: **no organization plan carries `branding`**.
-„Plan z brandingiem” no longer exists, so the uploader is not rendered and the logo route answers
-**403 FORBIDDEN** before type or size validation. The case therefore checks the shipped disabled
-state: `/manage/settings` shows the „Własny branding” lock card in place of the uploader, and a
-valid PNG is refused with no row change. Stored-values coverage lives in LIM-05/MGR-SET-04/05,
-which seed the row directly.
+Since #1493 the organization ladder is cumulative and `branding` is the **Campus** tier. This
+tenant's organization is on the seeder's default `launch` plan, so „Plan z brandingiem” is not its
+plan: the uploader is not rendered and the logo route answers **403 FORBIDDEN** before type or size
+validation. The case therefore checks the shipped locked state: `/manage/settings` shows the
+„Własny branding” lock card in place of the uploader, and a valid PNG is refused with no row change.
+Stored-values coverage lives in LIM-05/MGR-SET-04/05, which seed the row directly.
 
 ## Prerequisite (verbatim)
 
@@ -33,14 +33,12 @@ The legacy `manager@dev.local` + WSB Merito seed is replaced by this case's own
   `qa-mgr-set-02-<run-suffix>` with a manager, an educator, a student and the
   default group; every id derives from
   `tenantKey('qa/cases/MGR-SET-02.md', 'MGR-SET-02#<run-suffix>', 'qa-shared')`.
-- „Plan z brandingiem”: spec czyta plan organizacji tenanta i — gdy jej pułap
-  (`plan_entitlements`) nie zawiera `branding` — przenosi **tę jedną** organizację na
-  `hub` przez `change_org_plan`, ten sam RPC, który wywołuje webhook płatności.
-  `branding` jest kluczem nie-markerowym, więc rozstrzyga go profil roli
-  (`entitlement_profile = 'all'` roli `admin` managera) przecięty z pułapem planu;
-  osobny magazyn uprawnień per rola już nie istnieje i nie jest tu używany.
-  Wspólny katalog planów i `entitlement_flags` nie są zapisywane, więc żadna inna
-  organizacja ani globalny stan admina nie jest ruszany.
+- „Plan z brandingiem”: tenant zostaje na planie z domyślnego profilu (`launch`, bez
+  `branding`). Drabinka jest kumulatywna, ale `branding` ma tylko **Campus**: klucz
+  nie-markerowy rozstrzyga profil roli (`entitlement_profile = 'all'` roli `admin`
+  managera) przecięty z pułapem planu. Spec czyta plan i entitlementy tenanta, nie
+  przenosi go na inny plan. Wspólny katalog planów i `entitlement_flags` nie są
+  zapisywane, więc żadna inna organizacja ani globalny stan admina nie jest ruszany.
 - Logo fixture: a deterministic 1×1 PNG uploaded through the real "Wgraj logo"
   file chooser. The spec clears its own org's previous `logo_url` (and storage
   object) first, so every run starts from "Brak logo" without a reseed.

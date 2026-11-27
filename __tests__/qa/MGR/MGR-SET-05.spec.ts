@@ -5,14 +5,15 @@ import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
- * MGR-SET-05 — a plan change cannot withdraw branding no plan grants.
+ * MGR-SET-05 — a plan change cannot withdraw branding the current tier does not grant.
  *
  * The case lowered an organization from Hub to Launch and expected the branding
- * controls to disappear. Since #1493 no organization plan carries `branding`, so
- * the lock is present before and after every move; what survives is the stored
- * logo and colour (untouched in the row) and what does not is their display.
- * The plan change still runs through the mock checkout webhook, the real
- * `change_org_plan` path, to prove the tier move itself is healthy.
+ * controls to disappear. Branding is the Campus feature: Hub and Launch do not
+ * carry it, so the lock is present before and after every move the case makes;
+ * what survives is the stored logo and colour (untouched in the row) and what
+ * does not is their display. The plan change still runs through the mock
+ * checkout webhook, the real `change_org_plan` path, to prove the tier move
+ * itself is healthy.
  *
  *   bun scripts/qa-tenant.ts MGR-SET-05 --fresh
  *
@@ -30,7 +31,7 @@ const COPY = {
   uploadLogo: 'Wgraj logo',
   brandColor: 'Kolor marki',
   lockedTitle: 'Własny branding',
-  lockedDesc: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDesc: 'Własny branding jest dostępny w planie Campus.',
   lockedCta: 'Zobacz plany',
   hubPlan: 'StudiQ Hub',
   launchPlan: 'StudiQ Launch',
@@ -86,7 +87,7 @@ async function changeOrgPlan(page: Page, tenant: QaTenant, plan: string): Promis
   expect(response.status(), `POST stripe/webhook (${plan}) → ${await response.text()}`).toBe(200);
 }
 
-test('keeps branding locked across Hub → Launch → Hub because no plan grants it', async ({
+test('keeps branding locked across Hub → Launch → Hub because neither tier grants it', async ({
   page,
 }) => {
   test.setTimeout(120_000);

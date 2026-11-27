@@ -42,6 +42,8 @@ const SECRET_LINE_RE = /(?:KEY|SECRET|PASSWORD|TOKEN)\s*=\s*\S|eyJ[A-Za-z0-9_-]{
 /** The build's own budget: a wait for a slot has a separate one (ADR-0014). */
 const BUILD_TIMEOUT_MS = 30 * 60 * 1000;
 const BUILD_PROGRESS_MS = 30_000;
+/** How long a build over its limit waits for `close` after the group cleanup. */
+const CLOSE_GRACE_MS = 10_000;
 /** The `spawnSync` `maxBuffer` this replaces: stop collecting, never kill. */
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 const OOM_SCORE_ADJ = '/proc/self/oom_score_adj';
@@ -386,6 +388,7 @@ export interface SpawnBuildSeams {
   command?: BuildCommand;
   killGroup?: (pgid: number) => Promise<boolean>;
   timeoutMs?: number;
+  closeGraceMs?: number;
 }
 
 /**
@@ -399,8 +402,12 @@ export interface SpawnBuildSeams {
  * (`--no-slot`/`--no-lock`) the group is still killed on every exit path; there
  * is just no record for another process to reclaim.
  *
- * If the cleanup fails, the promise rejects with the cleanup error, so the build
- * always ends.
+ * If the cleanup fails, the promise rejects with the cleanup error. `close` also
+ * waits for the output pipes, and a process that left the group can keep one open.
+ * So after the cleanup of a build over its limit, the wait for `close` is bounded:
+ * then the pipes are released and the build resolves as timed out (#1524). Such a
+ * process is not signalled and can still write to `.next`. The slot is released:
+ * it records only the group, so a reclaim could not stop that process either.
  *
  * @public Exercised by the unit tests, which load this module by computed URL.
  */
@@ -413,6 +420,7 @@ export function spawnBuild(
     command = buildCommand(options.app),
     killGroup = killProcessGroup,
     timeoutMs = BUILD_TIMEOUT_MS,
+    closeGraceMs = CLOSE_GRACE_MS,
   } = seams;
   if (!command.oomAdjusted) {
     appendEnvLog('build: oom_score_adj is not available on this platform; skipped');
@@ -452,20 +460,35 @@ export function spawnBuild(
       if (error instanceof Error) resultsBeforeCleanupError.set(error, outcome);
       reject(error);
     };
-    /** The cleanup of a build that ran too long failed: end without the child. */
-    const abandon = (error: unknown): void => {
+    let closed = false;
+    let closeTimer: NodeJS.Timeout | undefined;
+    /** Stop waiting for a child that ran too long: nothing of it keeps this process alive. */
+    const release = (): void => {
       clearInterval(progress);
       child.stdout?.destroy();
       child.stderr?.destroy();
       child.unref();
+    };
+    const abandon = (error: unknown): void => {
+      release();
       failCleanup(error, outcomeNow(null, null));
+    };
+    const awaitClose = (): void => {
+      if (closed) return;
+      closeTimer = setTimeout(() => {
+        writeStderrLine(
+          `build: the build output did not close ${closeGraceMs / 1000} s after the cleanup; ending the build. A process outside the build's group can still hold it open and write to .next`,
+        );
+        release();
+        resolve(outcomeNow(child.exitCode, child.signalCode));
+      }, closeGraceMs);
     };
     const timer = setTimeout(() => {
       timedOut = true;
       writeStderrLine(
         `build: exceeded ${formatTimeLimit(timeoutMs)}; killing the build's process group`,
       );
-      killGroup(pgid ?? 0).catch(abandon);
+      killGroup(pgid ?? 0).then(awaitClose, abandon);
     }, timeoutMs);
     const progress = setInterval(() => {
       slot?.heartbeat();
@@ -478,7 +501,9 @@ export function spawnBuild(
     progress.unref?.();
 
     const finish = (status: number | null, signal: NodeJS.Signals | null): void => {
+      closed = true;
       clearTimeout(timer);
+      clearTimeout(closeTimer);
       clearInterval(progress);
       killGroup(pgid ?? 0).then(
         () => resolve(outcomeNow(status, signal)),

@@ -22,6 +22,7 @@ vi.mock('@studiq/server/lib/authz', () => {
       FLASHCARD_READ: 'flashcard.read',
       FLASHCARD_UPDATE: 'flashcard.update',
       FLASHCARD_DELETE: 'flashcard.delete',
+      TOPIC_READ: 'topic.read',
       DECK_UPDATE: 'deck.update',
     },
   };
@@ -212,6 +213,7 @@ describe('FlashcardService', () => {
       ];
 
       mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
       mock.rpc.mockResolvedValue({ data: flashcards, error: null });
 
       const result = await service.bulkCreate(
@@ -335,6 +337,7 @@ describe('FlashcardService', () => {
       const clearChain = chain(null);
       const assignChain = chain(null);
       mock.from.mockReturnValueOnce(chain(updated));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(clearChain);
       mock.from.mockReturnValueOnce(assignChain);
@@ -518,6 +521,115 @@ describe('FlashcardService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('topic links (#1515)', () => {
+    const card = { id: 'fc-1', front: 'Q', back: 'A' };
+
+    it('refuses create with an unreadable topic and writes nothing', async () => {
+      const cards = chain([], 0);
+      mock.from.mockReturnValueOnce(cards);
+      mock.from.mockReturnValueOnce(chain([]));
+      // Anything after the lookup resolves, so the assertions below are what fail.
+      mock.from.mockReturnValue(cards);
+
+      const result = await service.create({ front: 'Q', back: 'A', topicIds: ['t-x'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(cards.insert).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses the whole bulk create when one topic is unreadable', async () => {
+      mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.rpc.mockResolvedValue({ data: [card], error: null });
+
+      const result = await service.bulkCreate(
+        { cards: [{ front: 'Q', back: 'A' }], topicIds: ['t-1', 't-x'] },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(mock.rpc).not.toHaveBeenCalled();
+    });
+
+    it('refuses an update that adds an unreadable topic, before any write', async () => {
+      const writes = chain(null);
+      mock.from.mockReturnValueOnce(chain(card));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.update('fc-1', { front: 'New', topicIds: ['t-x'] }, ctx);
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      // The card, the topic lookup and the existing links: no query after them.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps an unreadable topic that the card already carries', async () => {
+      const writes = chain(card);
+      mock.from.mockReturnValueOnce(chain(card));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([{ flashcard_id: 'fc-1', topic_id: 't-x' }]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.update('fc-1', { topicIds: ['t-x'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(writes.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-1', topic_id: 't-x' }]);
+    });
+
+    it('refuses batch add of an unreadable topic and inserts no link', async () => {
+      const writes = chain([]);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.batchTopics(
+        { ids: ['fc-1'], operation: 'add', topicIds: ['t-x'] },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(writes.insert).not.toHaveBeenCalled();
+    });
+
+    it('lets the caller remove a topic that they cannot read', async () => {
+      const removal = chain(null);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValue(removal);
+
+      const result = await service.batchTopics(
+        { ids: ['fc-1'], operation: 'remove', topicIds: ['t-x'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(removal.delete).toHaveBeenCalled();
+      expect(removal.in).toHaveBeenCalledWith('topic_id', ['t-x']);
+      // The card read and the delete: removing asks for no topic access.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses batch set when only some cards carry the topic, before the delete', async () => {
+      const writes = chain(null);
+      mock.from.mockReturnValueOnce(chain([card, { ...card, id: 'fc-2' }]));
+      mock.from.mockReturnValueOnce(chain([]));
+      mock.from.mockReturnValueOnce(chain([{ flashcard_id: 'fc-1', topic_id: 't-x' }]));
+      mock.from.mockReturnValue(writes);
+
+      const result = await service.batchTopics(
+        { ids: ['fc-1', 'fc-2'], operation: 'set', topicIds: ['t-x'] },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(writes.delete).not.toHaveBeenCalled();
+      expect(writes.insert).not.toHaveBeenCalled();
     });
   });
 });

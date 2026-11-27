@@ -17,8 +17,8 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * SEC-11 — Przesyłanie plików: typy i rozmiary.
  *
  * Prerequisite (reconciled with the tenant seeder): an organization on the
- * `hub` plan (capacity only since #1493: the logo upload is refused because no
- * organization plan carries `branding`) with a manager, an educator and a
+ * `hub` plan (`branding` is the Campus tier, so the logo upload is refused on
+ * Hub) with a manager, an educator and a
  * student. The legacy manual seed
  * (`manager@dev.local`, `pass`, …) is never used.
  *
@@ -30,7 +30,7 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * Upload surfaces confirmed during the walk on the shared app:
  * - `POST /api/v1/flashcards/media/upload` — flashcard media (teacher);
  * - `POST /api/v1/organization/<org>/logo` — organization logo (manager, `branding`;
- *   no plan grants it, so every file is 403 before validation);
+ *   Hub does not grant it, so every file is 403 before validation);
  * - `POST /api/v1/assignments/<id>/upload-image` — answer photo in an assignment
  *   attempt (student).
  *
@@ -197,7 +197,7 @@ async function expectFlashcardMediaRules(page: Page): Promise<void> {
 /**
  * Organization logo: every file stops at the `branding` entitlement gate.
  *
- * No organization plan carries the key since #1493, so the route answers 403
+ * The tenant's Hub tier does not grant `branding` (Campus is that tier), so the route answers 403
  * before the type/size checks the other upload points exercise. The row keeps
  * its previous value, and a valid PNG is refused too — the boundary is the
  * feature, not the file.

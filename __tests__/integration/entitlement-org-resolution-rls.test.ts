@@ -170,11 +170,11 @@ describe(`org entitlement resolution under RLS`, () => {
       permissionScopes: {},
     };
 
-    // `hub` raises max_flashcards to 2000, while the member's personal `free`
+    // `hub` raises max_flashcards to 5000, while the member's personal `free`
     // plan caps it at 100. If RLS hid the `organizations` row the resolver
     // would silently fall back to 100 — the #124/#182 class of regression.
     const { limits } = await resolver.resolveEntitlements(ctx);
-    expect(limits.max_flashcards).toBe(2000);
+    expect(limits.max_flashcards).toBe(5000);
   });
 
   it('the resolver reads a seated member plan through the embed under RLS', async () => {

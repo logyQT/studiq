@@ -29,6 +29,8 @@ import { ApiError, apiGet, apiPost } from '@/lib/api';
 import { translateErrorCode } from '@/lib/error-messages';
 
 function JoinSkeleton() {
+  const t = useTranslations('RegisterPage');
+
   return (
     <Card className="w-full max-w-md mx-auto shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader className="space-y-2">
@@ -51,7 +53,7 @@ function JoinSkeleton() {
         <Skeleton className="h-10 w-full mt-4" />
         <div className="flex items-center justify-center gap-2 pt-2">
           <Spinner className="h-4 w-4" />
-          <span className="text-sm text-muted-foreground">Verifying invitation...</span>
+          <span className="text-sm text-muted-foreground">{t('verifying_invitation')}</span>
         </div>
       </CardContent>
     </Card>

@@ -29,8 +29,8 @@ import { expect, loadTenant, loginAs, test } from '#test/qa/fixtures/tenant';
  *
  * The `hub` plan is applied to this tenant's own organization by the seeder with
  * `change_org_plan` (the same RPC the billing webhook calls), and
- * `personalPlan: "plus"` gives the members the portable `ai.chat` key; since
- * #1493 the organization plan itself is capacity only, so no global plan,
+ * `personalPlan: "plus"` gives the members the portable `ai.chat` key — no
+ * organization plan carries it — so no global plan,
  * flag, setting or platform row is written and no other worker's tenant is
  * touched.
  *

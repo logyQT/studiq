@@ -19,16 +19,16 @@ Fix open defects before new features. The order below follows that rule.
 
 ## Done
 
-| Step | Issue     | PR    | Result                                                                                                                                                                                                                                                |
-| ---- | --------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                                                                                                                                                                      |
-| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                                                                                                                                                                       |
-| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                                                                                                                                                                                 |
-| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it.                                                                                                                                                   |
-| A5   | **#1478** | #1474 | The queue waits for settled checks and merges on `mergeStateStatus == CLEAN`, so a docs-only PR lands.                                                                                                                                                |
-| A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                                                                                                                                                                    |
-| B1   | **#1193** | #1513 | One individual ladder: Free / Plus / Pro / Max on `base` / `spark` / `ace` / `pro`. `audience` retires; no personal `-1`; the organization ladder stays for B2. The operator settled four tiers on 2026-11-26, not the three this row first proposed. |
-| B2   | **#1493** | #1517 | Three capacity-only organization tiers: Launch 5/3, Hub 50/20, Campus 1000/100. `team` folds into `hub`; no org entitlement (baseline kept); seats frozen at the UI; AI deferred to #1511.                                                            |
+| Step | Issue     | PR    | Result                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---- | --------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | **#1494** | #1499 | Migrations own the plan catalogue; the seed writes no plan data.                                                                                                                                                                                                                                                                                                                        |
+| A2   | **#1502** | #1503 | Seeds hold test data only; migrations own the permission catalogue and all DDL.                                                                                                                                                                                                                                                                                                         |
+| A3   | **#1484** | #1506 | The public pricing read hides a kill-switched key and a DB-ahead key.                                                                                                                                                                                                                                                                                                                   |
+| A4   | **#1482** | #1510 | The stats triggers are definer-only; INSERT/UPDATE/DELETE are revoked; an integration case pins it.                                                                                                                                                                                                                                                                                     |
+| A5   | **#1478** | #1474 | The queue waits for settled checks and merges on `mergeStateStatus == CLEAN`, so a docs-only PR lands.                                                                                                                                                                                                                                                                                  |
+| A6   | **#1492** | #1512 | `--name` is the exact, anchored title; `--name-regex` is the pattern escape hatch.                                                                                                                                                                                                                                                                                                      |
+| B1   | **#1193** | #1513 | One individual ladder: Free / Plus / Pro / Max on `base` / `spark` / `ace` / `pro`. `audience` retires; no personal `-1`; the organization ladder stays for B2. The operator settled four tiers on 2026-11-26, not the three this row first proposed.                                                                                                                                   |
+| B2   | **#1493** | #1517 | Four purchasable organization tiers — Launch 5/3, Team 25/10, Hub 100/40, Campus 1000/100 — with cumulative features (`quiz.templates`, `stats.insights`, `branding`). Custom setup is a separate "talk to sales" CTA, not a card. Seats frozen at the UI; AI deferred to #1511. Revised 2026-11-27: supersedes the merged three-tier capacity-only cut and the `team`-into-`hub` fold. |
 
 A4 moved the two stats triggers behind definer functions, so no user client writes the
 table. A fresh local review and served QA ran before the PR opened.
@@ -39,8 +39,8 @@ table. A fresh local review and served QA ran before the PR opened.
 | ---- | --------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | B3   | **#1495** | Unlisted plans, pinned to one organization, for sales-led contracts. | A plan can be `unlisted`, assigned to one org, and refused for every other org. Checkout refuses it. Public reads hide it. | B2 (the enterprise tier), A3 (the public filter) |
 
-Target: seven public SKUs. Four individual (Free / Plus / Pro / Max), three organization
-(Launch / Hub / Campus). Enterprise is an unlisted plan (B3).
+Target: eight public SKUs. Four individual (Free / Plus / Pro / Max), four organization
+(Launch / Team / Hub / Campus). Enterprise is an unlisted plan (B3).
 
 ## C. Build the shell
 
@@ -67,9 +67,11 @@ C1 gives most of the code reduction with no route change. Do D1 only after C1.
 
 1. **B1: the AI price — settled 2026-11-26.** AI moves down to Plus at 19.99; Pro and Max add
    insights and higher limits. The entry price does not rise and educators keep one entry tier.
-2. **B2: the org tier to fold — settled 2026-11-26.** `team` folds into `hub`; org plans sell
-   capacity only (no entitlements, baseline keys kept); the seat sale and assign entries are
-   hidden while the data path stays read-only; AI moves to #1511.
+2. **B2: the organization ladder — settled 2026-11-27, revised.** Launch / Team 99 /
+   Hub 299 / Campus 699 are all purchasable; each tier adds one feature set on top of the
+   one below, and Campus adds branding. Custom setup (own limits, SSO, invoicing,
+   onboarding) is a separate contact CTA, not a plan. The 2026-11-26 `team`-into-`hub`
+   fold is superseded: Team returns at 99 zł. Seats stay frozen at the UI; AI moves to #1511.
 3. **D1: one `/app` or three areas.** This reopens R47, a do-not-reopen item. It needs an explicit
    decision.
 4. **D37 (proposed, not scheduled):** a default entitlement outside any plan. It needs an ADR-0015

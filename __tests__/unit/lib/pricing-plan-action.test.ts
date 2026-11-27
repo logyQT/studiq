@@ -7,7 +7,6 @@ const reader: PlanActionInput = {
   signedIn: false,
   isCurrent: false,
   isFree: false,
-  contactOnly: false,
   hasActivePlan: false,
 };
 
@@ -18,11 +17,6 @@ function action(overrides: Partial<PlanActionInput>): PlanAction {
 describe('pricingPlanAction', () => {
   it('gives a signed-out reader the register action', () => {
     expect(action({ signedIn: false })).toBe('register');
-  });
-
-  it('sends Campus to the sales conversation in every state', () => {
-    expect(action({ contactOnly: true })).toBe('contact');
-    expect(action({ contactOnly: true, signedIn: true, hasActivePlan: true })).toBe('contact');
   });
 
   it('prints no action on a free row for a signed-in reader', () => {
@@ -69,10 +63,6 @@ describe('pricingPlanAction', () => {
     // `null` is "not known yet", not "no subscription": a failed read must not
     // turn a subscriber into a checkout that the server refuses.
     expect(action({ signedIn: true, hasActivePlan: null })).toBe('none');
-  });
-
-  it('keeps contact above the signed-out rule', () => {
-    expect(action({ contactOnly: true, signedIn: false })).toBe('contact');
   });
 
   it('keeps register above the free row', () => {

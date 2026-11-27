@@ -51,6 +51,7 @@ interface SpawnSeams {
   command: { file: string; args: string[]; oomAdjusted: boolean };
   killGroup?: (pgid: number) => Promise<boolean>;
   timeoutMs?: number;
+  closeGraceMs?: number;
 }
 
 interface BuildOptions {
@@ -65,7 +66,7 @@ interface BuildModule {
     slot: { setProcessGroup(pgid: number): void; heartbeat(): void } | null,
     options: BuildOptions,
     seams: SpawnSeams,
-  ): Promise<SpawnOutcome>;
+  ): Promise<SpawnOutcome & { output: string }>;
   runProductionBuild(
     envHash: string,
     deps: {
@@ -383,6 +384,45 @@ describe('spawnBuild always ends (#1518)', () => {
         timeoutMs: 100,
       }),
     ).rejects.toBe(cleanupError);
+  }, 3_000);
+
+  // #1524: `close` waits for the pipes, and the group cleanup cannot reach a process
+  // that left the group.
+  it('ends as timed out while a process outside the group keeps a pipe open', async () => {
+    // The command starts a process in a new group that inherits stdout, then ends.
+    const leaveTheGroup = [
+      "const child = require('node:child_process')",
+      ".spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'],",
+      "{ detached: true, stdio: ['ignore', 'inherit', 'ignore'] });",
+      "console.log('outside ' + child.pid); child.unref()",
+    ].join('');
+    const stderr = captureStderr();
+
+    const outcome = await build.spawnBuild(slot, options, {
+      command: nodeCommand(leaveTheGroup),
+      timeoutMs: 1_000,
+      closeGraceMs: 200,
+    });
+
+    const outside = Number(/outside (\d+)/.exec(outcome.output)?.[1]);
+    expect(outside).toBeGreaterThan(1);
+    // Throws when the process already ended, which would make this test prove nothing.
+    process.kill(outside, 'SIGKILL');
+    expect(outcome).toMatchObject({ status: 0, timedOut: true });
+    expect(stderr()).toContain('the build output did not close');
+  }, 8_000);
+
+  it('ends as timed out when the cleanup succeeds but the child stays alive', async () => {
+    captureStderr();
+
+    const outcome = await build.spawnBuild(slot, options, {
+      command: nodeCommand('setTimeout(() => {}, 30_000)'),
+      killGroup: () => Promise.resolve(true),
+      timeoutMs: 100,
+      closeGraceMs: 100,
+    });
+
+    expect(outcome).toMatchObject({ status: null, timedOut: true });
   }, 3_000);
 });
 

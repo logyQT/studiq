@@ -24,7 +24,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * manager link** — no manager AI page exists (the manager AI surface is
  * ADR-0015 phase 6), so a manager has no assistant to link to. The API itself is
  * entitlement-gated on `ai.chat` (ADR-0015 §7). A manager holds no personal plan
- * (ADR-0007) and the Hub plan is capacity only, so this tenant carries no
+ * (ADR-0007) and no organization plan carries `ai.chat`, so this tenant carries no
  * `ai.chat`; the AI licences (organization and per-seat) are #1511 and this case
  * does not assert them. The intended manager menu is therefore „Główne:
  * Przegląd” and the seven „Administracja” entries below; the spec pins the
@@ -221,7 +221,7 @@ test('the manager sidebar has two sections whose entries all open their pages', 
   // The menu has no assistant entry because no manager AI page exists (that
   // surface is ADR-0015 phase 6). The AI API is entitlement-gated on `ai.chat`,
   // but this tenant carries none: a manager holds no personal plan (ADR-0007)
-  // and Hub is capacity only. The AI licences are #1511, so this case asserts
+  // and no organization plan carries `ai.chat`. The AI licences are #1511, so this case asserts
   // the menu and leaves the AI gate to SEC-07.
 
   expect(pageErrors, 'uncaught page errors').toEqual([]);

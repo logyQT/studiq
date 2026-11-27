@@ -25,9 +25,10 @@ import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
  * The case's prerequisites — a question bank with three questions and one quiz —
  * are built through the product API inside this tenant, idempotently, so a retry
  * against the same tenant does not duplicate them; the quiz is reset to empty
- * before the walk so the run always starts at „0 pytań”. The teacher's personal
- * Plus plan carries `quiz.templates`, so the quiz writes pass the phase 5d gate;
- * the hub org plan is capacity only since #1493. Nothing global is read
+ * before the walk so the run always starts at „0 pytań”. Hub carries `quiz.templates`
+ * cumulatively since #1493 and the `teacher` role resolves the whole ceiling, so the quiz
+ * writes pass the phase 5d gate; the personal Plus plan adds the portable `ai.chat`.
+ * Nothing global is read
  * or written: no admin setting, feature flag, plan, platform stat or singleton
  * row, and no other worker's tenant.
  *

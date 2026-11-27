@@ -30,8 +30,8 @@ const PUBLISH_DEADLINE = new Date(Date.now() + 7 * 86_400_000).toISOString();
  * reads (`assignment.read`, `quiz.read`) resolve to `group` and the writes to `own`
  * (ADR-0015 D29): it may create its own bank, questions, quiz and assignment; the
  * assignment targets only `G1`, so the student is the only one who can take it.
- * The quiz write passes the phase 5d `quiz.templates` gate through the teacher's
- * personal Plus plan, because the hub org plan is capacity only since #1493.
+ * The quiz write passes the phase 5d `quiz.templates` gate through the org plan: Hub
+ * carries the key cumulatively and the `teacher` role resolves the whole ceiling.
  * Nothing global is written: bank, questions, quiz, assignment and both attempts
  * live inside this tenant and are created through the product API.
  *

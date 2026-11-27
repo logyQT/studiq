@@ -21,14 +21,14 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * settings, flags, plans or platform rows) — the plan catalogue is only read.
  *
  * Walk observation (shared app, pl): `/manage/settings` matches the case exactly.
- * The „Logo” section renders the lock card „Własny branding — Własny branding nie
- * jest częścią obecnych planów” with a „Zobacz plany” button; the upload
+ * The „Logo” section renders the lock card „Własny branding — Własny branding jest
+ * dostępny w planie Campus.” with a „Zobacz plany” button; the upload
  * control, the „Kolor marki” picker and the file input are not rendered at all.
  * „Zobacz plany” goes to the organization ladder of `/pricing`
- * (`/pricing?audience=organization`), which now lists Launch / Hub / Campus as
- * capacity tiers: no organization plan carries „Własny branding” since #1493, so
- * the comparison has no branding row and instead tabulates the student and group
- * caps. The API enforces the same `branding` gate: a `PUT
+ * (`/pricing?audience=organization`), which lists Launch / Team / Hub / Campus:
+ * branding is the Campus feature, so the comparison tabulates the student and
+ * group caps and a branding row that only Campus carries. The API enforces the
+ * same `branding` gate: a `PUT
  * /api/v1/organization/:id` carrying `brandColor` and a logo upload both return
  * 403 FORBIDDEN, and the org row keeps `brand_color`/`logo_url` null.
  *
@@ -38,7 +38,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * - „Zobacz plany” leads to the organization plans.
  * - Adjacent: the plan feature set (`branding` absent on Launch) and the API
  *   gate agree with the UI, and the organization ladder's reason to upgrade is
- *   capacity (students and groups), not branding.
+ *   capacity and the cumulative features, with branding on Campus only.
  */
 
 const CASE = 'MGR-SET-01';
@@ -53,7 +53,7 @@ const COPY = {
   profileCard: 'Profil uczelni',
   logoLabel: 'Logo',
   lockedTitle: 'Własny branding',
-  lockedDescription: 'Własny branding nie jest częścią obecnych planów.',
+  lockedDescription: 'Własny branding jest dostępny w planie Campus.',
   lockedCta: 'Zobacz plany',
   uploadLogo: 'Wgraj logo',
   noLogo: 'Brak logo',
@@ -215,19 +215,26 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     await expect(currentPlanRow).toHaveCount(1);
     await expect(currentPlanRow.getByText(COPY.currentPlan, { exact: true })).toBeVisible();
 
-    // The organization ladder is the three capacity tiers; the branding the lock
-    // withholds is not sold by any of them.
+    // The organization ladder is four tiers; branding is Campus-only, so it is a
+    // comparison row while Launch withholds it.
     const ladderRows = page.locator('#pricing-plans li');
-    await expect(ladderRows, 'Launch / Hub / Campus, no fourth tier').toHaveCount(3);
-    expect(plans.map((candidate) => candidate.key).toSorted()).toEqual(['campus', 'hub', 'launch']);
+    await expect(ladderRows, 'Launch / Team / Hub / Campus').toHaveCount(4);
+    expect(plans.map((candidate) => candidate.key).toSorted()).toEqual([
+      'campus',
+      'hub',
+      'launch',
+      'team',
+    ]);
     expect(
-      plans.filter((candidate) => candidate.features.includes('branding')),
-      'no organization plan carries branding since #1493',
-    ).toEqual([]);
+      plans
+        .filter((candidate) => candidate.features.includes('branding'))
+        .map((candidate) => candidate.key),
+      'branding is the Campus tier',
+    ).toEqual(['campus']);
     await expect(
       page.getByRole('rowheader', { name: COPY.brandingFeature, exact: true }),
-      'branding is no longer a comparison row',
-    ).toHaveCount(0);
+      'branding compares the tiers',
+    ).toHaveCount(1);
 
     // The comparison tabs the capacity that separates the tiers: students and
     // groups are the reason to move up.

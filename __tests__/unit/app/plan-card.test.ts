@@ -28,21 +28,53 @@ function plan(overrides: Partial<PlanInfo> = {}): PlanInfo {
   };
 }
 
-const LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
+const LADDER = [
   { key: 'free', name: 'StudiQ Free', priceMonthly: 0 },
   { key: 'plus', name: 'StudiQ Plus', priceMonthly: 1999 },
   { key: 'pro', name: 'StudiQ Pro', priceMonthly: 3999 },
   { key: 'max', name: 'StudiQ Max', priceMonthly: 7999 },
 ];
 
-/** The organization grid: a free tier, the recommended Hub and sales-led Campus. */
-const ORGANIZATION_LADDER: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>> = [
-  { key: 'launch', name: 'StudiQ Launch', priceMonthly: 0 },
-  { key: 'hub', name: 'StudiQ Hub', priceMonthly: 29900 },
-  { key: 'campus', name: 'StudiQ Campus', priceMonthly: 69900 },
+/** The organization grid: a free tier, Team, the recommended Hub and Campus. */
+const ORGANIZATION_LADDER = [
+  {
+    key: 'launch',
+    name: 'StudiQ Launch',
+    priceMonthly: 0,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz'],
+    limits: { max_students: 5, max_groups: 3 },
+  },
+  {
+    key: 'team',
+    name: 'StudiQ Team',
+    priceMonthly: 9900,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz', 'quiz.templates'],
+    limits: { max_students: 25, max_groups: 10 },
+  },
+  {
+    key: 'hub',
+    name: 'StudiQ Hub',
+    priceMonthly: 29900,
+    scope: 'organization' as const,
+    features: ['flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: { max_students: 100, max_groups: 40 },
+  },
+  {
+    key: 'campus',
+    name: 'StudiQ Campus',
+    priceMonthly: 69900,
+    scope: 'organization' as const,
+    features: ['branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
+    limits: { max_students: 1000, max_groups: 100 },
+  },
 ];
 
-const ALL_PLANS = [...LADDER, ...ORGANIZATION_LADDER];
+type PlanFixture = Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'> &
+  Partial<Pick<PlanInfo, 'scope' | 'features' | 'limits'>>;
+
+const ALL_PLANS: PlanFixture[] = [...LADDER, ...ORGANIZATION_LADDER];
 
 interface CardOptions {
   planKey?: string;
@@ -69,7 +101,7 @@ function cardElement({
 }
 
 function gridMarkup(
-  ladder: Array<Pick<PlanInfo, 'key' | 'name' | 'priceMonthly'>>,
+  ladder: PlanFixture[],
   {
     isCurrentKey,
     hasActivePlan = false,
@@ -191,19 +223,48 @@ describe('PlanCard action', () => {
     expect(markup).not.toMatch(/href="\/app/);
   });
 
-  it('keeps the Campus contact action quiet and Hub the grid’s only signal', () => {
+  it('keeps every organization card a checkout and Hub the grid’s only signal', () => {
     const markup = gridMarkup(ORGANIZATION_LADDER);
     const links = linkClasses(markup);
-    const contact = links.get('/contact');
 
-    // The sales link keeps the quiet fill; only the recommended Hub is signal.
-    expect(contact).toBeDefined();
-    expect(toneTokens(contact ?? '')).toContain('border-input');
-    expect(toneTokens(contact ?? '')).not.toContain('bg-signal');
+    // Every organization tier is a self-serve checkout, and the separate
+    // custom-setup CTA is the only /contact link.
+    expect(links.get('/contact')).toBeUndefined();
+    expect(markup).toContain(t('cta_team'));
+    expect(markup).toContain(t('cta_campus'));
 
     const classes = actionClasses(markup);
     expect(classes.filter((action) => toneTokens(action).includes('bg-signal'))).toHaveLength(1);
     expect([...links.values()].filter((c) => toneTokens(c).includes('bg-signal'))).toHaveLength(0);
+  });
+
+  it('shows the organization capacity and no personal card prints it', () => {
+    const team = render({ planKey: 'team', hasActivePlan: false });
+    expect(team).toContain('do 25 uczniów');
+    expect(team).toContain('do 10 grup');
+
+    const hub = render({ planKey: 'hub', hasActivePlan: false });
+    expect(hub).toContain('do 100 uczniów');
+    expect(hub).toContain('do 40 grup');
+
+    // A stray seat row on a personal plan must not turn the card into an
+    // organization card.
+    const personal = renderToStaticMarkup(
+      createElement(
+        NextIntlClientProvider,
+        { locale, messages: pl, timeZone: 'UTC' },
+        createElement(PlanCard, {
+          plan: plan({ limits: { max_students: 5, max_groups: 3 } }),
+          isCurrentPlan: false,
+          user: { id: 'u-1' },
+          t,
+          hasActivePlan: false,
+          billingHref: '/app/billing',
+        }),
+      ),
+    );
+    expect(personal).not.toContain('uczniów');
+    expect(personal).not.toContain('grup');
   });
 
   it('gives the recommended paid card the single signal fill', () => {
