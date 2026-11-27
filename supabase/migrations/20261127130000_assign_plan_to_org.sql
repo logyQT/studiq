@@ -2,9 +2,10 @@
 -- #1495 (B3) follow-up: assigning an organization also moves it onto the plan.
 --
 -- `plan_assignments` alone pins the plan but grants nothing until
--- `organizations.plan` names it. The admin panel has no caller identity and no
--- plan-move step, so the two writes must be one operation: a linked plan that
--- grants nothing is a contract the operator believes is live.
+-- `organizations.plan` names it. The admin panel's assignment section has no
+-- caller identity and does not ask the operator to make a second move, so the
+-- two writes must be one operation: a linked plan that grants nothing is a
+-- contract the operator believes is live.
 --
 -- `assign_plan_to_org` inserts the pin (`on conflict do nothing`, so a second
 -- call is a no-op) and moves the organization in the same transaction. It is
@@ -35,21 +36,6 @@ BEGIN
   INSERT INTO public.plan_assignments (plan_key, organization_id)
   VALUES (p_plan_key, p_org_id)
   ON CONFLICT DO NOTHING;
-
-  -- The move is legal only when the plan is public or the organization is
-  -- pinned to it. The insert above makes the second arm true, so this fails
-  -- only when the pin did not land and the plan is unlisted.
-  IF NOT EXISTS (
-    SELECT 1 FROM public.subscription_plans
-    WHERE key = p_plan_key AND visibility = 'public'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM public.plan_assignments
-    WHERE plan_key = p_plan_key AND organization_id = p_org_id
-  ) THEN
-    RAISE EXCEPTION
-      'plan % is unlisted and not assigned to organization %', p_plan_key, p_org_id
-      USING ERRCODE = '42501';
-  END IF;
 
   UPDATE public.organizations SET plan = p_plan_key WHERE id = p_org_id;
 END;

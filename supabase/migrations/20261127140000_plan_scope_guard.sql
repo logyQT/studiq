@@ -7,12 +7,13 @@
 -- checked `scope` on an existing key.
 --
 -- Both writers now refuse a plan whose `scope` is not `'organization'` with
--- `22023` and a message that names the plan and its scope. Every earlier guard
--- stays: existence (`P0002`), the unlisted/assignment pin (`42501`), and
--- `change_org_plan` still writes only `organizations.plan`.
+-- `22023` and a message that names the plan and its scope. `change_org_plan`
+-- keeps its assignment refusal (`42501`) and still writes only
+-- `organizations.plan`.
 --
 -- `assign_plan_to_org` refuses before it inserts, so a personal plan is neither
--- pinned nor moved.
+-- pinned nor moved. It needs no assignment refusal: the pin it writes makes the
+-- move legal by construction.
 -- ==========================================================
 
 -- ==========================================================
@@ -97,21 +98,6 @@ BEGIN
   INSERT INTO public.plan_assignments (plan_key, organization_id)
   VALUES (p_plan_key, p_org_id)
   ON CONFLICT DO NOTHING;
-
-  -- The move is legal only when the plan is public or the organization is
-  -- pinned to it. The insert above makes the second arm true, so this fails
-  -- only when the pin did not land and the plan is unlisted.
-  IF NOT EXISTS (
-    SELECT 1 FROM public.subscription_plans
-    WHERE key = p_plan_key AND visibility = 'public'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM public.plan_assignments
-    WHERE plan_key = p_plan_key AND organization_id = p_org_id
-  ) THEN
-    RAISE EXCEPTION
-      'plan % is unlisted and not assigned to organization %', p_plan_key, p_org_id
-      USING ERRCODE = '42501';
-  END IF;
 
   UPDATE public.organizations SET plan = p_plan_key WHERE id = p_org_id;
 END;

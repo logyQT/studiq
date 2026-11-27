@@ -20,10 +20,13 @@
 -- Catalogue durability: a later matrix sweep that deletes every plan the matrix
 -- does not list must add `and visibility = 'public'` (or an equivalent
 -- predicate) to its `delete from public.subscription_plans`, because a contract
--- plan is created at runtime by an admin. The three sweeps before this file
--- (`20261126130000`, `20261126170000`, `20261127090000`) predate the column and
--- are allowlisted in `__tests__/unit/guards/plan-catalog-sweep.test.ts`, which
--- fails a new sweep without the predicate.
+-- plan is created at runtime by an admin. The six sweeps and targeted deletes
+-- written before this column are allowlisted in
+-- `__tests__/unit/guards/plan-catalog-sweep.test.ts`
+-- (`20260924000002`, `20261125170000`, `20261126130000`, `20261126160000`,
+-- `20261126170000`, `20261127090000`); that guard fails a new sweep without the
+-- predicate. The allowlist matches a file name, so a sweep appended to one of
+-- those six files passes the guard: a new statement belongs in a new file.
 -- ==========================================================
 
 -- ==========================================================
@@ -48,8 +51,6 @@ alter table public.subscription_plans
   add constraint subscription_plans_billing_mode_check
   check (billing_mode in ('stripe', 'invoice', 'none'));
 
--- How many organizations may hold a contract plan: one (`plan_assignments`
--- has), or only the one this plan was pinned to. No per-org copy of the plan.
 comment on column public.subscription_plans.visibility is
   'public = listed in every public pricing read; unlisted = sales-led contract '
   'plan, visible only to its assigned organizations and the admin panel.';
