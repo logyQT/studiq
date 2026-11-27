@@ -188,6 +188,7 @@ interface SessionClientProps {
 
 export default function SessionClient(props: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
+  const tc = useTranslations('Common');
   const locale = useLocale();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -663,7 +664,7 @@ export default function SessionClient(props: SessionClientProps) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">{tc('common_loading')}</p>
       </div>
     );
   }
@@ -699,7 +700,7 @@ export default function SessionClient(props: SessionClientProps) {
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{tc('common_loading')}</p>
         </div>
       );
     }

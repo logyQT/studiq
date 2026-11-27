@@ -264,6 +264,7 @@
     "forgot_password": "Nie pamiętasz hasła?"
   },
   "RegisterPage": {
+    "verifying_invitation": "Weryfikowanie zaproszenia...",
     "header": "Utwórz konto",
     "sub_header": "Dołącz do StudiQ i rozpocznij naukę",
     "aside_eyebrow": "Plan darmowy",
