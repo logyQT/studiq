@@ -189,7 +189,7 @@ describe('Teacher assignment results payload (#1230)', () => {
     // Only an open item takes a manual grade (#1301), so the second seeded item becomes one.
     openQuestionId = requiredAt(questionIds, 1, 'the open question');
     const { error: optionsError } = await service
-      .from('question_answers')
+      .from('question_options')
       .delete()
       .eq('question_id', openQuestionId);
     if (optionsError) throw new Error(optionsError.message);
