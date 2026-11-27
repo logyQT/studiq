@@ -30,5 +30,4 @@ describe('upgrade plan grid', () => {
     expect(classes).not.toContain('lg:grid-cols-4');
     expect(classes).toContain('sm:grid-cols-2');
   });
-
 });
