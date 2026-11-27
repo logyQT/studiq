@@ -598,6 +598,20 @@ describe('FlashcardService', () => {
       },
     );
 
+    it('batchCopy creates no card when the topic link read fails (#1541)', async () => {
+      const steps = [chain([card]), chain({ id: 'd-1', visibility: 'personal' }), failingRead()];
+      const rest = chain([{ id: 'fc-new' }]);
+      for (const step of steps) mock.from.mockReturnValueOnce(step);
+      mock.from.mockReturnValue(rest);
+
+      const result = await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
+
+      // Carrying on would copy the cards without their topics and report success.
+      expect(result).toMatchObject({ success: false, error: 'INTERNAL_SERVER' });
+      expect([...steps, rest].flatMap((query) => query.insert.mock.calls)).toEqual([]);
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
     it('refuses create with an unreadable topic and writes nothing', async () => {
       const cards = chain([], 0);
       mock.from.mockReturnValueOnce(cards);
