@@ -3161,6 +3161,7 @@
     "model_answer": "Odpowiedź wzorcowa: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "Pytanie oceniane automatycznie. Punktów nie można zmienić.",
     "grade_failed": "Błąd oceniania",
     "unknown": "Nieznany",
     "back": "Powrót do wyników",
@@ -3215,6 +3216,11 @@
     "closed_on": "Zamknięto: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Zaplanowana",
+    "closed_badge": "Zamknięta",
+    "opens": "Dostępna od",
+    "opens_in": "Dostępna za: {countdown}",
+    "closed_message": "Ta kartkówka jest zamknięta.",
     "not_found": "Nie znaleziono kartkówki",
     "back": "Powrót",
     "questions": "Pytania",

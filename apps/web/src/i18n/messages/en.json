@@ -3180,6 +3180,7 @@
     "model_answer": "Model answer: {text}"
   },
   "EduPerQuestionGradingPage": {
+    "auto_graded": "This question is graded automatically. You cannot change its points.",
     "grade_failed": "Grade failed",
     "unknown": "Unknown",
     "back": "Back to Results",
@@ -3234,6 +3235,11 @@
     "closed_on": "Closed: {date}"
   },
   "AppAssignmentDetailPage": {
+    "scheduled_badge": "Scheduled",
+    "closed_badge": "Closed",
+    "opens": "Opens",
+    "opens_in": "Opens in {countdown}",
+    "closed_message": "This assignment is closed.",
     "not_found": "Assignment not found",
     "back": "Back",
     "questions": "Questions",

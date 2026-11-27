@@ -44,6 +44,7 @@ export default function PerQuestionGradingClient() {
   const {
     resultsQuery: { isLoading },
     attempts,
+    autoGradedItemIds,
     gradeMutation,
   } = usePerQuestionGrading<ResultsData>(id, t('grade_failed'));
 
@@ -104,6 +105,7 @@ export default function PerQuestionGradingClient() {
     );
   }
 
+  const isAutoGraded = autoGradedItemIds.includes(qId);
   const pending = attempts?.filter(needsGrading) ?? [];
 
   return (
@@ -121,7 +123,7 @@ export default function PerQuestionGradingClient() {
       <div className="sticky top-0 bg-background z-10 pb-4 border-b">
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">
-          {t('need_grading', { count: pending.length })}
+          {isAutoGraded ? t('auto_graded') : t('need_grading', { count: pending.length })}
         </p>
       </div>
 
@@ -162,46 +164,53 @@ export default function PerQuestionGradingClient() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs">{t('points')}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="0"
-                    value={grade.points}
-                    onChange={(e) =>
-                      setGrades((prev) => ({
-                        ...prev,
-                        [attempt.user_id]: { ...prev[attempt.user_id], points: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">{t('feedback')}</Label>
-                  <Textarea
-                    placeholder={t('feedback_placeholder')}
-                    value={grade.feedback}
-                    onChange={(e) =>
-                      setGrades((prev) => ({
-                        ...prev,
-                        [attempt.user_id]: { ...prev[attempt.user_id], feedback: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-              </div>
+              {!isAutoGraded && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t('points')}</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        value={grade.points}
+                        onChange={(e) =>
+                          setGrades((prev) => ({
+                            ...prev,
+                            [attempt.user_id]: { ...prev[attempt.user_id], points: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t('feedback')}</Label>
+                      <Textarea
+                        placeholder={t('feedback_placeholder')}
+                        value={grade.feedback}
+                        onChange={(e) =>
+                          setGrades((prev) => ({
+                            ...prev,
+                            [attempt.user_id]: {
+                              ...prev[attempt.user_id],
+                              feedback: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
 
-              <Button
-                size="sm"
-                onClick={() => handleGrade(attempt.user_id)}
-                disabled={gradeMutation.isPending || !isValidPoints}
-              >
-                <Check className="w-3 h-3 mr-1" />
-                {gradeMutation.isPending ? t('saving') : t('save')}
-              </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleGrade(attempt.user_id)}
+                    disabled={gradeMutation.isPending || !isValidPoints}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    {gradeMutation.isPending ? t('saving') : t('save')}
+                  </Button>
+                </>
+              )}
             </div>
           );
         })}
