@@ -1,5 +1,6 @@
 'use client';
 
+import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES } from '@studiq/authz';
 import {
   Button,
   Card,
@@ -33,10 +34,6 @@ import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
 import { QueryError } from '@/app/(frontend)/components/query-error';
 import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
-
-const PLAN_SCOPES = ['personal', 'organization'] as const;
-const PLAN_VISIBILITIES = ['public', 'unlisted'] as const;
-const PLAN_BILLING_MODES = ['stripe', 'invoice', 'none'] as const;
 
 type SubscriptionPlan = {
   id: string;
