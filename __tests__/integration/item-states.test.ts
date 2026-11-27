@@ -189,7 +189,7 @@ describe('Item states and versioning (#1171)', () => {
     await setOrgPlan(teacher.orgId, 'hub');
     const { error: personalError } = await service
       .from('profiles')
-      .update({ personal_plan_key: 'spark' })
+      .update({ personal_plan_key: 'plus' })
       .eq('id', teacher.user.id);
     expect(personalError, 'put the author on the personal Plus plan').toBeNull();
 
@@ -251,7 +251,7 @@ describe('Item states and versioning (#1171)', () => {
       .ilike('name', 'state-bank-%');
     await cleanupQuestions(teacher.user.id, 'seed-question-');
     await cleanupQuestions(teacher.user.id, 'state-');
-    await service.from('profiles').update({ personal_plan_key: 'base' }).eq('id', teacher.user.id);
+    await service.from('profiles').update({ personal_plan_key: 'free' }).eq('id', teacher.user.id);
     if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
   });
 

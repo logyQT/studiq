@@ -86,7 +86,7 @@ bun scripts/qa-tenant.ts MGR-ACC-01 --fresh   # new org + users per independent 
 
 > **2026-11-25 (6d).** The billing badge now names every layer of `/me/plan`'s
 > union, so a manager's plan reads „StudiQ Launch (organizacja) + StudiQ Free
-> (plan osobisty)” — the personal `base` layer is part of a manager's plan. The
+> (plan osobisty)” — the personal `free` layer is part of a manager's plan. The
 > spec therefore asserts the org layer's catalogue name as a substring of
 > `[data-plan-union]` instead of pinning the badge's whole text; the walk bullet's
 > „the current plan name as a badge” is that org layer, and its 6d parenthetical

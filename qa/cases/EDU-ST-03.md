@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `stats.insights` gate passes through the educator's personal Pro plan (`personalPlan: "ace", personalRole: "teacher"`), not the org plan.
+Hub is capacity only since #1493. The `stats.insights` gate passes through the educator's personal Pro plan (`personalPlan: "pro", personalRole: "teacher"`), not the org plan.
 
 ## Prerequisite (verbatim)
 

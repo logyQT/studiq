@@ -281,13 +281,13 @@ describe('content/stats/teacher routes authorize on catalog keys (2b-6)', () => 
     member = await memberUser('student', memberRoleId);
     teacher = await memberUser('educator', teacherRoleId);
 
-    await setPersonalPlan(quizHolder, 'spark');
-    await setPersonalPlan(quizHolder2, 'spark');
-    await setPersonalPlan(statsHolder, 'ace');
-    await setPersonalPlan(noKey, 'spark');
+    await setPersonalPlan(quizHolder, 'plus');
+    await setPersonalPlan(quizHolder2, 'plus');
+    await setPersonalPlan(statsHolder, 'pro');
+    await setPersonalPlan(noKey, 'plus');
     // The student-persona Admin authors a quiz (D13): the persona is irrelevant,
     // so the paid `quiz.templates` key rides their personal Plus plan too.
-    await setPersonalPlan(studentAdmin, 'spark');
+    await setPersonalPlan(studentAdmin, 'plus');
 
     // The class the content is shared to: the Teacher under test is a plain
     // group member; the Admin (the deck author) teaches it; the Member reads it.

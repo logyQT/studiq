@@ -27,7 +27,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  *
  * Acceptance points (confirmed on the shared app during the walk):
  * 1. The organization's own plan governs the counter: the teacher's personal
- *    `base` plan carries no group limit, yet the second and third groups are
+ *    `free` plan carries no group limit, yet the second and third groups are
  *    created — `POST /api/v1/organization/groups` answers 201 and the row
  *    appears with the „Grupa utworzona” toast.
  * 2. The fourth attempt is refused by the Launch limit:
@@ -167,7 +167,7 @@ test.describe('EDU-GRP-04 — organization group limit (Launch: 3 groups)', () =
     ).toEqual([tenant.group.name]);
 
     // 1. The third group (second one created by the teacher) is allowed even
-    // though the teacher's personal `base` plan carries no group limit.
+    // though the teacher's personal `free` plan carries no group limit.
     const second = await createGroup(page, GROUPS.second);
     expect(second.response.status(), await second.response.text()).toBe(201);
     const secondBody = await json<ApiEnvelope<{ name: string }>>(second.response);

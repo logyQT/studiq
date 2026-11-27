@@ -13,25 +13,25 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *
  * Prerequisite (reconciled with the tenant seeder): the legacy „Konto TS”
  * (`test-student@dev.local`, password `pass` — a standalone student on the free
- * Base plan) is never used. The suite version seeds this case's own tenant:
+ * Free plan) is never used. The suite version seeds this case's own tenant:
  *
  *   bun scripts/qa-tenant.ts STU-52 --fresh
  *
  * which is `{ profile: "bare", role: "student" }` (`__tests__/qa/profiles/STU-52.json`):
  * one student with no organization and no group, created through
  * `tenantKey('qa/cases/STU-52.md', 'STU-52#<suffix>', 'qa-shared')` + `tenantId`
- * with the `base` personal plan the `handle_new_user` trigger writes. A fresh run
+ * with the `free` personal plan the `handle_new_user` trigger writes. A fresh run
  * suffix means each independent run owns a student who has never bought anything.
  *
  * The purchase is the same call `BIL-03`'s checkout makes (the mock Stripe webhook
- * for `spark`, 19,99 zł/mies.), issued as this tenant's own student: it touches only
+ * for `plus`, 19,99 zł/mies.), issued as this tenant's own student: it touches only
  * that student's `profiles.personal_plan_key` and adds one `payments` row for the
  * same user. Nothing global is read or written — no admin setting, feature flag,
  * plan catalogue entry, platform stat, singleton row or foreign tenant.
  *
  * `payments` is append-only by design (RLS: own-row SELECT, no write policy), so
  * the spec resets only this tenant's own student — its `payments` rows and its
- * personal plan back to the seeded `base` — before the walk. That keeps a CI retry
+ * personal plan back to the seeded `free` — before the walk. That keeps a CI retry
  * on the same seeded tenant (`--retries=2`) in exactly the state of a fresh seed
  * instead of inheriting the previous attempt's purchase.
  *
@@ -66,8 +66,8 @@ const UI = {
 
 /** The plan BIL-03 buys and the catalogue snapshot the payment row keeps. */
 const PURCHASE = {
-  planId: 'spark',
-  planKey: 'spark',
+  planId: 'plus',
+  planKey: 'plus',
   planName: 'StudiQ Plus',
   amount: 1999,
   currency: 'PLN',
@@ -107,7 +107,7 @@ async function paymentHistory(page: Page): Promise<PaymentHistoryItem[]> {
 
 /**
  * Put this tenant's own student back into the seeded starting point: no purchases
- * and the free Base plan. Scoped to the tenant's student id only — never another
+ * and the Free plan. Scoped to the tenant's student id only — never another
  * user, never a shared row.
  */
 async function resetPurchaseState(studentId: string): Promise<void> {
@@ -119,10 +119,10 @@ async function resetPurchaseState(studentId: string): Promise<void> {
     `${CASE}: delete the tenant student's own payments rows — ${removed.error?.message ?? ''}`,
   ).toBeNull();
 
-  const plan = await db.from('profiles').update({ personal_plan_key: 'base' }).eq('id', studentId);
+  const plan = await db.from('profiles').update({ personal_plan_key: 'free' }).eq('id', studentId);
   expect(
     plan.error,
-    `${CASE}: reset the tenant student to the seeded Base plan — ${plan.error?.message ?? ''}`,
+    `${CASE}: reset the tenant student to the seeded Free plan — ${plan.error?.message ?? ''}`,
   ).toBeNull();
 }
 
@@ -143,7 +143,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
-    // --- Precondition: the case's own student, no purchases, Base plan -----
+    // --- Precondition: the case's own student, no purchases, Free plan -----
     await resetPurchaseState(student.id);
 
     await loginAs(page, tenant, 'student', { locale: 'pl' });
@@ -194,7 +194,7 @@ test.describe('@case:STU-52 @area:STU @prio:P3 payment history', () => {
         user_id: student.id,
       },
     });
-    expect(webhook.status(), 'POST /api/v1/stripe/webhook (spark)').toBe(200);
+    expect(webhook.status(), 'POST /api/v1/stripe/webhook (plus)').toBe(200);
 
     const purchased = await paymentHistory(page);
     expect(purchased, 'the completed purchase is recorded once').toHaveLength(1);

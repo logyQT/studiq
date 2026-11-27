@@ -7,7 +7,7 @@ import { getVisibleLimitKeys } from '@/lib/pricing-limits';
  * (DESIGN §Dosage: one primary action per screen): Pro on the individual ladder,
  * Hub on the organization ladder.
  */
-const RECOMMENDED_PLAN_KEYS: readonly string[] = ['ace', 'hub'];
+const RECOMMENDED_PLAN_KEYS: readonly string[] = ['pro', 'hub'];
 
 export function isRecommendedPlan(key: string): boolean {
   return RECOMMENDED_PLAN_KEYS.includes(key);

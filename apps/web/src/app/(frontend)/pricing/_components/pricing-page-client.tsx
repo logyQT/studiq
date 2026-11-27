@@ -22,6 +22,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
+import { ApiError } from '@/lib/api';
 import { getPlanLadders } from '@/lib/pricing-ladders';
 import { cn } from '@/lib/utils';
 
@@ -69,21 +70,29 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
   const isLoading = !plans && !catalogueUnavailable;
 
   /*
-   * The badge follows the ladder on screen. The individual ladder has one plan
-   * for every persona, so it always reads the reader's own plan; the
-   * organization ladder badges a manager from `/me/plan`, the same query
-   * `/manage/billing` uses (#228). The key names the endpoint, so the two
-   * answers cannot share a cache entry.
+   * The badge follows the ladder on screen. A student or an educator on the
+   * individual ladder reads their own plan; the organization ladder badges a
+   * manager from `/me/plan`, the same query `/manage/billing` uses (#228). The
+   * key names the endpoint, so the two answers cannot share a cache entry.
    * `app_metadata` is an untyped Supabase map; `account_type` must be narrowed.
+   *
+   * A manager holds no personal plan (ADR-0007): the individual ladder prints
+   * no action for them, so it also must not ask `/me/personal-plan`, which
+   * answers NOT_FOUND by design.
    */
   const rawAccountType: unknown = user?.app_metadata.account_type;
   const accountType = typeof rawAccountType === 'string' ? rawAccountType : null;
   const isManager = accountType === 'manager';
+  const personalLadderReadOnly = isManager && !organization;
   const currentPlanKey = organization && isManager ? 'plan' : 'personal-plan';
-  const { data: currentPlan, isSuccess: planLoaded } = useApiQuery<PlanInfo>({
+  const {
+    data: currentPlan,
+    isSuccess: planLoaded,
+    error: currentPlanError,
+  } = useApiQuery<PlanInfo>({
     queryKey: ['me', currentPlanKey],
     url: `/api/v1/me/${currentPlanKey}`,
-    enabled: !!user,
+    enabled: !!user && !personalLadderReadOnly,
   });
 
   /*
@@ -95,9 +104,15 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
    * `null` until the plan read succeeds: a pending or failed read must not
    * turn a subscriber into a checkout, so the row prints no action rather than
    * guessing. Prices still render; the current-plan badge cannot, because the
-   * plan identity is unknown.
+   * plan identity is unknown. A NOT_FOUND is the exception: a manager with no
+   * organization role owns no plan, which is an answer, not a failed read.
    */
-  const hasActivePlan: boolean | null = planLoaded ? currentPlan.priceMonthly > 0 : null;
+  const planAbsent = currentPlanError instanceof ApiError && currentPlanError.status === 404;
+  const hasActivePlan: boolean | null = planLoaded
+    ? currentPlan.priceMonthly > 0
+    : planAbsent
+      ? false
+      : null;
 
   /*
    * The destination follows the plan the reader owns, not the ladder on screen:
@@ -207,6 +222,7 @@ export function PricingPageClient({ initialPlans }: PricingPageClientProps) {
                           hasActivePlan={hasActivePlan}
                           billingHref={billingHref}
                           orgId={activeOrg?.id}
+                          purchaseBlocked={personalLadderReadOnly}
                         />
                       ))}
                     </ul>

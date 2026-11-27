@@ -1476,7 +1476,7 @@ export type Database = {
           email: string;
           full_name: string | null;
           id: string;
-          personal_plan_key: string;
+          personal_plan_key: string | null;
           purge_at: string | null;
         };
         ComputedFields: never;
@@ -1487,7 +1487,7 @@ export type Database = {
           email: string;
           full_name?: string | null;
           id: string;
-          personal_plan_key?: string;
+          personal_plan_key?: string | null;
           purge_at?: string | null;
         };
         Update: {
@@ -1497,7 +1497,7 @@ export type Database = {
           email?: string;
           full_name?: string | null;
           id?: string;
-          personal_plan_key?: string;
+          personal_plan_key?: string | null;
           purge_at?: string | null;
         };
         Relationships: [
@@ -2175,7 +2175,6 @@ export type Database = {
       };
       subscription_plans: {
         Row: {
-          audience: string | null;
           created_at: string | null;
           currency: string;
           description: string | null;
@@ -2191,7 +2190,6 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
-          audience?: string | null;
           created_at?: string | null;
           currency?: string;
           description?: string | null;
@@ -2206,7 +2204,6 @@ export type Database = {
           updated_at?: string | null;
         };
         Update: {
-          audience?: string | null;
           created_at?: string | null;
           currency?: string;
           description?: string | null;

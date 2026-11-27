@@ -27,7 +27,7 @@ const mockCtx: RequestContext = {
 const usage = {
   current: 1200,
   limit: 200000,
-  plan: 'ace',
+  plan: 'pro',
   resetsAt: '2026-10-26T00:00:00.000Z',
 };
 

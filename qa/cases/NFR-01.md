@@ -18,5 +18,5 @@ Język polski.
 
 ## Expected result
 
-- Brak surowych kluczy i fragmentów po angielsku (wyjątki: nazwy własne, plany Base/Spark/…).
+- Brak surowych kluczy i fragmentów po angielsku (wyjątki: nazwy własne, plany Free/Plus/…).
 - Wypisz znalezione miejsca (ekran, tekst) w uwagach lub zgłoszeniach – szczególnie ekran /join, przycisk „Back to plans” w checkout, nazwy kolumn.

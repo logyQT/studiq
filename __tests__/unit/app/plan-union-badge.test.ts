@@ -26,7 +26,6 @@ function plan(overrides: Partial<PlanInfo> & Pick<PlanInfo, 'key'>): PlanInfo {
     sortOrder: 1,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
     ...overrides,
   };
@@ -73,7 +72,7 @@ describe('PlanUnionBadge', () => {
   it('names every layer with its origin when the union has several', () => {
     const catalogue = [
       plan({ key: 'hub', name: 'Hub' }),
-      plan({ key: 'pro', name: 'Pro' }),
+      plan({ key: 'max', name: 'Pro' }),
       plan({ key: 'solo', name: 'Solo' }),
     ];
     const badge = plan({
@@ -81,7 +80,7 @@ describe('PlanUnionBadge', () => {
       name: 'Hub effective',
       sources: [
         { planKey: 'hub', origin: 'org' },
-        { planKey: 'pro', origin: 'seat' },
+        { planKey: 'max', origin: 'seat' },
         { planKey: 'solo', origin: 'personal' },
       ],
     });

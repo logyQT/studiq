@@ -1,4 +1,5 @@
 import {
+  AccountType,
   ENTITLEMENTS,
   ENTITLEMENT_KEYS,
   isEntitlementKey,
@@ -259,7 +260,9 @@ export class EntitlementResolver {
     if (inOrg && !orgPlanKey) {
       warn('entitlement.resolver: organization has no plan', { organizationId: orgId });
     }
-    if (personalApplies && !personalPlanKey) {
+    // A manager holds no personal plan by design (ADR-0007); any other persona
+    // without one is a provisioning fault worth a warning.
+    if (personalApplies && !personalPlanKey && ctx.accountType !== AccountType.MANAGER) {
       warn('entitlement.resolver: profile has no personal plan', { userId: ctx.userId });
     }
     const limits = this.composeLimits({

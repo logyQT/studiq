@@ -7,7 +7,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Prerequisite (reconciled with the tenant seeder): a student signed in to
  * `/app` whose resolved entitlements contain no `ai.chat` — the case's S1 on the
- * free „Base” plan. The legacy manual account (`student1@dev.local`, password
+ * free „Free” plan. The legacy manual account (`student1@dev.local`, password
  * `pass`) is never used. Tenant (seeded by the suite runner, one per run):
  *
  *   bun scripts/qa-tenant.ts STU-03 --fresh
@@ -24,7 +24,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * 1. Sections and items, in order — Główne (Przegląd), Nauka (Ucz się, Wkuwaj,
  *    Sprawdź się, Na żywo), Treści (Fiszki, Tematy, Pytania, Kartkówki,
  *    Zgłoszenia), Statystyki (Treści, Wyniki, Aktywność).
- * 2. „Asystent Q” is absent for this Base-plan student, because
+ * 2. „Asystent Q” is absent for this Free-plan student, because
  *    `/api/v1/me/entitlements` resolves no `ai.chat`; the item is gated, not merely
  *    hidden by CSS.
  * 3. Every item opens its own page, is marked active (`data-active="true"`,
@@ -54,7 +54,7 @@ interface SidebarGroup {
   items: NavItem[];
 }
 
-/** The exact menu the case lists for a student on the Base plan. */
+/** The exact menu the case lists for a student on the Free plan. */
 const SIDEBAR_GROUPS: SidebarGroup[] = [
   { label: 'Główne', items: [{ label: 'Przegląd', href: '/app' }] },
   {
@@ -169,7 +169,7 @@ test.describe('@case:STU-03 @area:STU @prio:P2 student sidebar', () => {
     expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements').toBe(200);
     const enabled = (await json<{ data: { entitlements: string[] } }>(entitlementsResponse)).data
       .entitlements;
-    expect(enabled, 'the Base-plan student is not entitled to ai.chat').not.toContain('ai.chat');
+    expect(enabled, 'the Free-plan student is not entitled to ai.chat').not.toContain('ai.chat');
 
     // 1. Sections and items, in the case's order.
     await expect

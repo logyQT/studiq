@@ -42,8 +42,8 @@ describe('MockPaymentGateway', () => {
   it('builds a local checkout URL for a personal plan', async () => {
     const result = await gateway.createCheckoutSession({
       owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
-      planKey: 'spark',
-      planName: 'StudiQ Spark',
+      planKey: 'plus',
+      planName: 'StudiQ Plus',
       amount: 999,
       currency: 'PLN',
       billingCycle: 'monthly',
@@ -55,7 +55,7 @@ describe('MockPaymentGateway', () => {
 
     const url = new URL(result.data.url);
     expect(url.pathname).toBe('/checkout');
-    expect(url.searchParams.get('plan_id')).toBe('spark');
+    expect(url.searchParams.get('plan_id')).toBe('plus');
     expect(url.searchParams.get('session_id')).toBe(result.data.sessionId);
     expect(url.searchParams.get('org_id')).toBeNull();
     // The provider-only adapter performs no domain validation or DB write.
@@ -100,7 +100,7 @@ describe('MockPaymentGateway', () => {
     const event = {
       type: 'checkout.session.completed',
       session_id: 's-1',
-      plan_id: 'spark',
+      plan_id: 'plus',
     };
     vi.mocked(port.handleWebhook).mockResolvedValueOnce(success(undefined));
 
@@ -136,9 +136,9 @@ describe('MockPaymentGateway', () => {
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
         customerId: 'cus_1',
         subscriptionId: 'sub_1',
-        currentPlanKey: 'spark',
-        targetPlanKey: 'ace',
-        targetPriceId: 'price_ace',
+        currentPlanKey: 'plus',
+        targetPlanKey: 'pro',
+        targetPriceId: 'price_pro',
         direction: 'upgrade',
         resume: false,
         pendingPlanKey: null,
@@ -174,7 +174,7 @@ describe('MockPaymentGateway', () => {
         owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
         customerId: 'cus_1',
         subscriptionId: 'sub_1',
-        currentPlanKey: 'spark',
+        currentPlanKey: 'plus',
       }),
     ).resolves.toEqual({ success: false, error: 'NOT_FOUND' });
   });

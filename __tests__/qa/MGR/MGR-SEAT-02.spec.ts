@@ -20,21 +20,23 @@ import {
  *
  * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
  * on the `hub` plan with an explicit roster (manager `admin`, teacher, `student`
- * and `student2`, both `member`) and `personalPlan: "spark"`, so every member
- * carries `ai.chat` and `quiz.templates` into the org (`personalPortable`):
+ * and `student2`, both `member`) and `personalPlan: "plus"`, so every non-manager
+ * member carries `ai.chat` and `quiz.templates` into the org (`personalPortable`).
+ * A manager holds no personal plan (ADR-0007), so the seeder leaves the manager
+ * out of that write:
  *
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
  * The spec provisions the pools through the product API — Free ×1, Plus ×3, Pro
  * ×3, Max ×2 — clears any assignment a previous run left behind, and assigns the
- * **`pro`** seat to `student` through the same API. Nothing global is written.
+ * **`max`** seat to `student` through the same API. Nothing global is written.
  *
  * Acceptance points:
  * 1. `/manage/seats` renders both tables and no purchase, assign or release
  *    control (the B2 freeze).
- * 2. The assignment appears in „Przydziały”, the Max pool (`pro`, 2 seats) moves
+ * 2. The assignment appears in „Przydziały”, the Max pool (`max`, 2 seats) moves
  *    from 2/0/2 to 2/1/1, and the other pools keep their counters.
- * 3. The seated member's `/me/plan` is the seat plan `pro`; the user-scope
+ * 3. The seated member's `/me/plan` is the seat plan `max`; the user-scope
  *    limits resolve `max(org, seat, personal)`, so `max_flashcards` is 25000 and
  *    `max_ai_tokens_per_day` is 500000. The org ceiling adds no paid key, so the
  *    member's entitlements are the personal plan's portable keys plus the two
@@ -48,13 +50,13 @@ import {
 const CASE = 'MGR-SEAT-02';
 
 const POOLS = [
-  { planKey: 'base', quantity: 1 },
-  { planKey: 'spark', quantity: 3 },
-  { planKey: 'ace', quantity: 3 },
-  { planKey: 'pro', quantity: 2 },
+  { planKey: 'free', quantity: 1 },
+  { planKey: 'plus', quantity: 3 },
+  { planKey: 'pro', quantity: 3 },
+  { planKey: 'max', quantity: 2 },
 ] as const;
 
-const SEAT_PLAN_KEY = 'pro';
+const SEAT_PLAN_KEY = 'max';
 
 interface Pool {
   id: string;
@@ -178,7 +180,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     const tenant = loadTenant(CASE);
     expect(tenant.profile, `${CASE} needs the content tenant profile`).toBe('content');
     expect(tenant.plan, `${CASE} needs its tenant org on the hub plan`).toBe('hub');
-    expect(tenant.personalPlan, `${CASE} needs the personal Plus plan`).toBe('spark');
+    expect(tenant.personalPlan, `${CASE} needs the personal Plus plan`).toBe('plus');
     expect(tenant.org, `${CASE} needs the seeded organization`).toBeTruthy();
     for (const role of ['manager', 'teacher', 'student', 'student2'] as const) {
       expect(tenant.users[role], `${CASE} needs the seeded ${role}`).toBeTruthy();
@@ -194,8 +196,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       return found;
     };
     const hub = plan('hub');
-    const spark = plan('spark');
-    const pro = plan(SEAT_PLAN_KEY);
+    const plus = plan('plus');
+    const max = plan(SEAT_PLAN_KEY);
 
     // Catalog facts the story leans on: the org ceiling is baseline only, and
     // the personal Plus plan carries the portable paid keys.
@@ -204,11 +206,11 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       'quiz',
     ]);
     expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub carries no AI quota').toBeUndefined();
-    expect(spark.features, 'catalog: Plus carries ai.chat').toContain('ai.chat');
-    expect(spark.features, 'catalog: Plus carries quiz.templates').toContain('quiz.templates');
-    expect(pro.features, 'catalog: Max raises the AI budget').toContain('stats.insights');
-    expect(pro.limits.max_ai_tokens_per_day, 'catalog: Max AI budget').toBe(500_000);
-    expect(spark.limits.max_ai_tokens_per_day, 'catalog: Plus AI budget').toBe(100_000);
+    expect(plus.features, 'catalog: Plus carries ai.chat').toContain('ai.chat');
+    expect(plus.features, 'catalog: Plus carries quiz.templates').toContain('quiz.templates');
+    expect(max.features, 'catalog: Max raises the AI budget').toContain('stats.insights');
+    expect(max.limits.max_ai_tokens_per_day, 'catalog: Max AI budget').toBe(500_000);
+    expect(plus.limits.max_ai_tokens_per_day, 'catalog: Plus AI budget').toBe(100_000);
 
     // ── The read-only surface ────────────────────────────────────────────────
     await signIn(page, tenant, 'manager', /\/manage$/);
@@ -256,10 +258,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     ).data;
     expect(poolsAfter.map((pool) => [pool.planKey, pool.assigned]).toSorted()).toEqual(
       [
-        ['base', 0],
-        ['spark', 0],
-        ['ace', 0],
-        ['pro', 1],
+        ['free', 0],
+        ['plus', 0],
+        ['pro', 0],
+        ['max', 1],
       ].toSorted(),
     );
 
@@ -271,7 +273,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(assignmentTable.locator('tbody tr').first()).toContainText(
       assignments[0]?.userFullName || tenantUser(tenant, 'student').email,
     );
-    await expect(assignmentTable.locator('tbody tr').first()).toContainText(pro.name);
+    await expect(assignmentTable.locator('tbody tr').first()).toContainText(max.name);
     await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
 
     // 5. Server-side guards behind the removed UI: one seat per member, and a
@@ -286,7 +288,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     });
 
     const crossPersona = await page.request.post('/api/v1/organization/seats/assignments', {
-      data: { userId: userId(tenant, 'teacher'), poolId: pools.get('base')!.id },
+      data: { userId: userId(tenant, 'teacher'), poolId: pools.get('free')!.id },
     });
     expect(crossPersona.status(), 'an educator accepts a personal-plan pool').toBe(201);
 
@@ -320,7 +322,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       'the unseated control keeps its personal keys',
     ).toEqual(expectedKeys.toSorted());
     const controlPlan = await planOf(page);
-    expect(controlPlan.key, 'the unseated member resolves their personal plan').toBe('spark');
+    expect(controlPlan.key, 'the unseated member resolves their personal plan').toBe('plus');
     expect(controlPlan.limits.max_flashcards, 'the hub floor stays above Plus').toBe(2_000);
     expect(controlPlan.limits.max_ai_tokens_per_day, 'no seat: the Plus AI budget').toBe(100_000);
     expect((await usage(page)).limit).toBe(100_000);

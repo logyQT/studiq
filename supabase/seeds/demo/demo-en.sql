@@ -720,8 +720,8 @@ VALUES
 INSERT INTO public.org_seat_pools (id, organization_id, plan_key, total, assigned, created_at)
 VALUES
   ('d0000000-0000-4000-8009-000000000001', 'd0000000-0000-4000-8000-000000000001', 'campus', 2,  0, now() - interval '56 days'),
-  ('d0000000-0000-4000-8009-000000000002', 'd0000000-0000-4000-8000-000000000001', 'pro',    2,  0, now() - interval '54 days'),
-  ('d0000000-0000-4000-8009-000000000003', 'd0000000-0000-4000-8000-000000000001', 'ace',    20, 0, now() - interval '54 days');
+  ('d0000000-0000-4000-8009-000000000002', 'd0000000-0000-4000-8000-000000000001', 'max',    2,  0, now() - interval '54 days'),
+  ('d0000000-0000-4000-8009-000000000003', 'd0000000-0000-4000-8000-000000000001', 'pro',    20, 0, now() - interval '54 days');
 
 INSERT INTO public.org_seat_assignments (id, organization_id, pool_id, user_id, assigned_at)
 SELECT

@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 interface FakePlanRow {
   key: string;
   scope: string;
-  audience: string | null;
   price_monthly: number;
   is_active: boolean;
   sort_order: number;
@@ -90,9 +89,8 @@ function createFakeAdmin(options: FakeAdminOptions = {}) {
 
 const PLANS: FakePlanRow[] = [
   {
-    key: 'base',
+    key: 'free',
     scope: 'personal',
-    audience: null,
     price_monthly: 0,
     is_active: true,
     sort_order: 1,
@@ -100,31 +98,27 @@ const PLANS: FakePlanRow[] = [
   {
     key: 'launch',
     scope: 'organization',
-    audience: null,
     price_monthly: 0,
     is_active: true,
     sort_order: 5,
   },
   {
-    key: 'spark',
+    key: 'plus',
     scope: 'personal',
-    audience: null,
     price_monthly: 1999,
     is_active: true,
     sort_order: 2,
   },
   {
-    key: 'ace',
+    key: 'pro',
     scope: 'personal',
-    audience: null,
     price_monthly: 3999,
     is_active: true,
     sort_order: 3,
   },
   {
-    key: 'pro',
+    key: 'max',
     scope: 'personal',
-    audience: null,
     price_monthly: 7999,
     is_active: true,
     sort_order: 4,
@@ -132,7 +126,6 @@ const PLANS: FakePlanRow[] = [
   {
     key: 'hub',
     scope: 'organization',
-    audience: null,
     price_monthly: 29900,
     is_active: true,
     sort_order: 7,
@@ -170,11 +163,11 @@ describe('EntitlementService', () => {
     const { admin, updates } = createFakeAdmin({ plans: PLANS });
     const service = new EntitlementService(() => admin);
 
-    await expect(service.applyPlan(USER, 'spark')).resolves.toMatchObject({ success: true });
+    await expect(service.applyPlan(USER, 'plus')).resolves.toMatchObject({ success: true });
     expect(updates).toEqual([
       {
         table: 'profiles',
-        values: { personal_plan_key: 'spark' },
+        values: { personal_plan_key: 'plus' },
         column: 'id',
         value: 'u-1',
       },
@@ -223,9 +216,9 @@ describe('EntitlementService', () => {
 
   describe('downgradeToFree', () => {
     it.each([
-      ['spark', 'base'],
-      ['ace', 'base'],
-      ['pro', 'base'],
+      ['plus', 'free'],
+      ['pro', 'free'],
+      ['max', 'free'],
     ])('downgrades a %s personal plan to the %s free tier', async (previous, expected) => {
       const { admin, updates } = createFakeAdmin({ plans: PLANS });
       const service = new EntitlementService(() => admin);
@@ -257,7 +250,7 @@ describe('EntitlementService', () => {
       await expect(service.downgradeToFree(USER, 'retired-plan')).resolves.toMatchObject({
         success: true,
       });
-      expect(updates[0]?.values).toEqual({ personal_plan_key: 'base' });
+      expect(updates[0]?.values).toEqual({ personal_plan_key: 'free' });
     });
 
     it('fails closed when no free plan exists for the scope', async () => {
@@ -304,14 +297,14 @@ describe('EntitlementService', () => {
       const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
       const service = new EntitlementService(() => admin);
 
-      await expect(service.applyPlanFenced(USER, 'spark', fence)).resolves.toEqual({
+      await expect(service.applyPlanFenced(USER, 'plus', fence)).resolves.toEqual({
         success: true,
         data: 'applied',
       });
       expect(rpc).toHaveBeenCalledWith('apply_entitlement_fenced', {
         p_owner_type: 'user',
         p_owner_id: 'u-1',
-        p_plan: 'spark',
+        p_plan: 'plus',
         p_subscription_id: 'sub_1',
         p_event_created: 1_700_000_700,
         p_snapshot_generation: 3,
@@ -322,7 +315,7 @@ describe('EntitlementService', () => {
       const { admin } = createFakeAdmin({ plans: PLANS, rpcData: false });
       const service = new EntitlementService(() => admin);
 
-      await expect(service.applyPlanFenced(USER, 'spark', fence)).resolves.toEqual({
+      await expect(service.applyPlanFenced(USER, 'plus', fence)).resolves.toEqual({
         success: true,
         data: 'stale',
       });
@@ -343,14 +336,14 @@ describe('EntitlementService', () => {
       const { admin, rpc } = createFakeAdmin({ plans: PLANS, rpcData: true });
       const service = new EntitlementService(() => admin);
 
-      await expect(service.downgradeToFreeFenced(USER, 'spark', fence)).resolves.toEqual({
+      await expect(service.downgradeToFreeFenced(USER, 'plus', fence)).resolves.toEqual({
         success: true,
         data: 'applied',
       });
       expect(rpc).toHaveBeenCalledWith('apply_entitlement_fenced', {
         p_owner_type: 'user',
         p_owner_id: 'u-1',
-        p_plan: 'base',
+        p_plan: 'free',
         p_subscription_id: 'sub_1',
         p_event_created: 1_700_000_700,
         p_snapshot_generation: 3,

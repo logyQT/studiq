@@ -42,7 +42,7 @@ const mockCtx: RequestContext = {
 const validEvent = {
   type: 'checkout.session.completed',
   session_id: 's-1',
-  plan_id: 'spark',
+  plan_id: 'plus',
   user_id: 'u-1',
 };
 
@@ -80,12 +80,12 @@ describe('StripeController', () => {
       });
 
       const response = await controller.createCheckoutSession(mockCtx, {
-        planKey: 'spark',
+        planKey: 'plus',
         locale: 'en',
       });
 
       expect(response.success).toBe(true);
-      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'spark', undefined, 'en');
+      expect(billing.startCheckout).toHaveBeenCalledWith(mockCtx, 'plus', undefined, 'en');
       expect(gateway.createCheckoutSession).not.toHaveBeenCalled();
     });
 
@@ -139,7 +139,7 @@ describe('StripeController', () => {
         event: {
           type: 'checkout.session.completed',
           session_id: 's-1',
-          plan_id: 'spark',
+          plan_id: 'plus',
         },
       });
     });

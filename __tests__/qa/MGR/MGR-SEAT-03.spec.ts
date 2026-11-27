@@ -6,7 +6,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * MGR-SEAT-03 — zwolnienie miejsca (`/manage/seats`).
  *
  * Case step: „Zwolnij miejsce przyciskiem przy przydziale.”
- * Expected: the member returns to the base plan and the pool's available
+ * Expected: the member returns to the free plan and the pool's available
  * counter grows.
  *
  * Seats are frozen at the UI since #1493: `/manage/seats` keeps the pools and
@@ -23,7 +23,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * plus two org members, `users.student` (the member under test) and
  * `users.student2` (the untouched control). A fresh organization has **no** seat
  * pools — `plan_seat_allocations` was dropped — so the spec buys one personal-plan
- * pool (`pro`, 2 seats) and assigns both members through the product's own API.
+ * pool (`max`, 2 seats) and assigns both members through the product's own API.
  * That setup is idempotent, so a repeated run in the same tenant starts from the
  * case's prerequisite state again.
  *
@@ -35,7 +35,7 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
 const CASE = 'MGR-SEAT-03';
 
 /** Purchasable personal-plan seat; both seated members hold the org `member` role. */
-const SEAT_PLAN_KEY = 'pro';
+const SEAT_PLAN_KEY = 'max';
 const POOL_SEATS = 2;
 
 /** Polish copy from `ManageSeatsPage` (`apps/web/src/i18n/messages/pl.json`). */
@@ -152,7 +152,7 @@ function rowLabel(assignment: Assignment): string {
   return assignment.userFullName || assignment.userEmail;
 }
 
-test('releasing a seat through the API frees the pool counter and returns the member to the base plan', async ({
+test('releasing a seat through the API frees the pool counter and returns the member to the free plan', async ({
   page,
   browser,
 }) => {
@@ -229,7 +229,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
   await loginAs(studentPage, tenant, 'student', { locale: 'pl' });
   const personalPlan = await call<PlanInfo>(studentPage, '/api/v1/me/personal-plan');
   const seatedPlan = await call<PlanInfo>(studentPage, '/api/v1/me/plan');
-  expect(personalPlan.key, 'a seeded student personal plan is the base plan').toBe('base');
+  expect(personalPlan.key, 'a seeded student personal plan is the free plan').toBe('free');
   expect(seatedPlan.key, 'the seated member resolves the seat plan').toBe(SEAT_PLAN_KEY);
 
   // --- Step 0: /manage/seats lists the existing assignment ------------------
@@ -281,7 +281,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
   // --- Step 1: release through the API the page no longer exposes ----------
   await call<undefined>(page, `${ASSIGNMENTS_URL}/${target.id}`, { method: 'DELETE' });
 
-  // --- Expected result: member back to base, available counter up -----------
+  // --- Expected result: member back to free, available counter up -----------
   const assignmentsAfterRelease = await call<Assignment[]>(page, ASSIGNMENTS_URL);
   expect(
     assignmentsAfterRelease.some((assignment) => assignment.id === target.id),
@@ -340,9 +340,9 @@ test('releasing a seat through the API frees the pool counter and returns the me
   ).toBe(true);
   expect(assignmentsAfter, 'the tenant keeps exactly one seat assignment').toHaveLength(1);
 
-  // --- The member is back on their base plan -------------------------------
+  // --- The member is back on their free plan -------------------------------
   const releasedPlan = await call<PlanInfo>(studentPage, '/api/v1/me/plan');
-  expect(releasedPlan.key, 'the member no longer resolves the seat plan').toBe('base');
+  expect(releasedPlan.key, 'the member no longer resolves the seat plan').toBe('free');
   expect(releasedPlan.key, 'the member falls back to their personal plan').toBe(personalPlan.key);
   expect(releasedPlan.key).not.toBe(SEAT_PLAN_KEY);
 

@@ -8,7 +8,7 @@ import { apiPost } from '@/lib/api';
 import { checkoutSessionBody } from '@/lib/checkout-entry';
 
 interface CheckoutButtonProps {
-  /** Catalog plan key (`spark`, `hub`, …), never the plan UUID. */
+  /** Catalog plan key (`plus`, `hub`, …), never the plan UUID. */
   planKey: string;
   /** Organization the plan is bought for; required for organization (manager) plans. */
   orgId?: string;

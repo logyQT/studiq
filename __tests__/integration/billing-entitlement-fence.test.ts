@@ -62,7 +62,7 @@ function upsertInput(overrides: {
     organizationId: null,
     purchaserUserId: user.id,
     checkoutSessionId: `cs_fence_${RUN}`,
-    planKey: 'spark',
+    planKey: 'plus',
     priceId: `price_fence_${RUN}`,
     status: overrides.status ?? 'active',
     currentPeriodStart: new Date().toISOString(),
@@ -102,7 +102,7 @@ beforeAll(async () => {
     user_id: user.id,
     purchaser_user_id: user.id,
     checkout_session_id: `cs_fence_${RUN}`,
-    plan_key: 'spark',
+    plan_key: 'plus',
     price_id: `price_fence_${RUN}`,
     status: 'active',
     current_period_start: new Date().toISOString(),
@@ -123,33 +123,33 @@ afterAll(async () => {
 describe('entitlement freshness fence (#662)', () => {
   it('refuses an entitlement write older than the subscription mirror', async () => {
     await expect(
-      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'spark', {
+      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'plus', {
         stripeSubscriptionId: subscriptionId,
         eventCreated: 100,
         snapshotGeneration: 0,
       }),
     ).resolves.toEqual({ success: true, data: 'stale' });
 
-    expect(await profilePlan()).toBe('base');
+    expect(await profilePlan()).toBe('free');
   });
 
   it('applies the write at the mirror freshness', async () => {
     await expect(
-      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'spark', {
+      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'plus', {
         stripeSubscriptionId: subscriptionId,
         eventCreated: 200,
         snapshotGeneration: 0,
       }),
     ).resolves.toEqual({ success: true, data: 'applied' });
 
-    expect(await profilePlan()).toBe('spark');
+    expect(await profilePlan()).toBe('plus');
   });
 
   it('fences out the older writer after a newer event advances the mirror', async () => {
     await setMirrorFreshness(300);
 
     await expect(
-      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'ace', {
+      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'pro', {
         stripeSubscriptionId: subscriptionId,
         eventCreated: 250,
         snapshotGeneration: 0,
@@ -157,7 +157,7 @@ describe('entitlement freshness fence (#662)', () => {
     ).resolves.toEqual({ success: true, data: 'stale' });
 
     // The newer downgrade (or any newer plan) is not overwritten.
-    expect(await profilePlan()).toBe('spark');
+    expect(await profilePlan()).toBe('plus');
   });
 
   it('refuses an equal-timestamp write when a newer generation owns the mirror', async () => {
@@ -165,26 +165,26 @@ describe('entitlement freshness fence (#662)', () => {
     await setMirrorGeneration(7);
 
     await expect(
-      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'ace', {
+      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'pro', {
         stripeSubscriptionId: subscriptionId,
         eventCreated: 200,
         snapshotGeneration: 0,
       }),
     ).resolves.toEqual({ success: true, data: 'stale' });
 
-    expect(await profilePlan()).toBe('spark');
+    expect(await profilePlan()).toBe('plus');
   });
 
   it('refuses to write without a mirror row to fence against', async () => {
     await expect(
-      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'ace', {
+      entitlements.applyPlanFenced({ type: 'user', userId: user.id }, 'pro', {
         stripeSubscriptionId: `sub_missing_${RUN}`,
         eventCreated: 999,
         snapshotGeneration: 0,
       }),
     ).resolves.toEqual({ success: true, data: 'stale' });
 
-    expect(await profilePlan()).toBe('spark');
+    expect(await profilePlan()).toBe('plus');
   });
 
   it('refuses an entitlement write for a different owner', async () => {
@@ -194,12 +194,12 @@ describe('entitlement freshness fence (#662)', () => {
     await expect(
       entitlements.applyPlanFenced(
         { type: 'user', userId: '00000000-0000-4000-8000-000000000001' },
-        'ace',
+        'pro',
         { stripeSubscriptionId: subscriptionId, eventCreated: 200, snapshotGeneration: 0 },
       ),
     ).resolves.toEqual({ success: true, data: 'stale' });
 
-    expect(await profilePlan()).toBe('spark');
+    expect(await profilePlan()).toBe('plus');
   });
 
   it('orders two same-second snapshots by generation instead of event time', async () => {

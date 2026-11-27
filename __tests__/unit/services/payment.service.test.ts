@@ -52,8 +52,8 @@ describe('PaymentService.listMine (#392)', () => {
     const query = qb([
       {
         id: 'p-2',
-        plan_key: 'ace',
-        plan_name: 'StudiQ Ace',
+        plan_key: 'pro',
+        plan_name: 'StudiQ Pro',
         amount: 1999,
         currency: 'PLN',
         paid_at: '2026-10-25T10:00:00.000Z',
@@ -62,8 +62,8 @@ describe('PaymentService.listMine (#392)', () => {
       },
       {
         id: 'p-1',
-        plan_key: 'spark',
-        plan_name: 'StudiQ Spark',
+        plan_key: 'plus',
+        plan_name: 'StudiQ Plus',
         amount: 999,
         currency: 'PLN',
         paid_at: '2026-09-01T10:00:00.000Z',
@@ -86,8 +86,8 @@ describe('PaymentService.listMine (#392)', () => {
       data: [
         {
           id: 'p-2',
-          planKey: 'ace',
-          planName: 'StudiQ Ace',
+          planKey: 'pro',
+          planName: 'StudiQ Pro',
           amount: 1999,
           currency: 'PLN',
           paidAt: '2026-10-25T10:00:00.000Z',
@@ -96,8 +96,8 @@ describe('PaymentService.listMine (#392)', () => {
         },
         {
           id: 'p-1',
-          planKey: 'spark',
-          planName: 'StudiQ Spark',
+          planKey: 'plus',
+          planName: 'StudiQ Plus',
           amount: 999,
           currency: 'PLN',
           paidAt: '2026-09-01T10:00:00.000Z',
@@ -113,7 +113,7 @@ describe('PaymentService.listMine (#392)', () => {
       qb([
         {
           id: 'p-3',
-          plan_key: 'pro',
+          plan_key: 'max',
           plan_name: 'StudiQ Pro',
           amount: 2999,
           currency: 'PLN',
@@ -131,7 +131,7 @@ describe('PaymentService.listMine (#392)', () => {
       data: [
         {
           id: 'p-3',
-          planKey: 'pro',
+          planKey: 'max',
           planName: 'StudiQ Pro',
           amount: 2999,
           currency: 'PLN',

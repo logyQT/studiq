@@ -126,7 +126,36 @@ describe(`Auth Integration`, () => {
         .eq('email', uniqueEmail)
         .single();
 
-      expect(profile?.personal_plan_key).toBe('base');
+      expect(profile?.personal_plan_key).toBe('free');
+    });
+
+    it('mints no personal plan for a manager (ADR-0007)', async () => {
+      const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const uniqueEmail = `manager-plan-${suiteId}-${Date.now()}@example.com`;
+
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: uniqueEmail,
+          password: 'TestPass123',
+          name: 'Manager Plan Test',
+          accountType: 'manager',
+        }),
+      });
+
+      const response = await registerPost(req);
+      expect(response.status).toBe(202);
+
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('personal_plan_key, account_type')
+        .eq('email', uniqueEmail)
+        .single();
+
+      expect(profile?.account_type).toBe('manager');
+      expect(profile?.personal_plan_key).toBeNull();
     });
 
     // #300 / AUT-05: a duplicate must not surface as 500 INTERNAL_SERVER.

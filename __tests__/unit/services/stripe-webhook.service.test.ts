@@ -19,24 +19,22 @@ const CLAIM_TOKEN = '2026-11-01T09:00:00.000Z';
 const NOW = new Date('2026-11-01T10:00:00.000Z');
 
 const CATALOG: Record<string, CatalogPlan> = {
-  spark: {
-    key: 'spark',
-    name: 'StudiQ Spark',
+  plus: {
+    key: 'plus',
+    name: 'StudiQ Plus',
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 1,
   },
-  ace: {
-    key: 'ace',
-    name: 'StudiQ Ace',
+  pro: {
+    key: 'pro',
+    name: 'StudiQ Pro',
     priceMonthly: 1999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 2,
   },
   hub: {
@@ -46,23 +44,22 @@ const CATALOG: Record<string, CatalogPlan> = {
     currency: 'PLN',
     isActive: true,
     scope: 'organization',
-    audience: null,
     sortOrder: 3,
   },
 };
 
 const PRICES: Record<string, ListedPrice> = {
-  price_spark: {
-    planKey: 'spark',
-    stripePriceId: 'price_spark',
+  price_plus: {
+    planKey: 'plus',
+    stripePriceId: 'price_plus',
     currency: 'PLN',
     unitAmount: 999,
     interval: 'month',
     active: true,
   },
-  price_ace: {
-    planKey: 'ace',
-    stripePriceId: 'price_ace',
+  price_pro: {
+    planKey: 'pro',
+    stripePriceId: 'price_pro',
     currency: 'PLN',
     unitAmount: 1999,
     interval: 'month',
@@ -82,7 +79,7 @@ const USER_METADATA = {
   studiq_owner_type: 'user',
   studiq_user_id: 'u-1',
   studiq_org_id: '',
-  studiq_plan_key: 'spark',
+  studiq_plan_key: 'plus',
   studiq_billing_cycle: 'monthly',
   studiq_livemode: 'false',
 };
@@ -128,7 +125,7 @@ function makeSubscription(overrides: Record<string, unknown> = {}): Stripe.Subsc
         {
           current_period_start: 1_700_000_000,
           current_period_end: 1_702_592_000,
-          price: { id: 'price_spark' },
+          price: { id: 'price_plus' },
         },
       ],
     },
@@ -178,8 +175,8 @@ function makeMirror(overrides: Partial<SubscriptionMirror> = {}): SubscriptionMi
     organizationId: null,
     purchaserUserId: 'u-1',
     checkoutSessionId: 'cs_1',
-    planKey: 'spark',
-    priceId: 'price_spark',
+    planKey: 'plus',
+    priceId: 'price_plus',
     status: 'active',
     currentPeriodStart: '2026-01-01T00:00:00.000Z',
     currentPeriodEnd: '2026-02-01T00:00:00.000Z',
@@ -434,7 +431,7 @@ describe('StripeWebhookService', () => {
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledTimes(1);
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.insertPayment).not.toHaveBeenCalled();
@@ -444,7 +441,7 @@ describe('StripeWebhookService', () => {
           checkoutSessionId: 'cs_1',
           userId: 'u-1',
           organizationId: null,
-          planKey: 'spark',
+          planKey: 'plus',
         }),
       );
       expect(harness.repository.finishEvent).toHaveBeenCalledWith(
@@ -526,9 +523,9 @@ describe('StripeWebhookService', () => {
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({
-          metadata: { ...USER_METADATA, studiq_plan_key: 'ace' },
+          metadata: { ...USER_METADATA, studiq_plan_key: 'pro' },
           items: {
-            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_ace' } }],
+            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_pro' } }],
           },
         }),
       );
@@ -540,11 +537,11 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'ace',
+        'pro',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
-        expect.objectContaining({ planKey: 'ace', priceId: 'price_ace' }),
+        expect.objectContaining({ planKey: 'pro', priceId: 'price_pro' }),
       );
       // No schedule/pending update remains, so any marker is stale and cleared.
       expect(harness.repository.clearPendingPlan).toHaveBeenCalledWith('sub_1');
@@ -559,9 +556,9 @@ describe('StripeWebhookService', () => {
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({
           schedule: 'sched_1',
-          metadata: { ...USER_METADATA, studiq_plan_key: 'ace' },
+          metadata: { ...USER_METADATA, studiq_plan_key: 'pro' },
           items: {
-            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_ace' } }],
+            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_pro' } }],
           },
         }),
       );
@@ -573,10 +570,10 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'ace',
+        'pro',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
-      expect(harness.repository.clearPendingPlanIfApplied).toHaveBeenCalledWith('sub_1', 'ace');
+      expect(harness.repository.clearPendingPlanIfApplied).toHaveBeenCalledWith('sub_1', 'pro');
       expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
     });
 
@@ -601,9 +598,9 @@ describe('StripeWebhookService', () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({
-          metadata: { ...USER_METADATA, studiq_plan_key: 'ace' },
+          metadata: { ...USER_METADATA, studiq_plan_key: 'pro' },
           items: {
-            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_ace' } }],
+            data: [{ current_period_start: 1, current_period_end: 2, price: { id: 'price_pro' } }],
           },
         }),
       );
@@ -638,7 +635,7 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(harness.entitlements.applyPlanFenced).not.toHaveBeenCalled();
@@ -660,7 +657,7 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       // A deleted subscription has no meaningful pending marker left.
@@ -674,7 +671,7 @@ describe('StripeWebhookService', () => {
         success(makeMirror({ status: 'canceled' })),
       );
       vi.mocked(harness.repository.getPlan).mockResolvedValue(
-        success({ ...requiredValue(CATALOG.spark, 'spark plan'), isActive: false }),
+        success({ ...requiredValue(CATALOG.plus, 'plus plan'), isActive: false }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({ status: 'canceled', canceled_at: 1_700_000_600 }),
@@ -691,11 +688,11 @@ describe('StripeWebhookService', () => {
       // Cancellation cleanup is not blocked by sellability: the mirror becomes
       // canceled and the retirement is reported to operators.
       expect(harness.repository.upsertSubscription).toHaveBeenCalledWith(
-        expect.objectContaining({ planKey: 'spark', status: 'canceled' }),
+        expect.objectContaining({ planKey: 'plus', status: 'canceled' }),
       );
       expect(harness.entitlements.downgradeToFreeFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(consoleLog).toHaveBeenCalledWith(
@@ -709,7 +706,7 @@ describe('StripeWebhookService', () => {
         success(makeMirror()),
       );
       vi.mocked(harness.repository.getPlan).mockResolvedValue(
-        success({ ...requiredValue(CATALOG.spark, 'spark plan'), isActive: false }),
+        success({ ...requiredValue(CATALOG.plus, 'plus plan'), isActive: false }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
       const event = makeEvent('customer.subscription.updated', makeSubscription(), {
@@ -784,7 +781,7 @@ describe('StripeWebhookService', () => {
       expect(result).toEqual({ success: true, data: { received: true, ignored: true } });
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         { stripeSubscriptionId: 'sub_1', eventCreated: 1_700_000_700, snapshotGeneration: 1 },
       );
       expect(harness.repository.clearPendingPlan).not.toHaveBeenCalled();
@@ -861,7 +858,7 @@ describe('StripeWebhookService', () => {
         success(makeMirror({ status: 'canceled' })),
       );
       vi.mocked(harness.repository.findActiveSubscription).mockResolvedValueOnce(
-        success({ stripeSubscriptionId: 'sub_main', planKey: 'spark' }),
+        success({ stripeSubscriptionId: 'sub_main', planKey: 'plus' }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({ status: 'canceled', canceled_at: 1_700_000_600 }),
@@ -905,7 +902,7 @@ describe('StripeWebhookService', () => {
     it('ignores a second active subscription for the same owner', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.findActiveSubscription).mockResolvedValueOnce(
-        success({ stripeSubscriptionId: 'sub_other', planKey: 'spark' }),
+        success({ stripeSubscriptionId: 'sub_other', planKey: 'plus' }),
       );
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(makeSubscription());
       const event = makeEvent('customer.subscription.created', makeSubscription(), {
@@ -927,7 +924,7 @@ describe('StripeWebhookService', () => {
     it('prefers the live Price metadata over stale subscription metadata', async () => {
       const harness = createHarness();
       vi.mocked(harness.repository.findPrice).mockResolvedValueOnce(success(null));
-      const stale = { ...USER_METADATA, studiq_plan_key: 'ace' };
+      const stale = { ...USER_METADATA, studiq_plan_key: 'pro' };
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValue(
         makeSubscription({
           metadata: stale,
@@ -942,7 +939,7 @@ describe('StripeWebhookService', () => {
         asJson<Stripe.Price>({
           id: 'price_rotated',
           object: 'price',
-          metadata: { studiq_plan_key: 'spark' },
+          metadata: { studiq_plan_key: 'plus' },
         }),
       );
       const event = makeEvent('customer.subscription.created', makeSubscription(), {
@@ -955,7 +952,7 @@ describe('StripeWebhookService', () => {
       // Checkout metadata; the rotated Price is authoritative.
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
     });
@@ -993,7 +990,7 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
     });
@@ -1018,7 +1015,7 @@ describe('StripeWebhookService', () => {
 
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('billing.price_unmapped'));
@@ -1077,8 +1074,8 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.payments[0]).toEqual({
         userId: 'u-1',
         organizationId: null,
-        planKey: 'spark',
-        planName: 'StudiQ Spark',
+        planKey: 'plus',
+        planName: 'StudiQ Plus',
         amount: 999,
         currency: 'PLN',
         stripeCustomerId: 'cus_1',
@@ -1228,7 +1225,7 @@ describe('StripeWebhookService', () => {
       );
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({
           stripeSubscriptionId: 'sub_1',
           eventCreated: 1_700_000_700,
@@ -1305,7 +1302,7 @@ describe('StripeWebhookService', () => {
       const harness = createHarness();
       vi.mocked(harness.client.subscriptions.retrieve).mockResolvedValueOnce(makeSubscription());
       vi.mocked(harness.repository.findActiveSubscription).mockResolvedValueOnce(
-        success({ stripeSubscriptionId: 'sub_other', planKey: 'ace' }),
+        success({ stripeSubscriptionId: 'sub_other', planKey: 'pro' }),
       );
 
       await expect(
@@ -1346,7 +1343,7 @@ describe('StripeWebhookService', () => {
       expect(harness.repository.claimEvent).not.toHaveBeenCalled();
       expect(harness.entitlements.applyPlanFenced).toHaveBeenCalledWith(
         { type: 'user', userId: 'u-1' },
-        'spark',
+        'plus',
         expect.objectContaining({ stripeSubscriptionId: 'sub_1' }),
       );
       const upsert = firstCall(vi.mocked(harness.repository.upsertSubscription))[0];

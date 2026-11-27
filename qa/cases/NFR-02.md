@@ -72,7 +72,7 @@ The suite version uses the case's own tenant and never the legacy accounts.
 - Content (created by the spec through the product API, idempotently): three personal decks
   with exactly 1, 2 and 5 flashcards, owned by the student — the plural check
   („fiszka/fiszki/fiszek”). Each run deletes and recreates only its own three decks, so a
-  reused tenant never accumulates cards and the student's Base limits stay untouched.
+  reused tenant never accumulates cards and the student's Free limits stay untouched.
 - Public leg (step 2): the landing page footer toggle needs no session and no tenant rows; the
   spec visits it in a fresh browser context (no `NEXT_LOCALE` cookie), so the default `pl`
   render is deterministic.

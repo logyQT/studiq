@@ -9,7 +9,7 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "spark", personalRole: "teacher"`), not the org plan.
+Hub is capacity only since #1493. The `quiz.templates` gate passes through the educator's personal Plus plan (`personalPlan: "plus", personalRole: "teacher"`), not the org plan.
 
 ## Prerequisite (verbatim)
 
@@ -20,7 +20,7 @@ Edytor quizu.
 Legacy accounts (`teacher-classroom@dev.local`, password `pass`) are never used.
 The case runs in its own deterministic tenant, declared in
 `__tests__/qa/profiles/EDU-QZ-02.json`
-(`{ "profile": "content", "plan": "hub", "personalPlan": "spark", "personalRole": "teacher" }` —
+(`{ "profile": "content", "plan": "hub", "personalPlan": "plus", "personalRole": "teacher" }` —
 hub is capacity only since #1493, so the saved-quiz library's `quiz.templates` entitlement
 (phase 5d) comes from the educator's personal Plus plan, and the educator passes the write gates):
 

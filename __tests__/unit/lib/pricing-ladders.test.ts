@@ -35,7 +35,6 @@ function plan(
     sortOrder,
     isActive: true,
     scope,
-    audience: null,
     seatEligible: false,
     ...rest,
   };
@@ -45,16 +44,16 @@ function plan(
 // Prices are the catalogue's, in grosze, so `ctaMessageKey` sees the real
 // free/paid split.
 const catalogue = [
-  plan('base', 'personal', 1, { features: ['flashcards', 'quiz'] }),
-  plan('spark', 'personal', 2, {
+  plan('free', 'personal', 1, { features: ['flashcards', 'quiz'] }),
+  plan('plus', 'personal', 2, {
     features: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'],
     priceMonthly: 1999,
   }),
-  plan('ace', 'personal', 3, {
+  plan('pro', 'personal', 3, {
     features: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     priceMonthly: 3999,
   }),
-  plan('pro', 'personal', 4, {
+  plan('max', 'personal', 4, {
     features: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     priceMonthly: 7999,
   }),
@@ -78,7 +77,7 @@ describe('getPlanLadders', () => {
   it('splits the flat catalogue into one individual ladder and one organization ladder', () => {
     const ladders = getPlanLadders(catalogue);
 
-    expect(ladders.individual.map((p) => p.key)).toEqual(['base', 'spark', 'ace', 'pro']);
+    expect(ladders.individual.map((p) => p.key)).toEqual(['free', 'plus', 'pro', 'max']);
     expect(ladders.organization.map((p) => p.key)).toEqual(['launch', 'hub', 'campus']);
   });
 
@@ -86,10 +85,10 @@ describe('getPlanLadders', () => {
     const shuffled = catalogue.toReversed();
 
     expect(getPlanLadders(shuffled).individual.map((p) => p.key)).toEqual([
-      'base',
-      'spark',
-      'ace',
+      'free',
+      'plus',
       'pro',
+      'max',
     ]);
   });
 
@@ -104,7 +103,7 @@ describe('isRecommendedPlan', () => {
   it('gives every ladder exactly one plan the signal action can belong to', () => {
     const { individual, organization } = getPlanLadders(catalogue);
     const ladders = [
-      { plans: individual, recommended: 'ace' },
+      { plans: individual, recommended: 'pro' },
       { plans: organization, recommended: 'hub' },
     ];
 
@@ -118,11 +117,11 @@ describe('isRecommendedPlan', () => {
 
 describe('ctaMessageKey', () => {
   it('gives a free plan the shared free action', () => {
-    expect(ctaMessageKey(plan('base', 'personal', 1))).toBe('cta_free');
+    expect(ctaMessageKey(plan('free', 'personal', 1))).toBe('cta_free');
   });
 
   it('names the plan in a paid plan’s own action', () => {
-    expect(ctaMessageKey(plan('spark', 'personal', 2, { priceMonthly: 1999 }))).toBe('cta_spark');
+    expect(ctaMessageKey(plan('plus', 'personal', 2, { priceMonthly: 1999 }))).toBe('cta_plus');
   });
 
   it('gives a sales-led plan the conversation the page already offers', () => {
@@ -142,8 +141,8 @@ describe('ctaMessageKey', () => {
 
 describe('shortPlanName', () => {
   it('drops the product prefix and leaves the tier', () => {
-    expect(shortPlanName('StudiQ Ace')).toBe('Ace');
-    expect(shortPlanName('Ace')).toBe('Ace');
+    expect(shortPlanName('StudiQ Pro')).toBe('Pro');
+    expect(shortPlanName('Pro')).toBe('Pro');
   });
 });
 
@@ -174,8 +173,8 @@ describe('splitFeatureRows', () => {
 describe('splitLimitRows', () => {
   it('keeps the limit that separates the plans and drops the one they share', () => {
     const ladder = [
-      plan('base', 'personal', 1, { limits: { max_flashcards: 100, max_decks: 10 } }),
-      plan('spark', 'personal', 2, { limits: { max_flashcards: 1000, max_decks: 10 } }),
+      plan('free', 'personal', 1, { limits: { max_flashcards: 100, max_decks: 10 } }),
+      plan('plus', 'personal', 2, { limits: { max_flashcards: 1000, max_decks: 10 } }),
     ];
 
     expect(splitLimitRows(ladder)).toEqual(['max_flashcards']);
@@ -192,8 +191,8 @@ describe('splitLimitRows', () => {
 
   it('drops a seat limit a personal ladder cannot enforce', () => {
     const ladder = [
-      plan('base', 'personal', 1, { limits: { max_flashcards: 100, max_students: 5 } }),
-      plan('spark', 'personal', 2, { limits: { max_flashcards: 1000 } }),
+      plan('free', 'personal', 1, { limits: { max_flashcards: 100, max_students: 5 } }),
+      plan('plus', 'personal', 2, { limits: { max_flashcards: 1000 } }),
     ];
 
     expect(splitLimitRows(ladder)).toEqual(['max_flashcards']);
@@ -201,8 +200,8 @@ describe('splitLimitRows', () => {
 
   it('drops a row whose cells would all read the same even though the raw values differ', () => {
     const ladder = [
-      plan('base', 'personal', 1, { limits: { max_ai_tokens_per_day: 0 } }),
-      plan('spark', 'personal', 2, { limits: {} }),
+      plan('free', 'personal', 1, { limits: { max_ai_tokens_per_day: 0 } }),
+      plan('plus', 'personal', 2, { limits: {} }),
     ];
 
     expect(splitLimitRows(ladder)).toEqual([]);

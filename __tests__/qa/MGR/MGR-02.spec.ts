@@ -1,5 +1,4 @@
 import { expect, type Page } from '@playwright/test';
-import { json } from '#test/helpers/json';
 import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tenant';
 
 /**
@@ -24,14 +23,12 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * defect is fixed: #134/#433 added `/edu/ai` for educators and **dropped the dead
  * manager link** — no manager AI page exists (the manager AI surface is
  * ADR-0015 phase 6), so a manager has no assistant to link to. The API itself is
- * not persona-gated any more: since phase 5a `POST /api/v1/ai/chat` and
- * `GET /api/v1/ai/usage` require the `ai.chat` entitlement. The organization
- * plan is capacity only since #1493, so the manager's **personal Plus plan**
- * carries `ai.chat` into the org (`personalPortable`; the profile declares
- * `personalPlan: "spark"`) and the manager *may* call the API. The intended manager
- * menu is therefore „Główne: Przegląd” and the seven „Administracja” entries
- * below; the spec pins the absence of the dead link instead of reproducing it,
- * plus the positive entitlement path on the API.
+ * entitlement-gated on `ai.chat` (ADR-0015 §7). A manager holds no personal plan
+ * (ADR-0007) and the Hub plan is capacity only, so this tenant carries no
+ * `ai.chat`; the AI licences (organization and per-seat) are #1511 and this case
+ * does not assert them. The intended manager menu is therefore „Główne:
+ * Przegląd” and the seven „Administracja” entries below; the spec pins the
+ * absence of the dead link instead of reproducing it.
  *
  * Since phase 6b-2 the `/manage` shell resolves authority client-side
  * (`AreaGate`), so an unknown subpath is committed before the permission map is
@@ -124,7 +121,7 @@ test('the manager sidebar has two sections whose entries all open their pages', 
 }) => {
   const tenant: QaTenant = loadTenant(CASE);
   expect(tenant.profile, `${CASE} runs on the content tenant profile`).toBe('content');
-  expect(tenant.plan, `${CASE} needs its tenant org on Hub (ai.chat)`).toBe('hub');
+  expect(tenant.plan, `${CASE} needs its tenant org on Hub`).toBe('hub');
   const org = tenant.org;
   if (!org) {
     throw new Error(
@@ -222,37 +219,10 @@ test('the manager sidebar has two sections whose entries all open their pages', 
   }
 
   // The menu has no assistant entry because no manager AI page exists (that
-  // surface is ADR-0015 phase 6) — but the API is entitlement-gated, and the
-  // manager's personal Plus plan carries `ai.chat` into the Hub org, so the
-  // manager *may* call it.
-  const entitlementsResponse = await page.request.get('/api/v1/me/entitlements');
-  expect(entitlementsResponse.status(), 'GET /api/v1/me/entitlements as the manager').toBe(200);
-  const entitlementsBody = await json<{ data: { entitlements: string[] } }>(entitlementsResponse);
-  expect(entitlementsBody.data.entitlements, 'the personal plan resolves ai.chat').toContain(
-    'ai.chat',
-  );
-
-  const usage = await page.request.get('/api/v1/ai/usage');
-  expect(usage.status(), 'GET /api/v1/ai/usage as the manager on Hub').toBe(200);
-  const usageBody = await json<{
-    success: boolean;
-    data: { plan: string; limit: number };
-  }>(usage);
-  expect(
-    usageBody.data,
-    'the usage counter reports the org primary and the Plus quota',
-  ).toMatchObject({
-    plan: 'hub',
-    limit: 100000,
-  });
-
-  // The entitlement gate let the manager through, so the handler's own
-  // validation answers — an empty body is a 400 BAD_REQUEST, never a model
-  // call.
-  const ai = await page.request.post('/api/v1/ai/chat', { data: {} });
-  expect(ai.status(), 'POST /api/v1/ai/chat with an empty body as the manager').toBe(400);
-  const aiBody = await json<{ success: boolean; error?: string }>(ai);
-  expect(aiBody).toMatchObject({ success: false, error: 'BAD_REQUEST' });
+  // surface is ADR-0015 phase 6). The AI API is entitlement-gated on `ai.chat`,
+  // but this tenant carries none: a manager holds no personal plan (ADR-0007)
+  // and Hub is capacity only. The AI licences are #1511, so this case asserts
+  // the menu and leaves the AI gate to SEC-07.
 
   expect(pageErrors, 'uncaught page errors').toEqual([]);
 });

@@ -28,11 +28,11 @@ describe('checkout entry selection (#662 §5.6)', () => {
 
 describe('initialCheckoutStatus', () => {
   it('starts a fresh deep link', () => {
-    expect(initialCheckoutStatus({ planKey: 'spark', canceled: false })).toBe('starting');
+    expect(initialCheckoutStatus({ planKey: 'plus', canceled: false })).toBe('starting');
   });
 
   it('does not auto-start after a canceled Checkout (prevents a redirect loop)', () => {
-    expect(initialCheckoutStatus({ planKey: 'spark', canceled: true })).toBe('canceled');
+    expect(initialCheckoutStatus({ planKey: 'plus', canceled: true })).toBe('canceled');
   });
 
   it('fails closed when no plan was selected', () => {
@@ -54,7 +54,7 @@ describe('checkoutOrgIdFor', () => {
 
 describe('checkoutSessionBody', () => {
   it('only sends the plan key for a personal checkout', () => {
-    expect(checkoutSessionBody({ planKey: 'spark' })).toEqual({ planKey: 'spark' });
+    expect(checkoutSessionBody({ planKey: 'plus' })).toEqual({ planKey: 'plus' });
   });
 
   it('adds a valid org hint and locale', () => {
@@ -67,7 +67,7 @@ describe('checkoutSessionBody', () => {
 
   it('never forwards an amount, price, customer or owner id', () => {
     const body = checkoutSessionBody({
-      planKey: 'spark',
+      planKey: 'plus',
       orgId: VALID_ORG_ID,
       locale: 'pl',
     });
@@ -117,7 +117,7 @@ describe('isAllowedStripeCheckoutUrl', () => {
       'https://checkout.stripe.com.example.com/pay',
       'https://evil.example/pay',
       'javascript:alert(1)',
-      '/checkout?plan_id=spark',
+      '/checkout?plan_id=plus',
       '',
     ]) {
       expect(isAllowedStripeCheckoutUrl(url)).toBe(false);

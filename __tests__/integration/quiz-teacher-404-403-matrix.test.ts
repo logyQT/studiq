@@ -23,7 +23,7 @@ import { PUT as putQuiz } from '@/app/(backend)/api/v1/teacher/quizzes/[id]/rout
  * for the read path (`getById`).
  *
  * The org plan is `hub`, which is capacity only since #1493, so the author's
- * personal `spark` plan carries `quiz.templates` into the org; the 403/404 rows
+ * personal `plus` plan carries `quiz.templates` into the org; the 403/404 rows
  * below are the permission derivation and not the entitlement gate that runs
  * first on writes.
  */
@@ -119,7 +119,7 @@ describe('quiz-teacher 403/404 matrix (ADR-0015 §7.1, D-5e2)', () => {
     for (const user of [caller, otherTeacher]) {
       const { error } = await service
         .from('profiles')
-        .update({ personal_plan_key: 'spark' })
+        .update({ personal_plan_key: 'plus' })
         .eq('id', user.id);
       if (error) throw new Error(`[setup] personal plan: ${error.message}`);
     }

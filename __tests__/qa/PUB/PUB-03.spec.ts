@@ -39,12 +39,11 @@ interface PlanInfo {
   sortOrder: number;
   isActive: boolean;
   scope: string;
-  audience: string | null;
 }
 
 /** The two ladders the pricing page documents, per scope. */
 const LADDERS = [
-  { scope: 'personal', plans: ['base', 'spark', 'ace', 'pro'] },
+  { scope: 'personal', plans: ['free', 'plus', 'pro', 'max'] },
   { scope: 'organization', plans: ['launch', 'hub', 'campus'] },
 ] as const;
 
@@ -223,7 +222,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     ).toBeLessThanOrEqual(2);
 
     // The individual ladder is gone, and the switch follows the address.
-    await expect(page.locator('#pricing-plans h3#base')).toHaveCount(0);
+    await expect(page.locator('#pricing-plans h3#free')).toHaveCount(0);
     await expect(ladderSection(page, copy('ladder_individual_title'))).toHaveCount(0);
     await expect(organizationRadio).toBeChecked();
 
@@ -255,13 +254,13 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
 
     await page.goBack();
     await expect(page).toHaveURL(/\/pricing$/);
-    await expect(page.locator('#pricing-plans h3#base')).toBeVisible();
+    await expect(page.locator('#pricing-plans h3#free')).toBeVisible();
     await expect(page.locator('#pricing-plans h3#launch')).toHaveCount(0);
 
     await page.goForward();
     await expect(page).toHaveURL(/\/pricing\?audience=organization$/);
     await expect(page.locator('#pricing-plans h3#launch')).toBeVisible();
-    await expect(page.locator('#pricing-plans h3#base')).toHaveCount(0);
+    await expect(page.locator('#pricing-plans h3#free')).toHaveCount(0);
 
     // --- A deep link is the ladder in the server HTML, not only after hydration
     const organizationHtml = await (
@@ -283,7 +282,7 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
       expect(organizationHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
     expect(organizationHtml, 'with its price').toContain(copy('period_month'));
-    expect(organizationHtml, 'and no individual row').not.toContain('id="base"');
+    expect(organizationHtml, 'and no individual row').not.toContain('id="free"');
     const organizationRadioTag = /<input[^>]*value="organization"[^>]*>/.exec(
       organizationHtml,
     )?.[0];
@@ -297,10 +296,10 @@ test.describe('@case:PUB-03 @area:PUB @prio:P1 pricing audience switch', () => {
     expect(individualHtml, 'and not the organization ladder').not.toContain(
       `>${copy('ladder_org_title')}</h2>`,
     );
-    for (const key of ['base', 'spark', 'ace', 'pro']) {
+    for (const key of ['free', 'plus', 'pro', 'max']) {
       expect(individualHtml, `the ${key} row is in the response`).toContain(`id="${key}"`);
     }
-    for (const retired of ['lite', 'guide', 'creator', 'master', 'solo', 'team']) {
+    for (const retired of ['base', 'spark', 'ace']) {
       expect(individualHtml, `the retired ${retired} row is absent`).not.toContain(
         `id="${retired}"`,
       );

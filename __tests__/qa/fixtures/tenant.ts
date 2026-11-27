@@ -31,7 +31,7 @@ export interface QaTenant {
   runSuffix?: string | null;
   /** Organization plan the seeder applied (`--plan`). */
   plan?: string | null;
-  /** Personal plan the seeder applied (`--personal-plan`), e.g. `spark`. */
+  /** Personal plan the seeder applied (`--personal-plan`), e.g. `plus`. */
   personalPlan?: string | null;
   /** The one account `--personal-role` narrowed the personal plan to. */
   personalRole?: 'manager' | 'teacher' | 'student' | null;

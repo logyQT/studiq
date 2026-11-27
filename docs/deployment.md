@@ -273,22 +273,21 @@ Preconditions:
 - This release's migrations are applied to the production database **before**
   `--live` (it writes `stripe_prices`, which those migrations create). Deploying
   schema is separate from deploying the app binary.
-- The approved ladder is applied by the plan-catalogue migrations
-  (`20261126130000_individual_plan_ladder.sql` for the four personal plans,
-  `20261126160000_organization_plan_ladder.sql` for the three organization
-  plans); the catalogue is migration-owned since #1494 and
-  `supabase/seeds/00_plans.sql` no longer writes plan rows. After the migrations
-  are applied, confirm the live ladder with this read-only query — it returns the
-  5 paid plans only while their amounts match. **Pass condition: exactly 5
-  rows.** The migrations insert those 5 paid keys, so fewer rows means the
-  migration did not apply (or a price differs from the ladder) — stop and fix the
-  catalog before continuing; an empty result is not a timing artefact:
+- The approved ladder is applied by the plan-catalogue migration
+  (`20261126170000_plan_key_rename_manager_plan.sql` for the four personal plans
+  and the three organization plans); the catalogue is migration-owned since
+  #1494 and `supabase/seeds/00_plans.sql` no longer writes plan rows. After the
+  migration is applied, confirm the live ladder with this read-only query — it
+  returns the 5 paid plans only while their amounts match. **Pass condition:
+  exactly 5 rows.** The migration inserts those 5 paid keys, so fewer rows means
+  the migration did not apply (or a price differs from the ladder) — stop and fix
+  the catalog before continuing; an empty result is not a timing artefact:
 
   ```sql
   SELECT p.key, p.price_monthly
   FROM public.subscription_plans AS p
   JOIN (VALUES
-    ('spark', 1999), ('ace', 3999), ('pro', 7999),
+    ('plus', 1999), ('pro', 3999), ('max', 7999),
     ('hub', 29900), ('campus', 69900)
   ) AS v(key, amount) ON v.key = p.key AND p.price_monthly = v.amount
   ORDER BY p.sort_order;
@@ -526,11 +525,11 @@ or amount.
 ```jsonc
 {
   "provider": "mock | stripe",
-  "planKey": "spark", // effective entitlement (/me/plan); may be a seat plan
+  "planKey": "plus", // effective entitlement (/me/plan); may be a seat plan
   "planName": "StudiQ Plus",
-  "billedPlanKey": "spark", // what Stripe actually bills
+  "billedPlanKey": "plus", // what Stripe actually bills
   "billedPlanName": "StudiQ Plus",
-  "entitlementAppliedPlanKey": "spark", // written by the fenced webhook; null until it runs
+  "entitlementAppliedPlanKey": "plus", // written by the fenced webhook; null until it runs
   "status": "active | trialing | past_due | unpaid | canceled | incomplete | incomplete_expired | paused | free | none",
   "currentPeriodEnd": "2026-12-01T00:00:00.000Z",
   "cancelAtPeriodEnd": false,

@@ -17,7 +17,7 @@ import { BillingService, billingService } from '@studiq/server/services/billing.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const anyNumber: unknown = expect.any(Number);
-const anyUserCheckoutKey: unknown = expect.stringMatching(/^checkout:user:u-1::spark:en:\d+$/);
+const anyUserCheckoutKey: unknown = expect.stringMatching(/^checkout:user:u-1::plus:en:\d+$/);
 const anyOrgCheckoutKey: unknown = expect.stringMatching(/^checkout:org:org-1:u-9:hub:pl:\d+$/);
 
 const studentCtx: RequestContext = {
@@ -42,13 +42,12 @@ const managerCtx: RequestContext = {
 
 function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
   return {
-    key: 'spark',
-    name: 'StudiQ Spark',
+    key: 'plus',
+    name: 'StudiQ Plus',
     priceMonthly: 999,
     currency: 'PLN',
     isActive: true,
     scope: 'personal',
-    audience: 'student',
     sortOrder: 1,
     ...overrides,
   };
@@ -56,8 +55,8 @@ function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
 
 function listedPrice(overrides: Partial<ListedPrice> = {}): ListedPrice {
   return {
-    planKey: 'spark',
-    stripePriceId: 'price_spark',
+    planKey: 'plus',
+    stripePriceId: 'price_plus',
     currency: 'PLN',
     unitAmount: 999,
     interval: 'month',
@@ -124,7 +123,7 @@ describe('BillingService.startCheckout', () => {
     vi.stubEnv('CHECKOUT_KILL_SWITCH', '1');
 
     try {
-      await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+      await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
         success: false,
         error: 'SERVICE_UNAVAILABLE',
       });
@@ -157,7 +156,7 @@ describe('BillingService.startCheckout', () => {
   it('rejects a free plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(success(plan({ priceMonthly: 0 })));
 
-    await expect(service.startCheckout(studentCtx, 'base')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'free')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
     });
@@ -167,7 +166,7 @@ describe('BillingService.startCheckout', () => {
   it('rejects an inactive plan', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(success(plan({ isActive: false })));
 
-    await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'BAD_REQUEST',
     });
@@ -175,7 +174,7 @@ describe('BillingService.startCheckout', () => {
 
   it('answers FORBIDDEN when an organization plan arrives without an org id (D34)', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'hub', scope: 'organization', audience: null })),
+      success(plan({ key: 'hub', scope: 'organization' })),
     );
 
     await expect(service.startCheckout(managerCtx, 'hub')).resolves.toEqual({
@@ -187,7 +186,7 @@ describe('BillingService.startCheckout', () => {
 
   it('rejects an org buyer without org.billing.manage in the target org, without calling Stripe', async () => {
     vi.mocked(repository.getPlan).mockResolvedValueOnce(
-      success(plan({ key: 'hub', name: 'StudiQ Hub', scope: 'organization', audience: null })),
+      success(plan({ key: 'hub', name: 'StudiQ Hub', scope: 'organization' })),
     );
     vi.mocked(repository.canManageBilling).mockResolvedValueOnce(success(false));
 
@@ -208,7 +207,6 @@ describe('BillingService.startCheckout', () => {
           name: 'StudiQ Hub',
           priceMonthly: 1999,
           scope: 'organization',
-          audience: null,
         }),
       ),
     );
@@ -237,12 +235,12 @@ describe('BillingService.startCheckout', () => {
       success({
         stripeSubscriptionId: 'sub_1',
         status: 'active',
-        planKey: 'spark',
+        planKey: 'plus',
         currentPeriodEnd: null,
       }),
     );
 
-    await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'CONFLICT',
     });
@@ -255,7 +253,7 @@ describe('BillingService.startCheckout', () => {
       success(listedPrice({ unitAmount: 1000 })),
     );
 
-    await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -265,29 +263,29 @@ describe('BillingService.startCheckout', () => {
   it('fails closed when the plan has no mapped price', async () => {
     vi.mocked(repository.findListedPrice).mockResolvedValueOnce(success(null));
 
-    await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
   });
 
   it('starts a personal checkout with the resolved price and owner', async () => {
-    const result = await service.startCheckout(studentCtx, 'spark', undefined, 'en');
+    const result = await service.startCheckout(studentCtx, 'plus', undefined, 'en');
 
     expect(result.success).toBe(true);
     expect(repository.findActiveSubscription).toHaveBeenCalledWith(
       { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
       false,
     );
-    expect(repository.findListedPrice).toHaveBeenCalledWith('spark', 'monthly', false);
+    expect(repository.findListedPrice).toHaveBeenCalledWith('plus', 'monthly', false);
     expect(gateway.createCheckoutSession).toHaveBeenCalledWith({
       owner: { type: 'user', userId: 'u-1', accountType: AccountType.STUDENT },
-      planKey: 'spark',
-      planName: 'StudiQ Spark',
+      planKey: 'plus',
+      planName: 'StudiQ Plus',
       amount: 999,
       currency: 'PLN',
       billingCycle: 'monthly',
-      priceId: 'price_spark',
+      priceId: 'price_plus',
       locale: 'en',
       expiresAt: anyNumber,
       idempotencyKey: anyUserCheckoutKey,
@@ -306,7 +304,6 @@ describe('BillingService.startCheckout', () => {
           name: 'StudiQ Hub',
           priceMonthly: 1999,
           scope: 'organization',
-          audience: null,
         }),
       ),
     );
@@ -336,12 +333,12 @@ describe('BillingService.startCheckout', () => {
     gateway = createGateway('mock');
     service = new BillingService(gateway, repository);
 
-    await service.startCheckout(studentCtx, 'spark');
+    await service.startCheckout(studentCtx, 'plus');
 
     expect(repository.findActiveSubscription).not.toHaveBeenCalled();
     expect(repository.findListedPrice).not.toHaveBeenCalled();
     expect(gateway.createCheckoutSession).toHaveBeenCalledWith(
-      expect.objectContaining({ planKey: 'spark', priceId: undefined }),
+      expect.objectContaining({ planKey: 'plus', priceId: undefined }),
     );
   });
 
@@ -351,7 +348,7 @@ describe('BillingService.startCheckout', () => {
       error: 'SERVICE_UNAVAILABLE',
     });
 
-    await expect(service.startCheckout(studentCtx, 'spark')).resolves.toEqual({
+    await expect(service.startCheckout(studentCtx, 'plus')).resolves.toEqual({
       success: false,
       error: 'SERVICE_UNAVAILABLE',
     });
@@ -363,15 +360,15 @@ describe('checkoutIdempotencyKey', () => {
 
   it('collapses retries inside the same 30-minute bucket', () => {
     const start = 1_800_000_000_000;
-    expect(checkoutIdempotencyKey(owner, 'spark', 'pl', start)).toBe(
-      checkoutIdempotencyKey(owner, 'spark', 'pl', start + 29 * 60 * 1000),
+    expect(checkoutIdempotencyKey(owner, 'plus', 'pl', start)).toBe(
+      checkoutIdempotencyKey(owner, 'plus', 'pl', start + 29 * 60 * 1000),
     );
   });
 
   it('uses a new key after the bucket rolls over', () => {
     const start = 1_800_000_000_000;
-    expect(checkoutIdempotencyKey(owner, 'spark', 'pl', start)).not.toBe(
-      checkoutIdempotencyKey(owner, 'spark', 'pl', start + 30 * 60 * 1000),
+    expect(checkoutIdempotencyKey(owner, 'plus', 'pl', start)).not.toBe(
+      checkoutIdempotencyKey(owner, 'plus', 'pl', start + 30 * 60 * 1000),
     );
   });
 

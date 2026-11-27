@@ -76,5 +76,5 @@ bun scripts/qa-tenant.ts EDU-GRP-04 --fresh
 - Czwarta próba: `POST /api/v1/organization/groups` → **429**
   `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}`, toast „Nie udało się utworzyć grupy”,
   dialog pozostaje otwarty z wpisaną nazwą, a lista nadal ma 3 grupy. Limit pochodzi z planu
-  organizacji (Launch, `max_groups = 3`), nie z osobistego planu nauczyciela (`base`,
+  organizacji (Launch, `max_groups = 3`), nie z osobistego planu nauczyciela (`free`,
   który nie niesie limitu grup).

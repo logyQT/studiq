@@ -4,7 +4,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-54 — the diagnostic stats are gated on `stats.insights` (ADR-0015 §7,
- * phase 5d): a student in a free `launch` org (personal `base`) gets the
+ * phase 5d): a student in a free `launch` org (personal `free`) gets the
  * descriptive cards on /app/stats/activity and the plan card in place of the
  * weak-points/insights/retention/mastery reads, which answer 403.
  *
@@ -105,7 +105,7 @@ test.describe('@case:STU-54 @area:STU @prio:P2 free student sees descriptive sta
     const entitlements = await json<ApiEnvelope<{ entitlements: string[] }>>(entitlementsResponse);
     expect(
       entitlements.data.entitlements,
-      'launch org + base personal plan resolve no stats.insights',
+      'launch org + free personal plan resolve no stats.insights',
     ).not.toContain('stats.insights');
 
     // --- Step 1: the descriptive cards render, the weak points are locked ----

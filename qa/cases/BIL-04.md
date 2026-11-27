@@ -62,7 +62,7 @@ tenant is read or written.
 The concern the case asks to verify does **not** reproduce on the current build.
 The mock webhook (`mock-stripe.service.ts`) treats a plan whose
 `subscription_plans.scope` is `organization` as an organization plan (since phase 4a
-the catalog row's `scope`/`audience` decide `isOrgPlan`/purchasability — D34;
+the catalog row's `scope` decides `isOrgPlan`/purchasability — D34;
 `for_account_type` was dropped with the column): it
 requires the caller to hold `org.billing.manage` **in the target organization**
 (`resolveCheckoutOwner` in `lib/payment/checkout-rules.ts`, checked through the
@@ -71,8 +71,8 @@ org is the explicit `orgId` and need not be the active one)
 and calls `change_org_plan`, which moves `organizations.plan` only. The org
 layer (features and limits) is derived live, so there is no snapshot to re-sync.
 The buyer's `profiles.personal_plan_key` is
-deliberately left on the free `launch` tier (#228) — the organization purchase
-never becomes a personal plan.
+deliberately left unchanged — a manager holds no personal plan (ADR-0007), and the
+organization purchase never becomes one.
 
 Confirmed end to end on this case's tenant:
 
@@ -108,7 +108,7 @@ Confirmed end to end on this case's tenant:
 
   > **2026-11-25 (6d; label updated by #1193).** The subscription badge now names
   > every layer of `/me/plan`'s union, so after the purchase it reads „StudiQ Hub
-  > (organizacja) + StudiQ Free (plan osobisty)” — the personal `base` layer is part
+  > (organizacja) + StudiQ Free (plan osobisty)” — the personal `free` layer is part
   > of a manager's plan. The spec asserts „StudiQ Hub” as a substring of
   > `[data-plan-union]`; the purchase, the payment row and the unlocked branding
   > controls are unchanged.

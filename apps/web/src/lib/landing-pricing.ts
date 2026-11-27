@@ -5,7 +5,7 @@ import type { PlanInfo } from '@studiq/server/services/subscription-plan.service
  * the pricing page's recommendation: that list is `RECOMMENDED_PLAN_KEYS` in
  * `pricing-ladders.ts` and names Pro.
  */
-const LANDING_PREMIUM_KEY = 'spark';
+const LANDING_PREMIUM_KEY = 'plus';
 
 export type LandingPricing = {
   /** Free personal plan (price 0). */

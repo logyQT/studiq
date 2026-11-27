@@ -18,7 +18,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  * gives `qa-bil-01-<suffix>` (`tenantKey('qa/cases/BIL-01.md', 'BIL-01#<suffix>',
  * 'qa-shared')` + `tenantId` for every org/user/group id). The student is seeded as
  * an org `member` without a seat assignment, so `/api/v1/me/plan` resolves their
- * **personal** plan (`profiles.personal_plan_key`, default `base`) — the student leg
+ * **personal** plan (`profiles.personal_plan_key`, default `free`) — the student leg
  * of #270/#181. Nothing global is written: the plan catalogue is only read.
  *
  * Walk observation (shared app, pl): the sidebar user menu at the bottom of `/app`
@@ -147,9 +147,9 @@ test.describe('@case:BIL-01 @area:BIL @prio:P2 student billing page', () => {
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-    // The case's entitlement: the student's own free Free plan.
+    // The case's entitlement: the student's own Free plan.
     const plan = await getPlan(page);
-    expect(plan.key, 'the seeded student resolves their personal plan').toBe('base');
+    expect(plan.key, 'the seeded student resolves their personal plan').toBe('free');
     expect(plan.priceMonthly, 'Free is the free tier').toBe(0);
 
     // --- Step 1: „Płatności” from the user menu -------------------------------

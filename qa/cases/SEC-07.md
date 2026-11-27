@@ -24,20 +24,20 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
   `__tests__/qa/profiles/SEC-07.json`, bo `content` jest domyślnym profilem seedera (tak jak
   np. `MGR-01`). Daje on organizację `qa-sec-07-<suffix>` (plan `launch`) z domyślną grupą
   `G1` oraz trzy konta, których wymaga przypadek:
-  - `manager` (typ konta `manager`, plan osobisty `base`) — podmiot przypadku, odpowiednik
+  - `manager` (typ konta `manager`, brak planu osobistego) — podmiot przypadku, odpowiednik
     `manager@dev.local`;
-  - `teacher` (typ `educator`, plan osobisty `base`) — kontrola negatywna „to nie reguła dla
-    managera”: ten sam tenant, ten sam plan osobisty bez `ai.chat`, więc ten sam 403;
-  - `student` (typ `student`, plan osobisty `base`) — kontrola pozytywna **przez plan, nie
-    przez rolę**: spec przestawia `profiles.personal_plan_key` studenta na płatny plan `ace`
+  - `teacher` (typ `educator`, plan osobisty `free`) — kontrola negatywna „to nie reguła dla
+    managera”: ta sama organizacja i ten sam brak `ai.chat`, więc ten sam 403;
+  - `student` (typ `student`, plan osobisty `free`) — kontrola pozytywna **przez plan, nie
+    przez rolę**: spec przestawia `profiles.personal_plan_key` studenta na płatny plan `pro`
     klientem service-role (ten sam wzorzec co `LIM-03.spec.ts` / `STU-52.spec.ts`) i przywraca
     pierwotną wartość w bloku `finally`, żeby retry CI na tym samym tenancie startowało
     czysto.
 - Plan `launch` nie niesie entitlementu `ai.chat` (a jego `max_ai_tokens_per_day = 0`), więc
   resolver nie czyni tego klucza efektywnym dla nikogo, kto opiera się na warstwie
-  organizacji — w tym managera (`base` też go nie niesie) i nauczyciela (`base` też nie).
-  Klucz `ai.chat` jest jednak `personalPortable`, więc płatny plan osobisty `ace` **niesie się
-  wewnątrz organizacji** (D3): student na `ace` w tej samej organizacji `launch` ma
+  organizacji — w tym managera (brak planu osobistego) i nauczyciela (`free` też nie).
+  Klucz `ai.chat` jest jednak `personalPortable`, więc płatny plan osobisty `pro` **niesie się
+  wewnątrz organizacji** (D3): student na `pro` w tej samej organizacji `launch` ma
   `ai.chat` mimo że plan organizacji go nie przyznaje. To właśnie robi granicę planową, a nie
   osobową.
 - Hasło kont: `Seed4Test!`. Wszystkie identyfikatory (organizacja, użytkownicy, id rozmowy)
@@ -55,21 +55,21 @@ bun scripts/qa-tenant.ts SEC-07 --fresh
 1. POST /api/v1/ai/chat z poprawnym ciałem jako manager tenanta.
 2. POST /api/v1/ai/chat z pustym (`{}`) i uszkodzonym ciałem jako manager; GET
    /api/v1/ai/usage jako manager; POST /api/v1/ai/chat bez sesji.
-3. GET /api/v1/me/entitlements i POST /api/v1/ai/chat z `{}` jako teacher (plan osobisty `base`).
+3. GET /api/v1/me/entitlements i POST /api/v1/ai/chat z `{}` jako teacher (plan osobisty `free`).
 4. GET /api/v1/me/entitlements, GET /api/v1/ai/usage i POST /api/v1/ai/chat z `{}` jako student
-   po przestawieniu jego `profiles.personal_plan_key` na `ace`.
+   po przestawieniu jego `profiles.personal_plan_key` na `pro`.
 
 ## Expected result
 
 - 403 FORBIDDEN dla managera — API AI wymaga entitlementu `ai.chat` (ADR-0015 §7); plan
-  `launch` tego tenanta go nie niesie (a plan osobisty managera `base` również), a bramka
+  `launch` tego tenanta go nie niesie (a manager nie ma planu osobistego), a bramka
   wykonuje się przed odczytem ciała żądania (puste i uszkodzone ciało też dostają 403, nigdy
   400). `GET /api/v1/me/entitlements` managera nie zawiera `ai.chat` — to dowód, że 403 pochodzi
   z entitlementu, a nie z typu konta. `GET /api/v1/ai/usage` managera → 403, wywołanie bez
   sesji → 401.
-- Nauczyciel (plan osobisty `base` w tej samej organizacji `launch`) dostaje dokładnie ten
+- Nauczyciel (plan osobisty `free` w tej samej organizacji `launch`) dostaje dokładnie ten
   sam 403 (i `/me/entitlements` bez `ai.chat`) — odmowa nie jest specyficzna dla managera.
-- Student tej samej organizacji, ale z planem osobistym `ace`, dostaje `ai.chat` w
+- Student tej samej organizacji, ale z planem osobistym `pro`, dostaje `ai.chat` w
   `/me/entitlements`, `GET /api/v1/ai/usage` → 200 z `limit = 250000` (i `plan = 'launch'` —
   effective primary to plan organizacji; limit to user-scope `max(org 0, personal 250000)`),
   a `POST /api/v1/ai/chat` z `{}` → 400 BAD_REQUEST: bramka entitlementu go przepuściła, więc

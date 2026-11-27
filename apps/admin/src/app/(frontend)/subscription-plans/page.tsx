@@ -81,9 +81,6 @@ function buildPayload(data: FormData) {
     priceYearly: data.priceYearly === '' ? undefined : Number(data.priceYearly),
     sortOrder: data.sortOrder === '' ? undefined : Number(data.sortOrder),
     scope: data.scope,
-    // No plan carries an audience since #1193: the individual ladder has one
-    // entry path for every persona and organization plans never had one.
-    audience: null,
   };
 }
 

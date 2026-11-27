@@ -49,8 +49,8 @@ function createClient() {
 
 function listedPrice(overrides: Record<string, unknown> = {}) {
   return {
-    planKey: 'spark',
-    stripePriceId: 'price_spark',
+    planKey: 'plus',
+    stripePriceId: 'price_plus',
     currency: 'PLN',
     unitAmount: 999,
     interval: 'month',
@@ -65,13 +65,12 @@ function createRepository(
   return asJson<StripeBillingRepository>({
     getPlan: vi.fn().mockResolvedValue(
       success({
-        key: 'spark',
-        name: 'StudiQ Spark',
+        key: 'plus',
+        name: 'StudiQ Plus',
         priceMonthly: 999,
         currency: 'PLN',
         isActive: true,
         scope: 'personal',
-        audience: 'student',
         sortOrder: 1,
       }),
     ),
@@ -97,12 +96,12 @@ function createRepository(
 function personalInput(overrides: Record<string, unknown> = {}) {
   return {
     owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
-    planKey: 'spark',
-    planName: 'StudiQ Spark',
+    planKey: 'plus',
+    planName: 'StudiQ Plus',
     amount: 999,
     currency: 'PLN',
     billingCycle: 'monthly' as const,
-    priceId: 'price_spark',
+    priceId: 'price_plus',
     locale: 'pl' as const,
     idempotencyKey: 'checkout-key',
     ...overrides,
@@ -119,7 +118,7 @@ function subscriptionFixture(overrides: Record<string, unknown> = {}) {
       data: [
         {
           id: 'si_1',
-          price: { id: 'price_spark' },
+          price: { id: 'price_plus' },
           current_period_start: 1_800_000_000,
           current_period_end: 1_802_592_000,
         },
@@ -161,7 +160,7 @@ function previewInvoice(overrides: Record<string, unknown> = {}) {
           id: 'il_credit',
           pricing: {
             type: 'price_details',
-            price_details: { price: 'price_spark', product: 'prod_1' },
+            price_details: { price: 'price_plus', product: 'prod_1' },
           },
           period: { start: 1_791_000_000, end: 1_800_000_000 },
         },
@@ -169,7 +168,7 @@ function previewInvoice(overrides: Record<string, unknown> = {}) {
           id: 'il_target',
           pricing: {
             type: 'price_details',
-            price_details: { price: 'price_ace', product: 'prod_1' },
+            price_details: { price: 'price_pro', product: 'prod_1' },
           },
           period: { start: 1_800_000_000, end: 1_802_592_000 },
         },
@@ -265,7 +264,7 @@ describe('StripePaymentGateway', () => {
     expect(params).toMatchObject({
       mode: 'subscription',
       customer: 'cus_1',
-      line_items: [{ price: 'price_spark', quantity: 1 }],
+      line_items: [{ price: 'price_plus', quantity: 1 }],
       client_reference_id: 'u-1',
       allow_promotion_codes: false,
       // Managed Payments is the merchant of record and handles tax; it forbids
@@ -273,8 +272,8 @@ describe('StripePaymentGateway', () => {
       managed_payments: { enabled: true },
       locale: 'pl',
       success_url:
-        'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=spark',
-      cancel_url: 'https://studiq.test/checkout?plan_id=spark&canceled=1',
+        'https://studiq.test/billing/success?session_id={CHECKOUT_SESSION_ID}&plan_id=plus',
+      cancel_url: 'https://studiq.test/checkout?plan_id=plus&canceled=1',
       expires_at:
         Math.floor(
           ((Math.floor(NOW.getTime() / CHECKOUT_BUCKET_MS) + 2) * CHECKOUT_BUCKET_MS) / 1000,
@@ -288,7 +287,7 @@ describe('StripePaymentGateway', () => {
       studiq_owner_type: 'user',
       studiq_user_id: 'u-1',
       studiq_org_id: '',
-      studiq_plan_key: 'spark',
+      studiq_plan_key: 'plus',
       studiq_billing_cycle: 'monthly',
     });
     expect(params.subscription_data?.metadata).toEqual(params.metadata);
@@ -311,7 +310,6 @@ describe('StripePaymentGateway', () => {
         currency: 'PLN',
         isActive: true,
         scope: 'organization',
-        audience: null,
         sortOrder: 2,
       }),
     );
@@ -751,9 +749,9 @@ describe('StripePaymentGateway', () => {
       owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
-      currentPlanKey: 'spark',
-      targetPlanKey: 'ace',
-      targetPriceId: 'price_ace',
+      currentPlanKey: 'plus',
+      targetPlanKey: 'pro',
+      targetPriceId: 'price_pro',
       direction: 'upgrade' as const,
       resume: false,
       pendingPlanKey: null,
@@ -770,7 +768,7 @@ describe('StripePaymentGateway', () => {
       expect(client.subscriptions.update).toHaveBeenCalledWith(
         'sub_1',
         {
-          items: [{ id: 'si_1', price: 'price_ace' }],
+          items: [{ id: 'si_1', price: 'price_pro' }],
           billing_cycle_anchor: { type: 'now' },
           proration_behavior: 'always_invoice',
           payment_behavior: 'pending_if_incomplete',
@@ -831,7 +829,7 @@ describe('StripePaymentGateway', () => {
 
       const result = await gateway.changePlan({
         ...changePlanInput,
-        targetPriceId: 'price_spark',
+        targetPriceId: 'price_plus',
       });
 
       expect(result).toEqual(success({ status: 'applied' }));
@@ -856,9 +854,9 @@ describe('StripePaymentGateway', () => {
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
       vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
         asJson<Stripe.Price>({
-          id: 'price_spark',
+          id: 'price_plus',
           object: 'price',
-          metadata: { studiq_plan_key: 'spark' },
+          metadata: { studiq_plan_key: 'plus' },
         }),
       );
       vi.mocked(client.subscriptions.update).mockResolvedValueOnce(subscriptionFixture());
@@ -866,7 +864,7 @@ describe('StripePaymentGateway', () => {
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual(
         success({ status: 'applied' }),
       );
-      expect(client.prices.retrieve).toHaveBeenCalledWith('price_spark');
+      expect(client.prices.retrieve).toHaveBeenCalledWith('price_plus');
       expect(client.subscriptions.update).toHaveBeenCalled();
     });
 
@@ -875,9 +873,9 @@ describe('StripePaymentGateway', () => {
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(success(null));
       vi.mocked(client.prices.retrieve).mockResolvedValueOnce(
         asJson<Stripe.Price>({
-          id: 'price_spark',
+          id: 'price_plus',
           object: 'price',
-          metadata: { studiq_plan_key: 'ace' },
+          metadata: { studiq_plan_key: 'pro' },
         }),
       );
 
@@ -905,7 +903,7 @@ describe('StripePaymentGateway', () => {
     it('refuses a stale mirror whose plan does not match the live price', async () => {
       vi.mocked(client.subscriptions.retrieve).mockResolvedValueOnce(subscriptionFixture());
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(
-        success(listedPrice({ planKey: 'ace', stripePriceId: 'price_spark' })),
+        success(listedPrice({ planKey: 'pro', stripePriceId: 'price_plus' })),
       );
 
       await expect(gateway.changePlan(changePlanInput)).resolves.toEqual({
@@ -922,7 +920,7 @@ describe('StripePaymentGateway', () => {
             data: [
               {
                 id: 'si_1',
-                price: { id: 'price_spark' },
+                price: { id: 'price_plus' },
                 current_period_start: 1,
                 current_period_end: 2,
               },
@@ -1069,12 +1067,12 @@ describe('StripePaymentGateway', () => {
             {
               start_date: 1_800_000_000,
               end_date: 1_802_592_000,
-              items: [{ price: 'price_spark', quantity: 1 }],
+              items: [{ price: 'price_plus', quantity: 1 }],
               metadata: undefined,
             },
             {
               start_date: 1_802_592_000,
-              items: [{ price: 'price_ace', quantity: 1 }],
+              items: [{ price: 'price_pro', quantity: 1 }],
               metadata: undefined,
             },
           ],
@@ -1176,7 +1174,7 @@ describe('StripePaymentGateway', () => {
             data: [
               {
                 id: 'si_1',
-                price: { id: 'price_spark' },
+                price: { id: 'price_plus' },
                 current_period_start: 1_800_000_000,
                 current_period_end: null,
               },
@@ -1209,9 +1207,9 @@ describe('StripePaymentGateway', () => {
       owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
-      currentPlanKey: 'spark',
-      targetPlanKey: 'ace',
-      targetPriceId: 'price_ace',
+      currentPlanKey: 'plus',
+      targetPlanKey: 'pro',
+      targetPriceId: 'price_pro',
       direction: 'upgrade' as const,
       resume: false,
       pendingPlanKey: null,
@@ -1226,8 +1224,8 @@ describe('StripePaymentGateway', () => {
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 3999,
           currency: 'PLN',
           effectiveAt: '2027-01-15T08:00:00.000Z',
@@ -1240,7 +1238,7 @@ describe('StripePaymentGateway', () => {
         customer: 'cus_1',
         subscription: 'sub_1',
         subscription_details: {
-          items: [{ id: 'si_1', price: 'price_ace' }],
+          items: [{ id: 'si_1', price: 'price_pro' }],
           proration_behavior: 'always_invoice',
           billing_cycle_anchor: { type: 'now' },
           cancel_at_period_end: false,
@@ -1257,18 +1255,18 @@ describe('StripePaymentGateway', () => {
       );
       vi.mocked(client.invoices.createPreview).mockResolvedValueOnce(previewInvoice());
 
-      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'free' });
 
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 3999,
           currency: 'PLN',
           effectiveAt: '2027-01-15T08:00:00.000Z',
           resumesAtPeriodEnd: false,
-          replacesPendingPlanKey: 'spark',
+          replacesPendingPlanKey: 'free',
           blockedBySchedule: false,
         }),
       );
@@ -1276,7 +1274,7 @@ describe('StripePaymentGateway', () => {
         customer: 'cus_1',
         subscription: 'sub_1',
         subscription_details: {
-          items: [{ id: 'si_1', price: 'price_ace' }],
+          items: [{ id: 'si_1', price: 'price_pro' }],
           proration_behavior: 'always_invoice',
           billing_cycle_anchor: { type: 'now' },
         },
@@ -1293,18 +1291,18 @@ describe('StripePaymentGateway', () => {
           'The subscription is managed by the subscription schedule `sub_sched_1`, and updating any cancelation behavior is not allowed.',
       });
 
-      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'spark' });
+      const result = await gateway.previewChange({ ...previewInput, pendingPlanKey: 'free' });
 
       expect(result).toEqual(
         success({
           direction: 'upgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 0,
           currency: 'PLN',
           effectiveAt: '2027-02-14T08:00:00.000Z',
           resumesAtPeriodEnd: false,
-          replacesPendingPlanKey: 'spark',
+          replacesPendingPlanKey: 'free',
           blockedBySchedule: true,
         }),
       );
@@ -1321,8 +1319,8 @@ describe('StripePaymentGateway', () => {
       expect(result).toEqual(
         success({
           direction: 'downgrade',
-          currentPlanKey: 'spark',
-          targetPlanKey: 'ace',
+          currentPlanKey: 'plus',
+          targetPlanKey: 'pro',
           amountDue: 0,
           currency: 'PLN',
           effectiveAt: '2027-02-14T08:00:00.000Z',
@@ -1347,7 +1345,7 @@ describe('StripePaymentGateway', () => {
       expect(client.invoices.createPreview).toHaveBeenCalledWith(
         expect.objectContaining({
           subscription_details: {
-            items: [{ id: 'si_1', price: 'price_ace' }],
+            items: [{ id: 'si_1', price: 'price_pro' }],
             proration_behavior: 'always_invoice',
             billing_cycle_anchor: { type: 'now' },
             cancel_at_period_end: false,
@@ -1460,7 +1458,7 @@ describe('StripePaymentGateway', () => {
       owner: { type: 'user' as const, userId: 'u-1', accountType: AccountType.STUDENT },
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
-      currentPlanKey: 'spark',
+      currentPlanKey: 'plus',
     };
 
     it('detaches a pending downgrade schedule without touching the price', async () => {
@@ -1480,7 +1478,7 @@ describe('StripePaymentGateway', () => {
         subscriptionFixture({ schedule: 'sched_old' }),
       );
       vi.mocked(repository.findPriceById).mockResolvedValueOnce(
-        success(listedPrice({ planKey: 'ace', stripePriceId: 'price_spark' })),
+        success(listedPrice({ planKey: 'pro', stripePriceId: 'price_plus' })),
       );
 
       await expect(gateway.releaseScheduledPlan(releaseInput)).resolves.toEqual({

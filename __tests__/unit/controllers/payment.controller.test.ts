@@ -28,8 +28,8 @@ const mockCtx: RequestContext = {
 
 const payment = {
   id: 'p-1',
-  planKey: 'spark',
-  planName: 'StudiQ Spark',
+  planKey: 'plus',
+  planName: 'StudiQ Plus',
   amount: 999,
   currency: 'PLN',
   paidAt: '2026-10-25T10:00:00.000Z',

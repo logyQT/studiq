@@ -315,7 +315,7 @@ async function expectDeckCounts(page: Page, locale: Locale): Promise<void> {
  * Recreate one deck with exactly `count` flashcards through the product API.
  * Deleting first makes a re-run on an already-seeded tenant deterministic (the
  * CI seeds one tenant per spec without a fresh suffix) and keeps the student's
- * Base limits untouched: three decks, eight cards.
+ * Free limits untouched: three decks, eight cards.
  */
 async function resetDeck(page: Page, name: string, count: number): Promise<void> {
   const listResponse = await page.request.get(`${DECKS_URL}?limit=100`);

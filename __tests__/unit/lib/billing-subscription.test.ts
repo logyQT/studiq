@@ -27,10 +27,10 @@ import { describe, expect, it } from 'vitest';
 function subscription(overrides: Partial<BillingSubscriptionView> = {}): BillingSubscriptionView {
   return {
     provider: 'stripe',
-    planKey: 'spark',
-    planName: 'StudiQ Spark',
-    billedPlanKey: 'spark',
-    billedPlanName: 'StudiQ Spark',
+    planKey: 'plus',
+    planName: 'StudiQ Plus',
+    billedPlanKey: 'plus',
+    billedPlanName: 'StudiQ Plus',
     status: 'active',
     currentPeriodEnd: '2026-12-01T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -59,14 +59,13 @@ function plan(key: string, overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 0,
     isActive: true,
     scope: 'personal',
-    audience: null,
     seatEligible: false,
     ...overrides,
   };
 }
 
 describe('billingPlanFamily', () => {
-  it('maps the three account types to the manager (organization) family and the personal audiences', () => {
+  it('maps the three account types to the manager (organization) family and the personal family', () => {
     expect(billingPlanFamily(AccountType.MANAGER)).toBe('manager');
     expect(billingPlanFamily(AccountType.EDUCATOR)).toBe('educator');
     expect(billingPlanFamily(AccountType.STUDENT)).toBe('student');
@@ -77,26 +76,26 @@ describe('alternativePlans', () => {
   it('keeps every paid personal plan, excluding the current plan', () => {
     const options = alternativePlans(
       [
-        plan('base', { priceMonthly: 0 }),
-        plan('ace', { priceMonthly: 3999 }),
-        plan('pro', { priceMonthly: 7999 }),
-        plan('spark', { priceMonthly: 1999 }),
+        plan('free', { priceMonthly: 0 }),
+        plan('pro', { priceMonthly: 3999 }),
+        plan('max', { priceMonthly: 7999 }),
+        plan('plus', { priceMonthly: 1999 }),
       ],
       subscription(),
       AccountType.STUDENT,
     );
 
-    expect(options.map((option) => option.key)).toEqual(['ace', 'pro']);
+    expect(options.map((option) => option.key)).toEqual(['pro', 'max']);
   });
 
   it('excludes the billed plan even when the effective plan is a seat plan', () => {
     const options = alternativePlans(
-      [plan('spark', { priceMonthly: 1999 }), plan('pro', { priceMonthly: 7999 })],
-      subscription({ planKey: 'ace', planName: 'StudiQ Pro', billedPlanKey: 'spark' }),
+      [plan('plus', { priceMonthly: 1999 }), plan('max', { priceMonthly: 7999 })],
+      subscription({ planKey: 'pro', planName: 'StudiQ Pro', billedPlanKey: 'plus' }),
       AccountType.STUDENT,
     );
 
-    expect(options.map((option) => option.key)).toEqual(['pro']);
+    expect(options.map((option) => option.key)).toEqual(['max']);
   });
 
   it('returns an empty list without a catalogue', () => {
@@ -106,10 +105,10 @@ describe('alternativePlans', () => {
   it('keeps paid organization plans for a manager, excluding the current plan (D34)', () => {
     const options = alternativePlans(
       [
-        plan('launch', { priceMonthly: 0, scope: 'organization', audience: null }),
-        plan('hub', { priceMonthly: 29900, scope: 'organization', audience: null }),
-        plan('campus', { priceMonthly: 69900, scope: 'organization', audience: null }),
-        plan('spark', { priceMonthly: 1999 }),
+        plan('launch', { priceMonthly: 0, scope: 'organization' }),
+        plan('hub', { priceMonthly: 29900, scope: 'organization' }),
+        plan('campus', { priceMonthly: 69900, scope: 'organization' }),
+        plan('plus', { priceMonthly: 1999 }),
       ],
       subscription({ planKey: 'launch', billedPlanKey: 'launch' }),
       AccountType.MANAGER,
@@ -221,13 +220,13 @@ describe('activatedPlanLabel', () => {
     expect(
       activatedPlanLabel(
         subscription({
-          planKey: 'ace',
-          planName: 'StudiQ Ace',
-          billedPlanKey: 'spark',
-          billedPlanName: 'StudiQ Spark',
+          planKey: 'pro',
+          planName: 'StudiQ Pro',
+          billedPlanKey: 'plus',
+          billedPlanName: 'StudiQ Plus',
         }),
       ),
-    ).toBe('StudiQ Spark');
+    ).toBe('StudiQ Plus');
   });
 
   it('returns null when the billed plan has no catalogue name', () => {
@@ -332,15 +331,15 @@ describe('billingCardRequest', () => {
       body: {},
     });
     // Change, preview and cancel write it into the JSON body.
-    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, true)).toEqual({
+    expect(billingCardRequest({ type: 'change', planKey: 'pro' }, true)).toEqual({
       method: 'POST',
       url: '/api/v1/billing/change-plan',
-      body: { planKey: 'ace', scope: 'personal' },
+      body: { planKey: 'pro', scope: 'personal' },
     });
-    expect(billingCardRequest({ type: 'preview', planKey: 'ace' }, true)).toEqual({
+    expect(billingCardRequest({ type: 'preview', planKey: 'pro' }, true)).toEqual({
       method: 'POST',
       url: '/api/v1/billing/change-plan/preview',
-      body: { planKey: 'ace', scope: 'personal' },
+      body: { planKey: 'pro', scope: 'personal' },
     });
     expect(billingCardRequest({ type: 'cancel', cancel: true }, true)).toEqual({
       method: 'POST',
@@ -359,10 +358,10 @@ describe('billingCardRequest', () => {
       url: '/api/v1/billing/release-scheduled-plan',
       body: {},
     });
-    expect(billingCardRequest({ type: 'change', planKey: 'ace' }, false)).toEqual({
+    expect(billingCardRequest({ type: 'change', planKey: 'pro' }, false)).toEqual({
       method: 'POST',
       url: '/api/v1/billing/change-plan',
-      body: { planKey: 'ace' },
+      body: { planKey: 'pro' },
     });
     expect(billingCardRequest({ type: 'preview', planKey: 'ace' }, false)).toEqual({
       method: 'POST',
@@ -447,14 +446,14 @@ describe('cancellation state', () => {
 
 describe('withPersonalScope', () => {
   it('adds the personal scope to a billing action body', () => {
-    expect(withPersonalScope({ planKey: 'ace' }, true)).toEqual({
-      planKey: 'ace',
+    expect(withPersonalScope({ planKey: 'pro' }, true)).toEqual({
+      planKey: 'pro',
       scope: 'personal',
     });
     expect(withPersonalScope({ cancel: true }, true)).toEqual({ cancel: true, scope: 'personal' });
   });
 
   it('leaves the body untouched off a personal surface', () => {
-    expect(withPersonalScope({ planKey: 'ace' }, false)).toEqual({ planKey: 'ace' });
+    expect(withPersonalScope({ planKey: 'pro' }, false)).toEqual({ planKey: 'pro' });
   });
 });

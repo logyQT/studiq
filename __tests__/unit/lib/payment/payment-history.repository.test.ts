@@ -12,8 +12,8 @@ const mockInput: PaymentHistoryInput = {
   sessionId: 'cs_mock_1',
   userId: 'u-1',
   organizationId: null,
-  planKey: 'spark',
-  planName: 'StudiQ Spark',
+  planKey: 'plus',
+  planName: 'StudiQ Plus',
   amount: 999,
   currency: 'PLN',
 };
@@ -65,7 +65,7 @@ describe('SupabasePaymentHistoryWriter.record', () => {
   it('returns the recorded purchase on a replay', async () => {
     const client = createClient({
       lookup: {
-        data: { user_id: 'u-1', organization_id: null, plan_key: 'spark' },
+        data: { user_id: 'u-1', organization_id: null, plan_key: 'plus' },
         error: null,
       },
     });
@@ -75,7 +75,7 @@ describe('SupabasePaymentHistoryWriter.record', () => {
       success: true,
       data: {
         outcome: 'duplicate',
-        existing: { userId: 'u-1', organizationId: null, planKey: 'spark' },
+        existing: { userId: 'u-1', organizationId: null, planKey: 'plus' },
       },
     });
   });

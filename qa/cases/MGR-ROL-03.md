@@ -103,7 +103,7 @@ punkty opisują to, co spec pinuje; przebieg 5/5 wykonuje koordynator programu.
 - Użytkownik roli niestandardowej ma `entitlement_profile = 'none'`, więc rola nie
   wnosi żadnego uprawnienia organizacyjnego (nie istnieje już osobny magazyn
   uprawnień per rola);
-  powierzchnię `/app/*` utrzymuje jego własny plan `base`. Asercje przypadku dotyczą
+  powierzchnię `/app/*` utrzymuje jego własny plan `free`. Asercje przypadku dotyczą
   **uprawnień treściowych** roli (zakresy Własne / Grupa / Organizacja), nie jej
   uprawnień organizacyjnych. `GET /api/v1/organization/groups` zwraca mu 403 (brak
   `member.manage`), co nie wpływa na listy treści.

@@ -51,7 +51,7 @@ async function roleIds(orgId: string) {
 // Regression suite for the two onboarding blockers fixed in the seed flow:
 // - 422 on bulk invite (targetOrgRoleId was sent as the role NAME 'member',
 //   backend requires the org_role UUID)
-// - 429 on invite accept for freshly registered 'base'-plan students
+// - 429 on invite accept for freshly registered 'free'-plan students
 //   (getEffectiveLimit('max_students') returned 0 because the student has no
 //   active org — now resolved against the invitation's organization plan)
 

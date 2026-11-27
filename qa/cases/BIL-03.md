@@ -21,7 +21,7 @@ bun scripts/qa-tenant.ts BIL-03 --profile bare --role student --fresh
 ```
 
 `bare`/`student` reproduces the case's starting point exactly: one **student under
-test** (`users.student`), no organization, no group, and the default free `base`
+test** (`users.student`), no organization, no group, and the default free `free`
 personal plan that the `handle_new_user` trigger writes. Every id derives from
 `tenantKey('qa/cases/BIL-03.md', 'BIL-03#<run>', 'qa-shared')` + `tenantId`; the
 `--fresh` suffix makes each independent run a new student, so the purchase never

@@ -83,7 +83,7 @@ bun scripts/qa-tenant.ts MGR-SET-01 --fresh
 
 > **2026-11-25 (6d).** The „Subskrypcja” badge now names every layer of
 > `/me/plan`'s union, so it reads „StudiQ Launch (organizacja) + StudiQ Free (plan
-> osobisty)” — the personal `base` layer is part of a manager's plan. The
+> osobisty)” — the personal `free` layer is part of a manager's plan. The
 > observation's badge text above is the org layer; the spec asserts it as a
 > substring of `[data-plan-union]`. The `/pricing` walk below is unchanged (a
 > catalogue page, not the badge).

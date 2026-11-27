@@ -1196,7 +1196,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1221,7 +1221,7 @@ describe('RLS tenant isolation (#191)', () => {
       expect(unseatedEntitlements).toEqual([]);
 
       // A seat adds seat-eligible keys through `seat plan ∩ ceiling`; the
-      // baseline pair is in both `hub` and `pro`, and `none` grants nothing.
+      // baseline pair is in both `hub` and `max`, and `none` grants nothing.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,
@@ -1278,7 +1278,7 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
-    // A `none`-profile custom role in a `hub` org with a `pro` seat. The
+    // A `none`-profile custom role in a `hub` org with a `max` seat. The
     // resolver must use the seat plan for the seated actor; before the r4 fix
     // the org-plan fallback still granted the org plan through PostgREST. Since
     // #1493 the hub ceiling is the baseline pair, so the seat's baseline keys
@@ -1326,7 +1326,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 1, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 1, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1429,7 +1429,7 @@ describe('RLS tenant isolation (#191)', () => {
     try {
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();

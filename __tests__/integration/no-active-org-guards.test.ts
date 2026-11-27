@@ -41,9 +41,6 @@ type ForbiddenBody = { success: boolean; error?: string };
 /** `POST /teacher/assignments/:id/randomize` payload — the field read below. */
 type RandomizeBody = { data: { added: number } };
 
-/** `POST /flashcards/decks` payload — the created row id. */
-type DeckBody = { data: { id: string } };
-
 /**
  * #148 — org-scoped services must not put `activeOrgId === null` into a PostgREST filter.
  *
@@ -160,7 +157,10 @@ describe(`No active org guards`, () => {
   // resolves the personal-content set like a student does. Served through the
   // real route so the context under test is withAuth's (no `active_org_id`
   // cookie), not a hand-built one.
-  it('POST /api/v1/flashcards/decks creates a personal deck for a manager with no active org', async () => {
+  //
+  // A manager holds no personal plan (ADR-0007), so the route authorizes the
+  // call and then refuses it at the zero quota: 429, never 403.
+  it('authorizes a manager with no active org on the content route and refuses at the zero quota', async () => {
     mockUser(noOrgManager);
     const name = `no-org-manager-deck-${suiteId}`;
 
@@ -170,22 +170,14 @@ describe(`No active org guards`, () => {
       body: JSON.stringify({ name }),
     });
     const res = await deckCreatePost(req);
-    const body = await json<DeckBody>(res);
+    const body = await json<ForbiddenBody>(res);
 
-    expect(res.status).toBe(201);
-    if (res.status !== 201) return;
+    expect(res.status).toBe(429);
+    expect(body).toEqual({ success: false, error: 'USAGE_LIMIT_EXCEEDED' });
+    expect(res.headers.get('x-error-code')).toBe('USAGE_LIMIT_EXCEEDED');
 
-    const { data } = await service
-      .from('flashcard_decks')
-      .select('name, organization_id, visibility, created_by')
-      .eq('id', body.data.id)
-      .single();
-    expect(data).toEqual({
-      name,
-      organization_id: null,
-      visibility: 'personal',
-      created_by: noOrgManager.id,
-    });
+    const { data } = await service.from('flashcard_decks').select('id').eq('name', name);
+    expect(data ?? []).toEqual([]);
   });
 
   // `quiz.*` and assignment creation stay out of the personal set because their

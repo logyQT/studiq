@@ -161,7 +161,7 @@ test.describe('@case:MGR-SET-01 @area:MGR @prio:P2 branding plan gate', () => {
     const plans = await getData<PlanInfo[]>(page, PLANS_API);
     const launchPlan = plans.find((candidate) => candidate.key === 'launch');
     if (!launchPlan) throw new Error('plan catalogue has no launch plan');
-    // The badge names every layer of the union; this manager's personal `base`
+    // The badge names every layer of the union; this manager's personal `free`
     // layer follows the org plan, so the org layer is asserted as a substring.
     await expect(
       page

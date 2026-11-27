@@ -14,7 +14,7 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *   scripts/fake-llm/cases/STU-47.slow-stream.json  13 chunks, 400 ms apart
  *
  * Tenant: `bun scripts/qa-tenant.ts STU-47 --fresh` (`content` profile on the
- * `hub` plan with `personalPlan: "spark"`: the organization ladder is capacity
+ * `hub` plan with `personalPlan: "plus"`: the organization ladder is capacity
  * only since #1493, so the student's personal Plus plan carries `ai.chat` and
  * its finite budget of 100 000 tokens is what makes the counter assertable). The
  * spec signs in as the tenant's `users.student`.

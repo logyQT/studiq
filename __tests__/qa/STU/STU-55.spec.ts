@@ -5,7 +5,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
 
 /**
  * STU-55 — positive control for the `stats.insights` gate (ADR-0015 §7, phase
- * 5d, R39): a student whose **personal** plan is the paid `ace` (Pro) resolves
+ * 5d, R39): a student whose **personal** plan is the paid `pro` (Pro) resolves
  * `stats.insights` inside a free `launch` org (the key is `personalPortable`,
  * D3), so the diagnostic reads answer 200 and the cards render — no plan card.
  *
@@ -16,7 +16,7 @@ import { loadTenant, loginAs, tenantUser } from '#test/qa/fixtures/tenant';
  *
  *   bun scripts/qa-tenant.ts STU-55 --fresh
  *
- * The spec moves the tenant student's `profiles.personal_plan_key` to `ace`
+ * The spec moves the tenant student's `profiles.personal_plan_key` to `pro`
  * through the service-role client (the SEC-07 `finally`-restore pattern) and
  * restores the seeded plan in `finally`, so a CI retry on the same tenant
  * starts clean. Nothing shared is read or written beyond that one tenant row.
@@ -84,7 +84,7 @@ test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the st
 
     const db = createQaSupabase();
 
-    // --- Prerequisite: the student's own personal plan is the paid `ace` -----
+    // --- Prerequisite: the student's own personal plan is the paid `pro` -----
     // Same shape as SEC-07's positive control: read, set, restore in `finally`.
     const originalPlanRow = await db
       .from('profiles')
@@ -92,12 +92,12 @@ test.describe('@case:STU-55 @area:STU @prio:P2 paid personal plan unlocks the st
       .eq('id', student.id)
       .maybeSingle();
     expect(originalPlanRow.error, 'reading the tenant student’s personal plan').toBeNull();
-    const originalPlan = asJson<string | null>(originalPlanRow.data?.personal_plan_key) ?? 'base';
+    const originalPlan = asJson<string | null>(originalPlanRow.data?.personal_plan_key) ?? 'free';
 
     try {
       const setup = await db
         .from('profiles')
-        .update({ personal_plan_key: 'ace' })
+        .update({ personal_plan_key: 'pro' })
         .eq('id', student.id);
       expect(setup.error, 'move the tenant student to the paid Pro plan').toBeNull();
 

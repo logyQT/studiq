@@ -113,7 +113,6 @@ describe(`Plan limit enforcement`, () => {
       currency: 'PLN',
       sort_order: 999,
       scope: 'personal',
-      audience: null,
       is_active: false,
     });
     if (planError) throw new Error(`[limits] plan create failed: ${planError.message}`);

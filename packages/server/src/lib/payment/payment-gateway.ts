@@ -30,7 +30,7 @@ export type PaymentOwner =
 export interface CreateCheckoutSessionInput {
   /** Resolved by `BillingService` from `ctx` (and the verified org admin role). */
   owner: PaymentOwner;
-  /** Plan key (`spark`, `hub`, …), not the plan UUID. */
+  /** Plan key (`plus`, `hub`, …), not the plan UUID. */
   planKey: string;
   /** Catalog snapshot used to build the provider session. */
   planName: string;

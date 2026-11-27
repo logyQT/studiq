@@ -183,7 +183,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('a base seat does not zero the personal AI allowance in a hub org (phase-3 exit case)', async () => {
     await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
-    await seatUser(fixture.orgId!, fixture.user.id, 'base');
+    await seatUser(fixture.orgId!, fixture.user.id, 'free');
     // The organization ladder carries no AI quota since #1493; the member's
     // paid personal plan supplies it (`personalPortable`).
     const { data: profile } = await service
@@ -192,13 +192,13 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       .eq('id', fixture.user.id)
       .single();
     const originalPlan = profile!.personal_plan_key;
-    await service.from('profiles').update({ personal_plan_key: 'spark' }).eq('id', fixture.user.id);
+    await service.from('profiles').update({ personal_plan_key: 'plus' }).eq('id', fixture.user.id);
 
     try {
-      // max(org hub 0, seat base 0, personal spark 100000) = 100000 — the
+      // max(org hub 0, seat base 0, personal plus 100000) = 100000 — the
       // seat's 0 must not win, and the org no longer funds AI.
       await expect(effectiveLimit(memberCtx(), 'max_ai_tokens_per_day')).resolves.toBe(100000);
-      // max(hub 2000, base 100, spark 1000) = 2000.
+      // max(hub 2000, base 100, plus 1000) = 2000.
       await expect(effectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
       // Org-scope capacity stays the org plan's: hub max_students = 50, never
       // the seat plan's -1.
@@ -207,8 +207,8 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
       const { entitlements, sources } = await resolver.resolveEntitlements(memberCtx());
       // ai.chat arrives through the personal plan, with a non-zero quota.
       expect(entitlements).toContain('ai.chat');
-      expect(sources.personal).toEqual({ planKey: 'spark', origin: 'personal' });
-      expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
+      expect(sources.personal).toEqual({ planKey: 'plus', origin: 'personal' });
+      expect(sources.seat).toEqual({ planKey: 'free', origin: 'seat' });
     } finally {
       await service
         .from('profiles')
@@ -218,15 +218,15 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
   });
 
   it('a forged active_org_id with a stale seat row resolves the personal plan for user keys and 0 for org keys', async () => {
-    // The foreign org sits on hub (max_flashcards 2000) and the fixture user
-    // has a stale `base` seat row in it — but no org_members row.
+    // The foreign org sits on hub (max_flashcards 2000) and the student has a
+    // stale `free` seat row in it — but no org_members row.
     await service.from('organizations').update({ plan: 'hub' }).eq('id', foreignOrgId);
-    await seatUser(foreignOrgId, fixture.user.id, 'base');
+    await seatUser(foreignOrgId, student.id, 'free');
 
     const { data: profile } = await service
       .from('profiles')
       .select('personal_plan_key')
-      .eq('id', fixture.user.id)
+      .eq('id', student.id)
       .single();
     const personalPlanKey = profile!.personal_plan_key;
     const { data: personalLimit } = await service
@@ -241,7 +241,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
     const spoofed = memberCtx({
       activeOrgId: foreignOrgId,
       orgRoleId: null,
-      userId: fixture.user.id,
+      userId: student.id,
     });
     await expect(effectiveLimit(spoofed, 'max_flashcards')).resolves.toBe(
       personalLimit!.limit_value,
@@ -257,8 +257,8 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('a student personal plan raises (never lowers) a user-scope limit inside the org', async () => {
     // Org on launch (max_flashcards 100, max_ai_tokens_per_day 0); the student
-    // member's personal plan is `pro` (Max: 25000 cards, 500000 tokens).
-    await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', student.id);
+    // member's personal plan is `max` (Max: 25000 cards, 500000 tokens).
+    await service.from('profiles').update({ personal_plan_key: 'max' }).eq('id', student.id);
     const studentCtx: RequestContext = {
       traceId: `limits-student-${suiteId}`,
       userId: student.id,
@@ -335,7 +335,6 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
         currency: 'PLN',
         sort_order: 999,
         scope: 'organization',
-        audience: null,
         is_active: false,
       });
       if (planError) throw new Error(`[limits] plan create failed: ${planError.message}`);
@@ -385,19 +384,19 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('the resolution reports the effective primary plan and the union sources', async () => {
     await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
-    await seatUser(fixture.orgId!, fixture.user.id, 'base');
+    await seatUser(fixture.orgId!, fixture.user.id, 'free');
 
     const { plan, sources } = await resolver.resolveEntitlements(memberCtx());
 
     expect(plan.primary).toBe('hub');
     expect(sources.org).toEqual({ planKey: 'hub', origin: 'org' });
-    expect(sources.seat).toEqual({ planKey: 'base', origin: 'seat' });
-    // The manager's personal plan is `base` (personal scope), which applies
-    // inside the org for limits/portable keys (D34).
+    expect(sources.seat).toEqual({ planKey: 'free', origin: 'seat' });
+    // A manager holds no personal plan (ADR-0007), so the union is the org
+    // layer plus the seat: there is no personal source to report.
+    expect(sources.personal).toBeNull();
     expect(plan.sources).toEqual([
       { planKey: 'hub', origin: 'org' },
-      { planKey: 'base', origin: 'seat' },
-      { planKey: 'base', origin: 'personal' },
+      { planKey: 'free', origin: 'seat' },
     ]);
   });
 });
