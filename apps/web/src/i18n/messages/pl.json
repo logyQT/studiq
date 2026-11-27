@@ -3246,6 +3246,13 @@
     "ungraded": "Oczekuje na ocenę — pytania otwarte nie wchodzą jeszcze do wyniku."
   },
   "AppAssignmentTakePage": {
+    "confirm_title": "Wysłać odpowiedzi?",
+    "confirm_final": "Po wysłaniu nie można ich zmienić.",
+    "confirm_unanswered": "{count, plural, one {# pytanie nie ma odpowiedzi.} few {# pytania nie mają odpowiedzi.} many {# pytań nie ma odpowiedzi.} other {# pytania nie ma odpowiedzi.}}",
+    "confirm_jump": "Pytanie {number}",
+    "confirm_back": "Wróć",
+    "confirm_submit": "Wyślij odpowiedzi",
+    "confirm_submit_anyway": "Wyślij mimo to",
     "upload_failed": "Błąd przesyłania",
     "quit": "Wyjdź",
     "answer_placeholder": "Wpisz swoją odpowiedź...",

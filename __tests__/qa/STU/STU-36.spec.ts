@@ -63,6 +63,9 @@ const COPY = {
   completedCard: 'Ukończono',
   score: 'Wynik: 1/1',
   submit: 'Wyślij',
+  confirmSubmit: 'Wyślij odpowiedzi',
+  confirmSubmitAnyway: 'Wyślij mimo to',
+  confirmBack: 'Wróć',
   review: 'Zobacz podsumowanie',
   reviewLocked: 'Podsumowanie otwiera się po zakończeniu kartkówki.',
 } as const;
@@ -268,6 +271,17 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     expect(attemptId, 'the take page carries the attempt id').toBeTruthy();
 
     await expect(page.getByText(QUESTION_CONTENT, { exact: true })).toBeVisible();
+    // An unanswered question is named, and „Wróć” keeps the attempt open (#1353).
+    await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByRole('button', { name: 'Pytanie 1', exact: true })).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: COPY.confirmSubmitAnyway, exact: true }),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: COPY.confirmBack, exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect((await readAssignment(page, assignment.id)).attempts_used, 'nothing was sent').toBe(0);
+
     await page.getByText(CORRECT_ANSWER, { exact: true }).click();
     await expect(
       page.getByRole('radio', { checked: true }),
@@ -275,6 +289,11 @@ test.describe('@case:STU-36 @area:STU @prio:P2 assignment max attempts', () => {
     ).toHaveCount(1);
 
     await page.getByRole('button', { name: COPY.submit, exact: true }).click();
+    await expect(dialog.getByRole('button', { name: /^Pytanie \d$/ })).toHaveCount(0);
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: COPY.confirmSubmit, exact: true })
+      .click();
     await page.waitForURL(new RegExp(`/app/assignments/${assignment.id}$`));
 
     // The attempt is completed and the result card replaces the start action.
