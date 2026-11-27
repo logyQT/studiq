@@ -36,6 +36,7 @@ interface Deps {
   expectedPlanKey: string | null;
   sleep: Mock;
   isCancelled: Mock;
+  invalidateAuthority: Mock;
 }
 
 function deps(overrides: Partial<Deps> = {}): Deps {
@@ -45,6 +46,7 @@ function deps(overrides: Partial<Deps> = {}): Deps {
     expectedPlanKey: 'plus',
     sleep: vi.fn().mockResolvedValue(undefined),
     isCancelled: vi.fn().mockReturnValue(false),
+    invalidateAuthority: vi.fn(),
     ...overrides,
   };
 }
@@ -215,5 +217,32 @@ describe('pollBillingActivation', () => {
 
     await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'cancelled' });
     expect(d.readSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the authority caches after the activation is observed', async () => {
+    const d = deps();
+
+    await pollBillingActivation(d);
+
+    expect(d.invalidateAuthority).toHaveBeenCalledTimes(1);
+    expect(firstRecorded(d.readSubscription.mock.invocationCallOrder)).toBeLessThan(
+      firstRecorded(d.invalidateAuthority.mock.invocationCallOrder),
+    );
+  });
+
+  it('drops the authority caches when the wait times out', async () => {
+    const d = deps({ readSubscription: vi.fn().mockResolvedValue(view({ status: 'free' })) });
+
+    await pollBillingActivation(d);
+
+    expect(d.invalidateAuthority).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the caches alone when the caller is cancelled', async () => {
+    const d = deps({ isCancelled: vi.fn().mockReturnValue(true) });
+
+    await pollBillingActivation(d);
+
+    expect(d.invalidateAuthority).not.toHaveBeenCalled();
   });
 });

@@ -96,6 +96,7 @@ function BillingSuccessContent() {
         expectedPlanKey: purchasedPlanKey,
         sleep,
         isCancelled: () => cancelled,
+        invalidateAuthority: () => invalidateAuthority(queryClient),
       });
 
       if (result.state === 'cancelled') return;
