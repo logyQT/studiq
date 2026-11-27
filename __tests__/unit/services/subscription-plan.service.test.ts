@@ -881,18 +881,6 @@ describe('SubscriptionPlanService', () => {
       expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('maps the unassigned unlisted refusal to CONFLICT', async () => {
-      mock.rpc.mockResolvedValueOnce({
-        data: null,
-        error: { code: '42501', message: 'unlisted and not assigned' },
-      });
-
-      const result = await service.assignOrganization('contract', 'org-1');
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('CONFLICT');
-    });
-
     it('maps a plan whose scope is not organization to BAD_REQUEST', async () => {
       // A personal plan would grant personal entitlements to an organization;
       // the database refuses it with 22023 before it pins anything.

@@ -446,9 +446,9 @@ export class SubscriptionPlanService {
    *
    * A plan or organization that does not exist is `NOT_FOUND` (`P0002`). A plan
    * whose scope is not `organization` is `BAD_REQUEST` (`22023`): a personal
-   * plan would grant personal entitlements to an organization. `42501` means
-   * the plan is unlisted and the pin did not land; that is `CONFLICT`, the same
-   * class as the unpin refusal.
+   * plan would grant personal entitlements to an organization. The function
+   * writes the pin itself, so it never raises the assignment refusal (`42501`)
+   * that `change_org_plan` raises for an unlisted plan without a pin.
    */
   async assignOrganization(
     planKey: string,
@@ -464,7 +464,6 @@ export class SubscriptionPlanService {
     if (error) {
       if (error.code === 'P0002') return failure('NOT_FOUND');
       if (error.code === '22023') return failure('BAD_REQUEST');
-      if (error.code === '42501') return failure('CONFLICT');
       return toDbFailure(error);
     }
 

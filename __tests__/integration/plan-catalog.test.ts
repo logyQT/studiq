@@ -20,6 +20,12 @@ import { createServiceClient } from '#test/integration/helpers';
 // DELETEd and re-inserted them on every `db reset`; production (`db push`,
 // which never runs seeds) had no reproducible catalogue at all. The matrix here
 // is a literal copy of the migration's, so the two must move together.
+//
+// B3 (#1495) makes an unlisted runtime plan a supported object: an admin
+// creates it at runtime, pins it to an organization, and the public never sees
+// it. The matrix is therefore the eight *public* rows. A runtime plan must not
+// be counted, and a pre-B3 sweep that tries to delete one is refused by the
+// pin's foreign key — that refusal is the protection, not a failure.
 
 const CATALOGUE_FILE = path.join(
   process.cwd(),
@@ -170,6 +176,34 @@ const REPLAY_USER_ID = '00000000-0000-4000-8000-0000000c0de1';
 const REPLAY_CUSTOMER_ID = '00000000-0000-4000-8000-0000000c0de2';
 const REPLAY_SUBSCRIPTION_ID = '00000000-0000-4000-8000-0000000c0de3';
 
+/**
+ * The key of the runtime contract plan a fresh stack creates for the replay
+ * tests. A stack the QA worker has used already holds one; the row this name
+ * inserts lives only inside the rolled-back transaction that needed it.
+ */
+const RUNTIME_PLAN_KEY = 'runtime_unlisted_probe';
+
+interface Refusal {
+  code: string;
+  constraint?: string;
+}
+
+/** The error a refused statement rejects with; `NO_ERROR` means the statement ran. */
+async function refusal(statement: () => Promise<unknown>): Promise<Refusal> {
+  try {
+    await statement();
+    return { code: 'NO_ERROR' };
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error) {
+      return {
+        code: String(error.code),
+        ...('constraint_name' in error ? { constraint: String(error.constraint_name) } : {}),
+      };
+    }
+    throw error;
+  }
+}
+
 async function seedSubscription(tx: postgres.ISql): Promise<void> {
   await tx.unsafe(
     `insert into auth.users (
@@ -265,6 +299,75 @@ async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   };
 }
 
+/** The keys of every plan row the eight-plan matrix does not list. */
+async function runtimePlanKeys(tx: postgres.ISql): Promise<string[]> {
+  const rows = await tx<Array<{ key: string }>>`
+    select key from public.subscription_plans
+    where not (key = any(${Object.keys(MATRIX)}::text[]))
+    order by key`;
+  return rows.map((row) => row.key);
+}
+
+/**
+ * The key of an unlisted runtime plan. A stack the QA worker used already holds
+ * one; a fresh stack gets a temporary row that the caller's rollback removes.
+ */
+async function ensureUnlistedRuntimePlan(tx: postgres.ISql): Promise<string> {
+  const existing = await tx<Array<{ key: string }>>`
+    select key from public.subscription_plans
+    where visibility = 'unlisted'
+    order by key
+    limit 1`;
+  if (existing[0]) return existing[0].key;
+
+  await tx.unsafe(
+    `insert into public.subscription_plans
+       (key, name, scope, visibility, billing_mode, price_monthly, sort_order)
+     values ($1, 'Runtime contract probe', 'organization', 'unlisted', 'invoice', 0, 900)`,
+    [RUNTIME_PLAN_KEY],
+  );
+  return RUNTIME_PLAN_KEY;
+}
+
+/** The same plan, pinned to an organization, which is how B3 supports it. */
+async function ensurePinnedRuntimePlan(tx: postgres.ISql): Promise<string> {
+  const pinned = await tx<Array<{ plan_key: string }>>`
+    select pa.plan_key
+    from public.plan_assignments pa
+    join public.subscription_plans pl on pl.key = pa.plan_key
+    where pl.visibility = 'unlisted'
+    order by pa.created_at
+    limit 1`;
+  if (pinned[0]) return pinned[0].plan_key;
+
+  const planKey = await ensureUnlistedRuntimePlan(tx);
+  const org = await tx<Array<{ id: string }>>`
+    insert into public.organizations (name) values ('plan-catalog runtime probe') returning id`;
+  await tx.unsafe(
+    `insert into public.plan_assignments (plan_key, organization_id) values ($1, $2)`,
+    [planKey, org[0]!.id],
+  );
+  return planKey;
+}
+
+/**
+ * Unpin and remove every plan the matrix does not list, so a pre-B3 sweep has
+ * nothing to refuse. The organization moves first: the unpin trigger refuses to
+ * orphan an organization that is still on the plan, and `organizations.plan`
+ * blocks the delete on its own.
+ */
+async function releaseRuntimePlans(tx: postgres.ISql): Promise<string[]> {
+  const keys = await runtimePlanKeys(tx);
+  if (keys.length === 0) return keys;
+
+  await tx.unsafe(`update public.organizations set plan = 'launch' where plan = any($1::text[])`, [
+    keys,
+  ]);
+  await tx.unsafe(`delete from public.plan_assignments where plan_key = any($1::text[])`, [keys]);
+  await tx.unsafe(`delete from public.subscription_plans where key = any($1::text[])`, [keys]);
+  return keys;
+}
+
 describe('plan catalogue is migration-owned (#1494)', () => {
   let service: SupabaseClient<Database>;
   let planRows: Array<{
@@ -338,13 +441,21 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
   function getOrgLadder(): string[] {
     return planRows
-      .filter((row) => row.scope === 'organization')
+      .filter((row) => row.scope === 'organization' && row.visibility === 'public')
       .toSorted((a, b) => a.sort_order - b.sort_order)
       .map((row) => row.key);
   }
 
-  it('is exactly the eight matrix plans, with the expected scope/price, all public and Stripe-billed', () => {
-    expect(new Set(planRows.map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
+  /** The rows the product sells: an unlisted contract plan is not one of them (B3). */
+  function publicPlanRows() {
+    return planRows.filter((row) => row.visibility === 'public');
+  }
+
+  it('is exactly the eight public matrix plans, with the expected scope/price, all public and Stripe-billed', () => {
+    // Exclusivity holds over the public catalogue, not the whole table: an admin
+    // creates an unlisted contract plan at runtime and pins it to an
+    // organization (B3, #1495).
+    expect(new Set(publicPlanRows().map((row) => row.key))).toEqual(new Set(Object.keys(MATRIX)));
 
     for (const [key, expected] of Object.entries(MATRIX)) {
       const row = planRows.find((plan) => plan.key === key);
@@ -369,6 +480,36 @@ describe('plan catalogue is migration-owned (#1494)', () => {
         billingMode: 'stripe',
       });
     }
+  });
+
+  it('keeps a runtime unlisted plan out of the public matrix', async () => {
+    // The QA stack holds one already; a fresh stack gets a temporary row that
+    // the rollback removes. Either way the public set is the eight, and the
+    // unlisted plan is not counted.
+    const rollback = new Error('public matrix: roll back');
+    let unlistedKey: string | undefined;
+
+    const probe = withDirect(async (sql) => {
+      await sql.begin(async (tx) => {
+        unlistedKey = await ensureUnlistedRuntimePlan(tx);
+
+        const publicKeys = (
+          await tx<Array<{ key: string }>>`
+            select key from public.subscription_plans
+            where visibility = 'public'
+            order by key`
+        ).map((row) => row.key);
+
+        expect(publicKeys, 'the public catalogue is the eight matrix plans').toEqual(
+          Object.keys(MATRIX).toSorted(),
+        );
+        expect(publicKeys, `${unlistedKey} is unlisted`).not.toContain(unlistedKey);
+
+        throw rollback;
+      });
+    });
+
+    await expect(probe).rejects.toBe(rollback);
   });
 
   it('the retired individual keys are absent from the catalogue', () => {
@@ -397,27 +538,53 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     const broken = migrationSql.replace('    plan_key_val := null;', "    plan_key_val := 'free';");
     expect(broken, 'this test needs the null assignment in the migration').not.toBe(migrationSql);
 
+    const before = await withDirect(readSnapshot);
     const rollback = new Error('guard replay: roll back');
-    const outcome = await withDirect(async (sql) => {
-      try {
-        await sql.begin(async (tx) => {
-          await tx.unsafe(broken);
-          throw rollback;
-        });
-      } catch (error) {
-        if (error === rollback) return 'ROLLED_BACK';
-        if (error && typeof error === 'object' && 'code' in error) return String(error.code);
-        return String(error);
-      }
-      return 'NO_ERROR';
+    let pinnedRuntimeRefusal: Refusal | undefined;
+    let sweptRefusal: Refusal | undefined;
+
+    const replay = withDirect(async (sql) => {
+      await sql.begin(async (tx) => {
+        // A runtime unlisted plan is pinned to an organization (B3). The pre-B3
+        // sweep deletes every plan its matrix does not list, and the pin's
+        // `on delete restrict` refuses that delete with `23503`. That refusal
+        // is the protection, not a failure.
+        const runtimeKey = await ensurePinnedRuntimePlan(tx);
+        await tx.unsafe('savepoint pinned_replay');
+        pinnedRuntimeRefusal = await refusal(() => tx.unsafe(broken));
+        await tx.unsafe('rollback to savepoint pinned_replay');
+
+        // With the pin and the plan gone, the file runs as it did before B3 and
+        // stops at its own closing guard.
+        const released = await releaseRuntimePlans(tx);
+        expect(released, 'the pinned runtime plan was released for the second replay').toContain(
+          runtimeKey,
+        );
+        await tx.unsafe('savepoint unpinned_replay');
+        sweptRefusal = await refusal(() => tx.unsafe(broken));
+        await tx.unsafe('rollback to savepoint unpinned_replay');
+
+        throw rollback;
+      });
     });
 
-    // `42883` is the guard's exception; `ROLLED_BACK` would mean it let the
-    // branch mint a personal plan for a manager through.
-    expect(outcome).toBe('42883');
+    // A different error must not be mistaken for the rollback signal.
+    await expect(replay).rejects.toBe(rollback);
+
+    expect(pinnedRuntimeRefusal).toMatchObject({
+      code: '23503',
+      constraint: 'plan_assignments_plan_key_fkey',
+    });
+    // `42883` is the guard's exception; `NO_ERROR` would mean it let the branch
+    // mint a personal plan for a manager through.
+    expect(sweptRefusal).toMatchObject({ code: '42883' });
+
+    // Both attempts rolled back: the runtime plan and its child rows are still
+    // there for the next run.
+    expect(await withDirect(readSnapshot)).toEqual(before);
   });
 
-  it('the organization ladder is four purchasable tiers with cumulative features', () => {
+  it('the public organization ladder is four purchasable tiers with cumulative features', () => {
     expect(getOrgLadder()).toEqual([...ORGANIZATION_LADDER]);
 
     for (let tier = 1; tier < ORGANIZATION_LADDER.length; tier += 1) {
@@ -471,21 +638,36 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(flagKeys).toEqual(expect.arrayContaining(EXPECTED_FLAGS));
   });
 
-  it('replaying the team tier twice leaves the same matrix, in a rolled-back transaction', async () => {
+  it('replaying the team tier refuses to sweep a pinned runtime plan, then leaves the same matrix', async () => {
     const migrationSql = readFileSync(CATALOGUE_FILE, 'utf8');
     const before = await withDirect(readSnapshot);
 
-    // The replay runs inside one transaction that ends by throwing, so this
-    // test touches no shared row: the live database is compared with `before`
+    // The replay runs inside one transaction that ends by throwing, so these
+    // tests touch no shared row: the live database is compared with `before`
     // below after the rollback.
     const rollback = new Error('plan-catalog replay: roll back');
     let duringRun: CatalogSnapshot | undefined;
+    let pinnedRuntimeRefusal: Refusal | undefined;
 
     const replay = withDirect(async (sql) => {
       await sql.begin(async (tx) => {
         await seedSubscription(tx);
         expect(await appliedKey(tx), 'the fixture starts on a live tier').toBe('hub');
 
+        // B3: an admin created this plan at runtime and pinned it to an
+        // organization. The declarative sweep deletes every plan the matrix does
+        // not list, and the pin's `on delete restrict` refuses it with `23503`.
+        const runtimeKey = await ensurePinnedRuntimePlan(tx);
+        await tx.unsafe('savepoint pinned_replay');
+        pinnedRuntimeRefusal = await refusal(() => tx.unsafe(migrationSql));
+        await tx.unsafe('rollback to savepoint pinned_replay');
+
+        // Released inside the transaction, the sweep runs as it did before B3:
+        // twice, and the matrix is unchanged.
+        const released = await releaseRuntimePlans(tx);
+        expect(released, 'the pinned runtime plan was released for the sweep').toContain(
+          runtimeKey,
+        );
         await tx.unsafe(migrationSql);
         await tx.unsafe(migrationSql);
 
@@ -500,6 +682,11 @@ describe('plan catalogue is migration-owned (#1494)', () => {
 
     // A different error must not be mistaken for the rollback signal.
     await expect(replay).rejects.toBe(rollback);
+
+    expect(pinnedRuntimeRefusal).toMatchObject({
+      code: '23503',
+      constraint: 'plan_assignments_plan_key_fkey',
+    });
     if (!duringRun) {
       throw new Error('the replay transaction never reached its assertions');
     }
