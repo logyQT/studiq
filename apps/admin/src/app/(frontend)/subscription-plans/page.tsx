@@ -481,7 +481,12 @@ function PlanAssignments({ planId, planName }: { planId: string; planName: strin
       setSelectedOrgId('');
       setAssignError(null);
     },
-    onError: (err: Error) => setAssignError(t('assignment_add_failed', { code: err.message })),
+    onError: (err: Error) =>
+      setAssignError(
+        err instanceof ApiError && err.code === 'BAD_REQUEST'
+          ? t('assignment_error_scope')
+          : t('assignment_add_failed', { code: err.message }),
+      ),
   });
 
   const removeMutation = useMutation({

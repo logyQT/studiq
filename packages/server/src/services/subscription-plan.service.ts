@@ -444,9 +444,11 @@ export class SubscriptionPlanService {
    * plan is never left granting nothing. A second call is a no-op: the pin
    * already exists and the move is the same.
    *
-   * A plan or organization that does not exist is `NOT_FOUND` (the function
-   * raises `P0002`). `42501` means the plan is unlisted and the pin did not
-   * land; that is reported as `CONFLICT`, the same class as the unpin refusal.
+   * A plan or organization that does not exist is `NOT_FOUND` (`P0002`). A plan
+   * whose scope is not `organization` is `BAD_REQUEST` (`22023`): a personal
+   * plan would grant personal entitlements to an organization. `42501` means
+   * the plan is unlisted and the pin did not land; that is `CONFLICT`, the same
+   * class as the unpin refusal.
    */
   async assignOrganization(
     planKey: string,
@@ -461,6 +463,7 @@ export class SubscriptionPlanService {
 
     if (error) {
       if (error.code === 'P0002') return failure('NOT_FOUND');
+      if (error.code === '22023') return failure('BAD_REQUEST');
       if (error.code === '42501') return failure('CONFLICT');
       return toDbFailure(error);
     }
@@ -479,9 +482,10 @@ export class SubscriptionPlanService {
    * Move an organization to a plan through the one writer, `change_org_plan`
    * (B3). The database refuses an unlisted plan the organization is not pinned
    * to (`42501`); that is `CONFLICT`, because the operator can fix it by
-   * assigning the plan first. The caller is the admin service role, so the
-   * refusal is a state rule, not a missing permission. An unknown plan or
-   * organization is `NOT_FOUND` (`P0002`).
+   * assigning the plan first. A plan whose scope is not `organization` is
+   * `BAD_REQUEST` (`22023`): `organizations.plan` is the organization ceiling,
+   * so a personal plan there is a category error, not a state to fix. An
+   * unknown plan or organization is `NOT_FOUND` (`P0002`).
    */
   async setOrganizationPlan(
     organizationId: string,
@@ -495,6 +499,7 @@ export class SubscriptionPlanService {
     });
 
     if (error) {
+      if (error.code === '22023') return failure('BAD_REQUEST');
       if (error.code === '42501') return failure('CONFLICT');
       if (error.code === 'P0002') return failure('NOT_FOUND');
       return toDbFailure(error);

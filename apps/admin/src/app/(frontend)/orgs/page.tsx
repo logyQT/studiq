@@ -40,6 +40,7 @@ type Org = {
 type PlanOption = {
   key: string;
   name: string;
+  scope: string;
 };
 
 export default function OrgsPage() {
@@ -162,6 +163,10 @@ function OrgPlanEditor({ org, plans }: { org: Org; plans: PlanOption[] }) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
     onError: (err: Error) => {
+      if (err instanceof ApiError && err.code === 'BAD_REQUEST') {
+        setError(t('plan_error_scope'));
+        return;
+      }
       if (err instanceof ApiError && err.code === 'CONFLICT') {
         setError(t('plan_error_unassigned'));
         return;
@@ -174,12 +179,26 @@ function OrgPlanEditor({ org, plans }: { org: Org; plans: PlanOption[] }) {
     },
   });
 
+  // Only an organization plan may be the organization's plan: the database
+  // refuses any other scope, so the picker does not offer one.
+  const orgPlans = plans.filter((plan) => plan.scope === 'organization');
+  const currentPlan = plans.find((plan) => plan.key === org.plan);
+
+  if (!orgPlans.some((plan) => plan.key === org.plan)) {
+    // A legacy row on another scope stays visible as text instead of blanking
+    // the picker. The database refuses a personal plan, so this row cannot be
+    // created today; it only appears on a row that predates the rule.
+    return (
+      <span className="text-sm">
+        {currentPlan?.name ?? org.plan}
+        {currentPlan && (
+          <span className="ml-1 font-mono text-xs text-muted-foreground">{org.plan}</span>
+        )}
+      </span>
+    );
+  }
+
   const value = draft ?? org.plan;
-  // A stale catalogue must not blank the current plan: keep its key as an
-  // option until the list catches up.
-  const options = plans.some((plan) => plan.key === org.plan)
-    ? plans
-    : [{ key: org.plan, name: org.plan }, ...plans];
 
   return (
     <div className="space-y-1">
@@ -189,7 +208,7 @@ function OrgPlanEditor({ org, plans }: { org: Org; plans: PlanOption[] }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {options.map((plan) => (
+            {orgPlans.map((plan) => (
               <SelectItem key={plan.key} value={plan.key}>
                 {plan.name}
               </SelectItem>

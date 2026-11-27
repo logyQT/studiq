@@ -131,7 +131,8 @@
     "assignment_remove_desc": "Remove organization \"{name}\" from plan \"{plan}\"? If the organization is on this plan, the removal is refused.",
     "assignment_remove_failed": "Could not remove the assignment ({code}).",
     "assignment_remove_conflict": "The organization is on this plan. Move it to another plan first.",
-    "price_unit_hint": "In grosze (100 = 1.00 zł)"
+    "price_unit_hint": "In grosze (100 = 1.00 zł)",
+    "assignment_error_scope": "An organization's plan must be an organization plan."
   },
   "Users": {
     "title": "Users",
@@ -204,7 +205,8 @@
     "plan_error_unknown": "That plan does not exist.",
     "plan_error_failed": "Could not move the organization ({code}).",
     "empty": "No organizations found.",
-    "loading": "Loading organizations..."
+    "loading": "Loading organizations...",
+    "plan_error_scope": "An organization's plan must be an organization plan."
   },
   "OrgDetail": {
     "loading": "Loading organization details...",
