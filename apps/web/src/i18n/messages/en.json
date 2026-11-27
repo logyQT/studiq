@@ -223,6 +223,7 @@
     "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long."
   },
   "RegisterPage": {
+    "verifying_invitation": "Verifying invitation...",
     "header": "Create an account",
     "sub_header": "Join StudiQ and start learning",
     "aside_eyebrow": "Free plan",

@@ -29,6 +29,7 @@ type QuizData = {
 
 export default function TeacherQuizStats() {
   const t = useTranslations('TeacherQuizStats');
+  const tc = useTranslations('Common');
   const [quizzes, setQuizzes] = useState<QuizData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,7 +64,7 @@ export default function TeacherQuizStats() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-muted-foreground text-sm">Loading...</p>
+            <p className="text-muted-foreground text-sm">{tc('common_loading')}</p>
           ) : quizzes.length === 0 ? (
             <p className="text-muted-foreground text-sm">{t('no_quizzes')}</p>
           ) : (

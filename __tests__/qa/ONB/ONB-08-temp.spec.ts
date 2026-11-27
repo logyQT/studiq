@@ -23,7 +23,7 @@ test.skip(process.env.STUDIQ_STACK_MODE !== '1', 'temporary stack-mode variant')
  * „Kopiuj link” button copies from the bulk response.
  *
  * The invitee then works in a **separate, session-less browser context**:
- * `/join?token=…` shows the „Verifying invitation...” skeleton, then a form with a
+ * `/join?token=…` shows the „Weryfikowanie zaproszenia...” skeleton, then a form with a
  * prefilled read-only e-mail, an editable name (see the #309 note in the case
  * file), a password field and „Aktywuj konto”. Submitting sends the confirmation
  * mail; the link from the mail catcher proves the address and claims the
@@ -162,8 +162,10 @@ test.describe('ONB-08 — invitation link registration', () => {
       });
       await invitee.goto(`/join?token=${encodeURIComponent(inviteToken!)}`);
 
-      // --- Step 2: „Verifying invitation…”, then the form -----------------
-      await expect(invitee.getByText('Verifying invitation...', { exact: true })).toBeVisible();
+      // --- Step 2: „Weryfikowanie zaproszenia…”, then the form -----------------
+      await expect(
+        invitee.getByText('Weryfikowanie zaproszenia...', { exact: true }),
+      ).toBeVisible();
 
       await expect(invitee.getByText('Dołącz do organizacji', { exact: true })).toBeVisible();
       await expect(

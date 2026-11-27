@@ -147,7 +147,9 @@ export default function StatsDataPage() {
   }, [selectedSubject, reloadToken]);
 
   if (loading) {
-    return <div className="flex justify-center py-12 text-muted-foreground">Loading...</div>;
+    return (
+      <div className="flex justify-center py-12 text-muted-foreground">{tc('common_loading')}</div>
+    );
   }
 
   const typeEntries = orderedQuestionTypeEntries(stats?.subject.byType ?? {});

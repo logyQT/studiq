@@ -32,6 +32,7 @@ type Member = {
 
 export default function ClassroomMembersPage() {
   const t = useTranslations('ClassroomMembersPage');
+  const tc = useTranslations('Common');
   const locale = useLocale();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +71,7 @@ export default function ClassroomMembersPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-muted-foreground text-sm">Loading...</p>
+            <p className="text-muted-foreground text-sm">{tc('common_loading')}</p>
           ) : members.length === 0 ? (
             <p className="text-muted-foreground text-sm">{t('no_members')}</p>
           ) : (
