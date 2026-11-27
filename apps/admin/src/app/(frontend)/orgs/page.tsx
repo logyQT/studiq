@@ -23,10 +23,16 @@ import { queryKeys } from '@/lib/query-keys';
 type Org = {
   id: string;
   name: string;
+  plan: string;
   created_at: string;
   member_count: number;
   group_count: number;
   role_count: number;
+};
+
+type PlanOption = {
+  key: string;
+  name: string;
 };
 
 export default function OrgsPage() {
@@ -41,6 +47,14 @@ export default function OrgsPage() {
     queryKey: queryKeys.organizations.all,
     queryFn: () => apiGet<Org[]>('/organizations'),
   });
+
+  // The plan column names the row the organization points at; the field stays
+  // the key, so a plan the catalogue no longer holds still prints something.
+  const { data: plans = [] } = useQuery({
+    queryKey: queryKeys.subscriptionPlans.all,
+    queryFn: () => apiGet<PlanOption[]>('/subscription-plans'),
+  });
+  const planNames = new Map(plans.map((plan) => [plan.key, plan.name]));
 
   return (
     <div className="p-8 space-y-6">
@@ -66,6 +80,7 @@ export default function OrgsPage() {
                   <TableHead>{t('col_members')}</TableHead>
                   <TableHead>{t('col_groups')}</TableHead>
                   <TableHead>{t('col_roles')}</TableHead>
+                  <TableHead>{t('col_plan')}</TableHead>
                   <TableHead>{t('col_created')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -98,6 +113,14 @@ export default function OrgsPage() {
                         {org.role_count}
                       </span>
                     </TableCell>
+                    <TableCell className="text-sm">
+                      {planNames.get(org.plan) ?? org.plan}
+                      {planNames.has(org.plan) && (
+                        <span className="ml-1 font-mono text-xs text-muted-foreground">
+                          {org.plan}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(org.created_at).toLocaleDateString()}
                     </TableCell>
@@ -105,7 +128,7 @@ export default function OrgsPage() {
                 ))}
                 {orgs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>

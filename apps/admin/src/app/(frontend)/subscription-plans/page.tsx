@@ -35,6 +35,8 @@ import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 const PLAN_SCOPES = ['personal', 'organization'] as const;
+const PLAN_VISIBILITIES = ['public', 'unlisted'] as const;
+const PLAN_BILLING_MODES = ['stripe', 'invoice', 'none'] as const;
 
 type SubscriptionPlan = {
   id: string;
@@ -45,6 +47,8 @@ type SubscriptionPlan = {
   isActive: boolean;
   sortOrder: number;
   scope: string;
+  visibility: string;
+  billingMode: string;
 };
 
 type FormData = {
@@ -55,6 +59,8 @@ type FormData = {
   isActive: boolean;
   sortOrder: string;
   scope: string;
+  visibility: string;
+  billingMode: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -65,6 +71,8 @@ const EMPTY_FORM: FormData = {
   isActive: true,
   sortOrder: '0',
   scope: 'personal',
+  visibility: 'public',
+  billingMode: 'stripe',
 };
 
 function formatPrice(cents: number | null) {
@@ -81,6 +89,8 @@ function buildPayload(data: FormData) {
     priceYearly: data.priceYearly === '' ? undefined : Number(data.priceYearly),
     sortOrder: data.sortOrder === '' ? undefined : Number(data.sortOrder),
     scope: data.scope,
+    visibility: data.visibility,
+    billingMode: data.billingMode,
   };
 }
 
@@ -164,6 +174,8 @@ export default function SubscriptionPlansPage() {
       isActive: plan.isActive,
       sortOrder: plan.sortOrder.toString(),
       scope: plan.scope,
+      visibility: plan.visibility,
+      billingMode: plan.billingMode,
     });
     setFormError(null);
     setDeleteError(null);
@@ -211,6 +223,8 @@ export default function SubscriptionPlansPage() {
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
                   <TableHead>{t('col_scope')}</TableHead>
+                  <TableHead>{t('col_visibility')}</TableHead>
+                  <TableHead>{t('col_billing_mode')}</TableHead>
                   <TableHead>{t('col_monthly')}</TableHead>
                   <TableHead>{t('col_yearly')}</TableHead>
                   <TableHead>{t('col_active')}</TableHead>
@@ -240,6 +254,12 @@ export default function SubscriptionPlansPage() {
                       <TableCell className="text-muted-foreground">
                         {t(`scope_${plan.scope}`)}
                       </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {t(`visibility_${plan.visibility}`)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {t(`billing_mode_${plan.billingMode}`)}
+                      </TableCell>
                       <TableCell>{formatPrice(plan.priceMonthly)}</TableCell>
                       <TableCell>{formatPrice(plan.priceYearly)}</TableCell>
                       <TableCell>
@@ -262,7 +282,7 @@ export default function SubscriptionPlansPage() {
                     </TableRow>
                     {expandedKey === plan.key && (
                       <TableRow key={`${plan.id}-detail`}>
-                        <TableCell colSpan={8} className="bg-muted/30 px-12 py-3">
+                        <TableCell colSpan={10} className="bg-muted/30 px-12 py-3">
                           <PlanDetails planKey={plan.key} />
                         </TableCell>
                       </TableRow>
@@ -271,7 +291,7 @@ export default function SubscriptionPlansPage() {
                 ))}
                 {plans.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>
@@ -327,6 +347,44 @@ export default function SubscriptionPlansPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label>{t('col_visibility')}</Label>
+                <Select
+                  value={form.visibility}
+                  onValueChange={(v) => setForm({ ...form, visibility: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLAN_VISIBILITIES.map((visibility) => (
+                      <SelectItem key={visibility} value={visibility}>
+                        {t(`visibility_${visibility}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{t('col_billing_mode')}</Label>
+                <Select
+                  value={form.billingMode}
+                  onValueChange={(v) => setForm({ ...form, billingMode: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLAN_BILLING_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode}>
+                        {t(`billing_mode_${mode}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label>{t('col_monthly')}</Label>
                 <Input
                   type="number"
@@ -358,6 +416,7 @@ export default function SubscriptionPlansPage() {
                 onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
               />
             </div>
+            {editing && <PlanAssignments planId={editing.id} planName={form.name} />}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 {tc('cancel')}
@@ -376,6 +435,158 @@ export default function SubscriptionPlansPage() {
         title={t('delete_title')}
         description={t('delete_desc', { name: deleteTarget?.name ?? '' })}
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        confirmLabel={tc('delete')}
+        destructive
+      />
+    </div>
+  );
+}
+
+type PlanAssignment = { organizationId: string; name: string };
+type OrgOption = { id: string; name: string };
+
+/**
+ * The organizations an unlisted plan is pinned to (B3). Editing needs an
+ * existing plan, so the dialog renders this only in edit mode. Removal is
+ * refused while the organization is on the plan (409), and the copy says so
+ * instead of reporting a generic failure.
+ */
+function PlanAssignments({ planId, planName }: { planId: string; planName: string }) {
+  const t = useTranslations('SubscriptionPlans');
+  const tc = useTranslations('Common');
+  const queryClient = useQueryClient();
+  const [selectedOrgId, setSelectedOrgId] = useState('');
+  const [removeTarget, setRemoveTarget] = useState<PlanAssignment | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const assignmentsQuery = useQuery({
+    queryKey: queryKeys.planAssignments.byPlan(planId),
+    queryFn: () => apiGet<PlanAssignment[]>(`/subscription-plans/${planId}/assignments`),
+  });
+  const orgsQuery = useQuery({
+    queryKey: queryKeys.organizations.all,
+    queryFn: () => apiGet<OrgOption[]>('/organizations'),
+  });
+
+  function invalidate() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.planAssignments.byPlan(planId) });
+  }
+
+  const assignMutation = useMutation({
+    mutationFn: (organizationId: string) =>
+      apiPost(`/subscription-plans/${planId}/assignments`, { organizationId }),
+    onSuccess: () => {
+      invalidate();
+      setSelectedOrgId('');
+      setAssignError(null);
+    },
+    onError: (err: Error) => setAssignError(t('assignment_add_failed', { code: err.message })),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (organizationId: string) =>
+      apiDelete(`/subscription-plans/${planId}/assignments/${organizationId}`),
+    onSuccess: () => {
+      invalidate();
+      setRemoveTarget(null);
+      setRemoveError(null);
+    },
+    onError: (err: Error) =>
+      setRemoveError(
+        err instanceof ApiError && err.code === 'CONFLICT'
+          ? t('assignment_remove_conflict')
+          : t('assignment_remove_failed', { code: err.message }),
+      ),
+  });
+
+  const assigned = assignmentsQuery.data ?? [];
+  const assignedIds = new Set(assigned.map((assignment) => assignment.organizationId));
+  const candidates = (orgsQuery.data ?? []).filter((org) => !assignedIds.has(org.id));
+  // A Radix Select has no empty value, so the picker keeps a valid candidate
+  // selected and falls back to the first one when the chosen org is assigned.
+  const pickable = candidates.some((org) => org.id === selectedOrgId)
+    ? selectedOrgId
+    : candidates[0]?.id;
+
+  return (
+    <div className="space-y-3 rounded-md border border-border p-3">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">{t('assignments_title')}</p>
+        <p className="text-xs text-muted-foreground">{t('assignments_hint')}</p>
+      </div>
+
+      {assignmentsQuery.isError ? (
+        <QueryError error={assignmentsQuery.error} />
+      ) : assigned.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('assignments_empty')}</p>
+      ) : (
+        <ul className="space-y-1">
+          {assigned.map((assignment) => (
+            <li
+              key={assignment.organizationId}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <span>{assignment.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setRemoveTarget(assignment);
+                  setRemoveError(null);
+                }}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {removeError && <p className="text-sm text-destructive">{removeError}</p>}
+
+      {candidates.length > 0 ? (
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-2">
+            <Label>{t('assignment_select')}</Label>
+            <Select value={pickable} onValueChange={setSelectedOrgId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {candidates.map((org) => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={assignMutation.isPending || !pickable}
+            onClick={() => pickable && assignMutation.mutate(pickable)}
+          >
+            {t('assignment_add')}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t('assignment_no_candidates')}</p>
+      )}
+
+      {assignError && <p className="text-sm text-destructive">{assignError}</p>}
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title={t('assignment_remove_title')}
+        description={t('assignment_remove_desc', {
+          name: removeTarget?.name ?? '',
+          plan: planName,
+        })}
+        onConfirm={() => removeTarget && removeMutation.mutate(removeTarget.organizationId)}
         confirmLabel={tc('delete')}
         destructive
       />
