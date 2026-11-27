@@ -576,7 +576,9 @@ The admin panel is the only writer:
 2. Save, then reopen the plan. The **Assigned organizations** section lists the
    organizations that may hold it. **Adding an organization assigns the plan and
    moves the organization onto it in one step** (`assign_plan_to_org`), so the
-   contract grants its limits immediately.
+   contract grants its limits immediately. The plan must have
+   `scope = 'organization'`; assigning an organization to a personal plan is
+   refused with "An organization's plan must be an organization plan."
 3. The assigned organization's managers see the plan as their current plan on
    `/manage/billing`. It never appears on `/pricing`, the upgrade grids, the
    seats picker or the public `GET /api/v1/subscription-plans` list, and
@@ -586,10 +588,13 @@ The admin panel is the only writer:
    `change_org_plan`), then remove the pin. Removing the pin while the
    organization is still on the plan answers `409 CONFLICT`, and the panel shows
    that message.
-5. The `/orgs` picker lists every plan, including unlisted ones. Selecting an
-   unlisted plan the organization is not assigned to is refused by the database
-   and shows the "assign the organization on the plan first" message; an unknown
-   plan shows a not-found message.
+5. The `/orgs` picker lists every **organization** plan, including unlisted
+   ones, because `organizations.plan` is the organization ceiling and a personal
+   plan there would grant personal entitlements to the organization. Selecting
+   an unlisted plan the organization is not assigned to is refused by the
+   database and shows the "assign the organization on the plan first" message;
+   an unknown plan shows a not-found message. A legacy row on another scope
+   stays visible as read-only text.
 6. Checkout (`POST /api/v1/stripe/create-checkout-session`) and plan change
    (`POST /api/v1/billing/change-plan`) refuse an `invoice`/`none` plan with
    `400`, and refuse an unlisted plan for an organization that is not assigned

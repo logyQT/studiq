@@ -86,6 +86,11 @@ The schema and the server enforce the rest:
   (`on conflict do nothing`, so a second call is a no-op) and moves
   `organizations.plan` in the same transaction. A linked plan that grants
   nothing would be a contract the operator believes is live.
+- **The plan must be an organization plan.** `change_org_plan` and
+  `assign_plan_to_org` both refuse a plan whose `scope` is not `organization`
+  (`22023`), because `organizations.plan` is the organization ceiling: a
+  personal plan there would grant personal entitlements to the organization.
+  The admin `/orgs` picker offers organization plans only.
 - **Public reads hide it.** `SubscriptionPlanService.listActive` filters
   `is_active = true AND visibility = 'public'`, and `getByKey` answers
   `NOT_FOUND` for an unlisted plan. Every pricing page, the upgrade grids, the
