@@ -128,6 +128,15 @@ function resultsRead(page: Page, assignmentId: string) {
   );
 }
 
+/**
+ * The grading page's own key panel. The header's help button has the same name plus „(?)”, and
+ * `t` matches a substring, so the whole name is anchored.
+ */
+const keyPanel = (page: Page) =>
+  page.getByRole('button', {
+    name: new RegExp(`^(?:${t('AppFlashcardSessionPage.shortcuts_panel_label').source})$`, 'i'),
+  });
+
 /** The grading page of one attempt. */
 const onAttempt = (id: string | undefined) => new RegExp(`/results/${id}$`, 'i');
 
@@ -180,9 +189,7 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await page.waitForURL(new RegExp(`/results/${attemptId}$`, 'i'));
       await (await sheetRead).finished();
       // One attempt: no key leads anywhere, so the page offers no key list.
-      await expect(
-        page.getByRole('button', { name: t('AppFlashcardSessionPage.shortcuts_panel_label') }),
-      ).toHaveCount(0);
+      await expect(keyPanel(page)).toHaveCount(0);
 
       // Arm the list refetch *before* the save: the whole point of #168 is that the grade
       // makes the app read the list again. The grading page has the list open, so that read
@@ -249,6 +256,9 @@ test.describe('moving between attempts on the grading page (#1354)', () => {
           name: new RegExp(`^(?:${t(`EduGradingPage.${key}`).source})$`, 'i'),
         });
       const points = page.locator('input[type="number"]').first();
+      // With other attempts to move to, the panel is there. This also shows that the locator
+      // finds it, so that the count of zero on a single attempt means something.
+      await expect(keyPanel(page)).toHaveCount(1);
 
       await saveOnePoint(page);
       await link('next_ungraded').click();
