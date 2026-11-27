@@ -9,6 +9,9 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 // table stays service-role only. The rule is enforced twice on purpose: the
 // function refuses the plan move, and a `before delete` trigger refuses to
 // orphan an organization that is still on the plan.
+//
+// `assign_plan_to_org` is the admin panel's one step: it pins the plan **and**
+// moves the organization, because a pin without the move grants nothing.
 
 const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const PLAN_KEY = `contract_${tag}`;
@@ -30,6 +33,15 @@ describe('plan_assignments (B3)', () => {
       .single();
     if (error) throw new Error(error.message);
     return data.plan;
+  }
+
+  async function assignedRows(): Promise<number> {
+    const { data, error } = await service
+      .from('plan_assignments')
+      .select('plan_key')
+      .eq('plan_key', PLAN_KEY);
+    if (error) throw new Error(error.message);
+    return data.length;
   }
 
   beforeAll(async () => {
@@ -82,12 +94,80 @@ describe('plan_assignments (B3)', () => {
     expect(await orgPlan(orgA)).toBe('launch');
   });
 
-  it('accepts the plan for an assigned organization', async () => {
-    const { error: assignError } = await service
-      .from('plan_assignments')
-      .insert({ plan_key: PLAN_KEY, organization_id: orgA });
-    expect(assignError).toBeNull();
+  it('is refused to anon and to a signed-in caller, and accepted with the service role', async () => {
+    const anon = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const anonCall = await anon.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgB,
+    });
+    expect(anonCall.error?.code).toBe('42501');
 
+    const user = await createTestUser({ role: 'student', password: PASSWORD });
+    const session = createClient<Database>(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error: signInError } = await session.auth.signInWithPassword({
+      email: user.email,
+      password: PASSWORD,
+    });
+    expect(signInError).toBeNull();
+
+    const signedInCall = await session.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgB,
+    });
+    expect(signedInCall.error?.code).toBe('42501');
+    expect(await orgPlan(orgB)).toBe('launch');
+
+    // The service role executes it, and the organization moves with the pin.
+    const serviceCall = await service.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgB,
+    });
+    expect(serviceCall.error).toBeNull();
+    expect(await orgPlan(orgB)).toBe(PLAN_KEY);
+
+    // Unwind orgB so the later cases see exactly one pin.
+    const moveBack = await service.rpc('change_org_plan', {
+      p_org_id: orgB,
+      p_plan: 'launch',
+    });
+    expect(moveBack.error).toBeNull();
+    const unpin = await service
+      .from('plan_assignments')
+      .delete()
+      .eq('plan_key', PLAN_KEY)
+      .eq('organization_id', orgB);
+    expect(unpin.error).toBeNull();
+  });
+
+  it('links the plan and moves the organization in one call', async () => {
+    const { error } = await service.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgA,
+    });
+
+    expect(error).toBeNull();
+    expect(await orgPlan(orgA)).toBe(PLAN_KEY);
+    expect(await assignedRows()).toBe(1);
+  });
+
+  it('is idempotent: a second assign keeps one pin and the same plan', async () => {
+    const { error } = await service.rpc('assign_plan_to_org', {
+      p_plan_key: PLAN_KEY,
+      p_org_id: orgA,
+    });
+
+    expect(error).toBeNull();
+    expect(await orgPlan(orgA)).toBe(PLAN_KEY);
+    expect(await assignedRows()).toBe(1);
+  });
+
+  it('accepts change_org_plan for the assigned organization', async () => {
+    // The later moves still go through `change_org_plan`, which now passes the
+    // assignment guard.
     const { error } = await service.rpc('change_org_plan', { p_org_id: orgA, p_plan: PLAN_KEY });
 
     expect(error).toBeNull();

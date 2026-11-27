@@ -854,36 +854,90 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('assignOrganization', () => {
-    it('pins the plan and returns the organization name', async () => {
-      const insertQb = qb(undefined);
-      const orgQb = qb({ name: 'Acme' });
-      mock.from.mockReturnValueOnce(insertQb).mockReturnValueOnce(orgQb);
+    it('pins the plan and moves the organization through one RPC', async () => {
+      // `assign_plan_to_org` owns both writes: a pin without the move is a
+      // contract that grants nothing (B3 follow-up).
+      mock.rpc.mockResolvedValueOnce({ data: null, error: null });
+      mock.from.mockReturnValueOnce(qb({ name: 'Acme' }));
 
       const result = await service.assignOrganization('contract', 'org-1');
 
-      expect(insertQb.insert).toHaveBeenCalledWith({
-        plan_key: 'contract',
-        organization_id: 'org-1',
+      expect(mock.rpc).toHaveBeenCalledWith('assign_plan_to_org', {
+        p_plan_key: 'contract',
+        p_org_id: 'org-1',
       });
       expect(expectSuccess(result)).toEqual({ organizationId: 'org-1', name: 'Acme' });
     });
 
-    it('maps a duplicate pair to CONFLICT', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined, { code: '23505', message: 'duplicate' }));
+    it('maps a missing plan or organization to NOT_FOUND', async () => {
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0002', message: 'not found' },
+      });
+
+      const result = await service.assignOrganization('contract', 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('maps the unassigned unlisted refusal to CONFLICT', async () => {
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: '42501', message: 'unlisted and not assigned' },
+      });
 
       const result = await service.assignOrganization('contract', 'org-1');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('CONFLICT');
     });
+  });
 
-    it('maps a missing plan or organization to NOT_FOUND', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined, { code: '23503', message: 'foreign key' }));
+  describe('setOrganizationPlan', () => {
+    it('moves the organization through change_org_plan', async () => {
+      mock.rpc.mockResolvedValueOnce({ data: null, error: null });
 
-      const result = await service.assignOrganization('contract', 'org-1');
+      const result = await service.setOrganizationPlan('org-1', 'hub');
+
+      expect(mock.rpc).toHaveBeenCalledWith('change_org_plan', {
+        p_org_id: 'org-1',
+        p_plan: 'hub',
+      });
+      expect(expectSuccess(result)).toEqual({ plan: 'hub' });
+    });
+
+    it('maps an unassigned unlisted plan to CONFLICT', async () => {
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: '42501', message: 'unlisted and not assigned' },
+      });
+
+      const result = await service.setOrganizationPlan('org-1', 'contract');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+    });
+
+    it('maps an unknown plan to NOT_FOUND', async () => {
+      mock.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: 'P0002', message: 'not found' },
+      });
+
+      const result = await service.setOrganizationPlan('org-1', 'nope');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('maps any other database failure through the shared mapper', async () => {
+      mock.rpc.mockResolvedValueOnce({ data: null, error: { code: '08006', message: 'offline' } });
+
+      const result = await service.setOrganizationPlan('org-1', 'hub');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
