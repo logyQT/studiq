@@ -21,6 +21,13 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
   `PUT /api/v1/plan-limits/[id]`) takes effect on the **next request for every
   existing org and user on that plan** — no backfill, no restart, no per-org
   snapshot to refresh. The same is true of changing `organizations.plan`.
+- A plan can also be **`unlisted`** (B3, #1495): a sales-led contract that every
+  public read hides and that only its assigned organizations may hold. It is the
+  same template — the entitlement and limit rows are ordinary
+  `plan_entitlements`/`plan_limits` rows, and no per-org row exists. Its
+  `billing_mode` (`stripe`, `invoice` or `none`) decides whether checkout may
+  sell it, and `plan_assignments` pins it to organizations. See
+  [plans/extendability.md](plans/extendability.md#adding-a-sales-led-contract-plan-unlisted).
 
 ## Data model
 
