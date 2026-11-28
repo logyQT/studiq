@@ -9,9 +9,10 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Seats are frozen at the UI: `/manage/seats` keeps the pools/assignments tables and every `GET`, but
-hides the purchase, assign and release controls. The API routes stay as the data path for #1511,
-so this case drives the assignment through them.
+Seats were frozen at the UI: `/manage/seats` kept the pools/assignments tables and every `GET`, but
+hid the purchase, assign and release controls. **#1511 restores the assign and release controls**;
+the purchase stays deferred. The API routes stay as the data path for the spec, so this case drives
+the assignment through them.
 
 ## Amendment (2026-11-28, #1511)
 
@@ -34,13 +35,17 @@ Pula z MGR-SEAT-01.
 
 _Warunek wstępny: M1._
 
-1. Kliknij „Kup miejsca”, wybierz plan i ilość 3, kliknij „Kup”.
+1. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
+   `{"planKey":"ai_lite","quantity":3}`.
 2. Spróbuj ilości 0 oraz ujemnej.
 
 Expected:
 
-- Toast „Miejsca dodane do puli”; pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne.
-- Przycisk „Kup” jest nieaktywny bez planu lub przy ilości < 1.
+- `POST` zwraca **201**; pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne pod
+  przyjazną nazwą „StudiQ AI Lite”.
+- `POST` z ilością 0 lub ujemną zwraca **422** i nie tworzy puli.
+- Strona ma przycisk „Przydziel miejsce” i akcje „Zwolnij miejsce”; przycisku „Kup miejsca”
+  nie ma.
 
 ## Prerequisite context (tenant model)
 
@@ -76,7 +81,8 @@ seeded tenant instead:
 
 ## Expected result
 
-- W „Przydziałach” nowy wpis; w puli przydzielone +1, dostępne −1; inne pule bez zmian.
+- W „Przydziałach” nowy wpis pod przyjazną nazwą licencji („StudiQ AI Pro”); w puli
+  przydzielone +1, dostępne −1; inne pule bez zmian.
 - **The seat on the hub org.** A licence seat grants `ai.chat` and its tier quota; the
   organization ceiling does not intersect it (D38, #1511). The learner profile grants
   `flashcards`/`quiz` from the Hub ceiling, the personal Plus plan adds its portable
@@ -91,9 +97,10 @@ seeded tenant instead:
   plan, D30). The seat's observable effect is the quota: 300 000/day against the member's
   100 000. `student2` (no seat) stays on Plus: `max_ai_tokens_per_day === 100000`,
   `max_flashcards === 5000` — the seat is per-member, not org-wide.
-- Po wyborze członka dostępne są **wszystkie** pule organizacji: plan osobisty nie ma
-  `audience` od #1193, więc persona nie filtruje już wyboru puli. Od #1493 wyboru nie ma
-  w UI — pule i przydziały są tylko do odczytu, a zapis idzie przez API.
+- Po wyborze członka w oknie „Przydziel miejsce” dostępne są **wszystkie** pule organizacji:
+  plan osobisty nie ma `audience` od #1193, więc persona nie filtruje już wyboru puli.
+  #1511 przywrócił okno przydziału i akcje „Zwolnij miejsce”; zakup pozostaje poza stroną.
+  Spec nadal wykonuje przydział przez API, tak jak przycisk w oknie.
 
 > 2026-11-22 (phase 4b; limits updated by #1193, story updated by #1493) — the seat ∩
 > ceiling rule did not move with the story then: it was pinned by
@@ -103,7 +110,7 @@ seeded tenant instead:
 > its own keys and the ceiling no longer filters them, so a Max seat no longer adds
 > `stats.insights`; the user-scope limits still come from `max(org, seat, personal)`.
 
-## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f` — pre-4b walk; the picker copy below is superseded by the 4b rewrite, the dialog by the #1493 seat freeze, and the seat ∩ ceiling rows by #1511/D38)
+## Walk observations (qa-env-6, shared app 3010 / DB 54421, pl, run `rmvsmdfmd1c4f` — pre-4b walk; the picker copy below is superseded by the 4b rewrite, the dialog was frozen by #1493 and restored by #1511, and the seat ∩ ceiling rows are superseded by #1511/D38)
 
 - `/manage/seats` („Licencje miejsc”) lists the purchased pools with the columns
   „Wykupione / Przydzielone / Dostępne” and the „Przydziały” table. The MGR-SEAT-01

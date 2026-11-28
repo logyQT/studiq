@@ -37,6 +37,7 @@ import { FOCUS_RING } from '@/components/shared/focus-ring';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgScopedLoad } from '@/hooks/use-org-scoped-load';
 import { useOrgs } from '@/hooks/use-orgs';
+import { usePermission } from '@/hooks/use-permission';
 import { ApiError, apiDelete, apiGet, apiPost } from '@/lib/api';
 import { formatDate } from '@/lib/datetime';
 import { formatPlanPrice } from '@/lib/landing-pricing';
@@ -78,7 +79,17 @@ export default function ManageSeatsPage() {
   const locale = useLocale();
   const queryClient = useQueryClient();
   const { activeOrg } = useOrgs();
-  const { data: licencePlans } = useApiQuery<PlanInfo[]>({
+  const permission = usePermission();
+  // The write gate is `org.seat.manage` (ADR-0015 §4.1). `usePermission()` is a
+  // provisional `false` until `/me/permissions` resolves, so a roster-only role
+  // never sees a control the API would refuse.
+  const canManageSeats = permission('org.seat.manage');
+  const {
+    data: licencePlans,
+    isLoading: licencePlansLoading,
+    isError: licencePlansError,
+    refetch: refetchLicencePlans,
+  } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'licence', activeOrg?.id],
     url: '/api/v1/organization/seats/licence-plans',
     enabled: !!activeOrg?.id,
@@ -137,6 +148,9 @@ export default function ManageSeatsPage() {
       invalidateAuthority(queryClient);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'USAGE_LIMIT_EXCEEDED') {
+        // The refusal needs the tier cards, and the modal locks the page scroll,
+        // so the alert lives on the page instead of inside the dialog.
+        setAssignDialogOpen(false);
         setSeatsFull(true);
         return;
       }
@@ -181,12 +195,14 @@ export default function ManageSeatsPage() {
             setAssignDialogOpen(open);
           }}
         >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4 mr-2" />
-              {t('assign_seat')}
-            </Button>
-          </DialogTrigger>
+          {canManageSeats ? (
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="size-4 mr-2" />
+                {t('assign_seat')}
+              </Button>
+            </DialogTrigger>
+          ) : null}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{t('assign_dialog_title')}</DialogTitle>
@@ -194,7 +210,9 @@ export default function ManageSeatsPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t('member_label')}</label>
+                <label id="seat-member-label" htmlFor="seat-member" className="text-sm font-medium">
+                  {t('member_label')}
+                </label>
                 <Select
                   value={selectedUserId}
                   onValueChange={(v) => {
@@ -203,7 +221,7 @@ export default function ManageSeatsPage() {
                     setSeatsFull(false);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="seat-member" aria-labelledby="seat-member-label">
                     <SelectValue placeholder={t('member_placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -222,7 +240,9 @@ export default function ManageSeatsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t('plan_label')}</label>
+                <label id="seat-pool-label" htmlFor="seat-pool" className="text-sm font-medium">
+                  {t('plan_label')}
+                </label>
                 <Select
                   value={selectedPoolId}
                   onValueChange={(v) => {
@@ -231,7 +251,7 @@ export default function ManageSeatsPage() {
                   }}
                   disabled={!selectedUserId}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="seat-pool" aria-labelledby="seat-pool-label">
                     <SelectValue
                       placeholder={
                         selectedUserId ? t('plan_placeholder') : t('select_member_first')
@@ -250,13 +270,6 @@ export default function ManageSeatsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {seatsFull ? (
-                <p role="alert" className="text-xs font-medium text-destructive">
-                  <a href="#licence-tiers" className="underline">
-                    {t('all_seats_assigned')}
-                  </a>
-                </p>
-              ) : null}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
@@ -274,6 +287,17 @@ export default function ManageSeatsPage() {
         </Dialog>
       </div>
 
+      {seatsFull ? (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-destructive"
+        >
+          <a href="#licence-tiers" className="underline">
+            {t('all_seats_assigned')}
+          </a>
+        </p>
+      ) : null}
+
       <section id="licence-tiers" aria-labelledby="licence-tiers-title" className="space-y-4">
         <div>
           <h2 id="licence-tiers-title" className="text-lg font-semibold">
@@ -282,31 +306,48 @@ export default function ManageSeatsPage() {
           <p className="text-sm text-muted-foreground">{t('licence_tiers_desc')}</p>
           <p className="mt-2 text-sm text-muted-foreground">{t('ai_only_note')}</p>
         </div>
-        <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {(licencePlans ?? []).map((plan) => (
-            <li key={plan.key} className="rounded-lg border border-border p-4">
-              <h3 className="font-semibold">{plan.name}</h3>
-              <dl className="mt-3 space-y-2">
-                <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-sm text-muted-foreground">{t('price_per_seat')}</dt>
-                  <dd className="font-mono text-sm tabular-nums">
-                    {formatPlanPrice(plan, locale)}
-                  </dd>
-                </div>
-                {Object.entries(plan.limits).map(([limitKey, value]) => (
-                  <div key={limitKey} className="flex items-baseline justify-between gap-4">
-                    <dt className="text-sm text-muted-foreground">
-                      {t.has(`quota_${limitKey}`) ? t(`quota_${limitKey}`) : limitKey}
-                    </dt>
+        {licencePlansLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">{t('licence_tiers_loading')}</span>
+          </div>
+        ) : licencePlansError ? (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
+          >
+            <p className="text-sm font-medium text-destructive">{t('licence_tiers_error')}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetchLicencePlans()}>
+              {t('licence_tiers_retry')}
+            </Button>
+          </div>
+        ) : (
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {(licencePlans ?? []).map((plan) => (
+              <li key={plan.key} className="rounded-lg border border-border p-4">
+                <h3 className="font-semibold">{plan.name}</h3>
+                <dl className="mt-3 space-y-2">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <dt className="text-sm text-muted-foreground">{t('price_per_seat')}</dt>
                     <dd className="font-mono text-sm tabular-nums">
-                      {formatLimitValue(value, locale)}
+                      {formatPlanPrice(plan, locale)}
                     </dd>
                   </div>
-                ))}
-              </dl>
-            </li>
-          ))}
-        </ul>
+                  {Object.entries(plan.limits).map(([limitKey, value]) => (
+                    <div key={limitKey} className="flex items-baseline justify-between gap-4">
+                      <dt className="text-sm text-muted-foreground">
+                        {t.has(`quota_${limitKey}`) ? t(`quota_${limitKey}`) : limitKey}
+                      </dt>
+                      <dd className="font-mono text-sm tabular-nums">
+                        {formatLimitValue(value, locale)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {loading ? (
@@ -359,9 +400,11 @@ export default function ManageSeatsPage() {
                       <TableHead scope="col">{t('member_column')}</TableHead>
                       <TableHead scope="col">{t('plan_column')}</TableHead>
                       <TableHead scope="col">{t('assigned_since_column')}</TableHead>
-                      <TableHead scope="col" className="text-right">
-                        {t('actions_column')}
-                      </TableHead>
+                      {canManageSeats ? (
+                        <TableHead scope="col" className="text-right">
+                          {t('actions_column')}
+                        </TableHead>
+                      ) : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -377,21 +420,23 @@ export default function ManageSeatsPage() {
                         <TableCell className="text-muted-foreground text-sm">
                           {formatDate(a.assignedAt, locale)}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={t('release_seat')}
-                            onClick={() => handleUnassign(a.id)}
-                            disabled={unassigning === a.id}
-                          >
-                            {unassigning === a.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-4 text-destructive" />
-                            )}
-                          </Button>
-                        </TableCell>
+                        {canManageSeats ? (
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={t('release_seat')}
+                              onClick={() => handleUnassign(a.id)}
+                              disabled={unassigning === a.id}
+                            >
+                              {unassigning === a.id ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-4 text-destructive" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     ))}
                   </TableBody>

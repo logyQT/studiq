@@ -9,9 +9,11 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Seats are frozen at the UI: `/manage/seats` keeps the pools and assignments tables and every
-`GET`, and hides the purchase, assign and release entries. The release is therefore driven
-through the product API (`DELETE /api/v1/organization/seats/assignments/<id>`), and the page is
+Seats were frozen at the UI: `/manage/seats` kept the pools and assignments tables and every
+`GET`, and hid the purchase, assign and release entries. **#1511 restores the release action** (the
+trash icon next to an assignment) and the assign entry; the purchase stays deferred. The spec
+drives the release through the product API (`DELETE
+/api/v1/organization/seats/assignments/<id>`, the same request the button sends), and the page is
 reloaded to read the persisted counters. The case's subject — the member falls back to their
 personal plan and the pool's available counter grows — is unchanged.
 
@@ -19,9 +21,9 @@ personal plan and the pool's available counter grows — is unchanged.
 
 A seat pool is a licence (`ai_lite` / `ai_pro` / `ai_max`); the case buys **`ai_max`**. A licence
 seat grants `ai.chat` and its tier quota, and the organization ceiling does not intersect it
-(D38), so releasing the seat removes the AI budget and leaves the org/role content alone. The pool
-and assignment tables show the plan **key** (`ai_max`) rather than the tier's name: the page takes
-its labels from the public catalogue, which does not serve a licence plan (#1511).
+(D38), so releasing the seat removes the AI budget and leaves the org/role content alone. The page
+resolves the labels from `GET /api/v1/organization/seats/licence-plans`, so the pool and assignment
+rows carry the friendly licence name (`StudiQ AI Max`).
 
 ## Prerequisite (verbatim)
 
@@ -36,7 +38,8 @@ Istniejący przydział.
 
 - Wpis znika z „Przydziałów”; w puli „Przydzielone” maleje o 1, „Dostępne” rośnie o 1.
 - Członek wraca do planu bazowego (swojego planu osobistego); drugi przydział zostaje.
-- Strona nie ma przycisków „Kup miejsca”, „Przydziel miejsce” ani „Zwolnij miejsce”.
+- Strona ma przycisk „Przydziel miejsce” i akcję „Zwolnij miejsce” przy przydziale; przycisku
+  „Kup miejsca” nie ma (zakup w kolejnym kroku).
 
 ## Seed (QA-suite tenant)
 
@@ -71,16 +74,16 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Spec: `__tests__/qa/MGR/MGR-SEAT-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (organizacja,
-  członkowie, pule i przydziały miejsc). Katalog planów nie jest czytany przez ten przypadek;
-  etykieta wiersza to klucz planu, bo publiczny katalog nie serwuje licencji (#1511). Test nie
-  dotyka flag funkcji, ustawień admina, statystyk platformy ani wierszy singletonowych.
+  członkowie, pule i przydziały miejsc). Etykieta wiersza to przyjazna nazwa licencji z odczytu
+  `GET /api/v1/organization/seats/licence-plans`. Test nie dotyka flag funkcji, ustawień admina,
+  statystyk platformy ani wierszy singletonowych.
 
 ## Walk observations (qa-env-1, shared app :3010 / DB :54421, pl)
 
 - `/manage/seats` ma nagłówek „Licencje miejsc” i dwie karty: „Pule miejsc” (kolumny
   „Plan / Wykupione / Przydzielone / Dostępne”) oraz „Przydziały” (kolumny „Członek /
-  Plan / Przydzielone od / Akcje”). Przyciski w toolbarze: „Kup miejsca” i
-  „Przydziel miejsce”.
+  Plan / Przydzielone od / Akcje”). W toolbarze jest przycisk „Przydziel miejsce”; przycisku
+  „Kup miejsca” nie ma (zakup w kolejnym kroku).
 - Wiersz przydziału pokazuje imię i nazwisko członka (nie e-mail), plan miejsca i datę
   `DD.MM.YYYY`; akcja to ikona kosza z `aria-label` „Zwolnij miejsce” — bez okna
   potwierdzenia.
