@@ -4,6 +4,10 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import {
+  NotStartedStudents,
+  type NotStartedStudentRow,
+} from '@/components/assignments/not-started-students';
 import { useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
@@ -45,9 +49,20 @@ export default function ResultsClient() {
   const locale = useLocale();
   const t = useTranslations('EduAssignmentResultsPage');
 
-  const { data: results, isLoading } = useApiQuery<{ attempts: Attempt[]; fairness: Fairness }>({
+  const { data: results, isLoading } = useApiQuery<{
+    attempts: Attempt[];
+    fairness: Fairness;
+    /** Optional on the wire: a missing list hides the section instead of breaking the page. */
+    /** `null` for a run that expects nobody (draft, cancelled): the section is not shown. */
+    notStarted?: NotStartedStudentRow[] | null;
+    targeted_count?: number;
+    run_closed?: boolean;
+  }>({
     queryKey: assignmentKeys.results(id),
     url: `/api/v1/teacher/assignments/${id}/results`,
+    // Students start and submit while the teacher is elsewhere, and nothing here invalidates
+    // the list for that. So every visit, and a return to the window, reads it again (#1340).
+    staleTime: 0,
   });
 
   // Same query key as the detail page, so in-app navigation is a cache hit.
@@ -170,6 +185,14 @@ export default function ResultsClient() {
           </tbody>
         </table>
       </div>
+
+      {results?.notStarted && (
+        <NotStartedStudents
+          students={results.notStarted}
+          targetedCount={results.targeted_count ?? 0}
+          closed={results.run_closed ?? false}
+        />
+      )}
 
       {fairness && fairness.items.length > 0 && (
         <div className="space-y-2">

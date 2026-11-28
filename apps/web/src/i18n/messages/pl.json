@@ -3112,6 +3112,11 @@
     "open_question": "(pytanie otwarte)"
   },
   "EduAssignmentResultsPage": {
+    "not_started": "Nie rozpoczęli ({count})",
+    "did_not_take": "Nie przystąpili ({count})",
+    "everyone_started": "Wszyscy wskazani uczniowie rozpoczęli kartkówkę.",
+    "nobody_targeted": "Ta kartkówka nie ma teraz przypisanych uczniów.",
+    "groups": "Grupy",
     "fairness_title": "Rzetelność według pozycji",
     "fairness_hint": "Tylko liczby, nigdy rozkład odpowiedzi. Komórki z mniej niż {min} uczniów są ukryte.",
     "item": "Pozycja",

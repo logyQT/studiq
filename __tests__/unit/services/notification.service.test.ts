@@ -305,7 +305,7 @@ describe('NotificationService: producers', () => {
     await s.assignmentPublished({ assignmentId: 'a1', teacherId: 'teacher' });
 
     const members = firstRecorded(admin.calls.group_members);
-    expect(members.select).toHaveBeenCalledWith('user_id, groups!inner(organization_id)');
+    expect(members.select).toHaveBeenCalledWith('user_id, group_id, groups!inner(organization_id)');
     expect(members.eq).toHaveBeenCalledWith('groups.organization_id', 'org-1');
     expect(insert.insert).not.toHaveBeenCalled();
   });
