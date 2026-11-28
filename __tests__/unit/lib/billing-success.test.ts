@@ -51,6 +51,21 @@ function deps(overrides: Partial<Deps> = {}): Deps {
   };
 }
 
+/**
+ * A caller that is cancelled while the read numbered `cancelledDuringRead` is open: every
+ * check before that read passes, so only a check after it can notice.
+ */
+function cancelledMidRead(cancelledDuringRead: number, answer: BillingSubscriptionView) {
+  let reads = 0;
+  return deps({
+    readSubscription: vi.fn(() => {
+      reads += 1;
+      return Promise.resolve(answer);
+    }),
+    isCancelled: vi.fn(() => reads >= cancelledDuringRead),
+  });
+}
+
 describe('isActivatedSubscription', () => {
   it('requires a plan and a live status', () => {
     expect(isActivatedSubscription(view())).toBe(true);
@@ -236,6 +251,22 @@ describe('pollBillingActivation', () => {
     await pollBillingActivation(d);
 
     expect(d.invalidateAuthority).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not time out or drop the caches when cancelled during the last read', async () => {
+    const d = cancelledMidRead(BILLING_SUCCESS_POLL_ATTEMPTS, view({ status: 'free' }));
+
+    await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'cancelled' });
+    expect(d.readSubscription).toHaveBeenCalledTimes(BILLING_SUCCESS_POLL_ATTEMPTS);
+    expect(d.invalidateAuthority).not.toHaveBeenCalled();
+  });
+
+  it('does not activate or drop the caches when cancelled during the activating read', async () => {
+    const d = cancelledMidRead(1, view());
+
+    await expect(pollBillingActivation(d)).resolves.toEqual({ state: 'cancelled' });
+    expect(d.readSubscription).toHaveBeenCalledTimes(1);
+    expect(d.invalidateAuthority).not.toHaveBeenCalled();
   });
 
   it('leaves the caches alone when the caller is cancelled', async () => {
