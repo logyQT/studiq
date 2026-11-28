@@ -26,6 +26,12 @@ import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { ApiError, apiGet, apiPost, apiPut } from '@/lib/api';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
 import { formatDate, formatDateTime } from '@/lib/datetime';
+import {
+  type AnsweredCard,
+  findLeechTransitions,
+  indexAfterSuspension,
+  type LeechTransition,
+} from '@/lib/leech-transition';
 import { flashcardKeys } from '@/lib/query-keys';
 import { overlayOpen } from '@/lib/shortcuts';
 
@@ -173,13 +179,6 @@ function practiceResults(body: unknown): PracticeResult[] {
   });
 }
 
-/** A card whose leech stage moved forward on this write, queued for one dialog. */
-interface LeechTransition {
-  flashcardId: string;
-  leechRestUntil: string | null;
-  suspended: boolean;
-}
-
 function mapCards(data: unknown): Flashcard[] {
   if (!Array.isArray(data)) return [];
   return data.filter(isPracticeCard).map((fc) => ({
@@ -241,10 +240,12 @@ export default function SessionClient(props: SessionClientProps) {
   >([]);
   const hasFinalisedRef = useRef(false);
   /**
-   * Stage each card had when it was answered, so a batch result can report a
-   * transition instead of the session re-prompting for every due leech.
+   * What each card looked like when it was answered: its stage, so a batch
+   * result can report a transition instead of the session re-prompting for every
+   * due leech, and its front, so the dialog can name a card that is no longer on
+   * screen.
    */
-  const preReviewStageRef = useRef<Map<string, number>>(new Map());
+  const preReviewRef = useRef<Map<string, AnsweredCard>>(new Map());
   const [suspendedIds, setSuspendedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Flashcard[]>([]);
   /**
@@ -359,19 +360,12 @@ export default function SessionClient(props: SessionClientProps) {
         mode,
         items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
       });
-      for (const r of practiceResults(body)) {
-        const preStage = preReviewStageRef.current.get(r.flashcardId);
-        preReviewStageRef.current.delete(r.flashcardId);
-        // Cram records no stage, so it can never report a transition.
-        if (preStage === undefined || r.leechStage <= preStage) continue;
-        setLeechQueue((prev) => [
-          ...prev,
-          {
-            flashcardId: r.flashcardId,
-            leechRestUntil: r.leechRestUntil,
-            suspended: r.suspended,
-          },
-        ]);
+      const results = practiceResults(body);
+      const transitions = findLeechTransitions(results, preReviewRef.current);
+      for (const r of results) preReviewRef.current.delete(r.flashcardId);
+      // Cram records no stage, so it can never report a transition.
+      if (transitions.length > 0) {
+        setLeechQueue((prev) => [...prev, ...transitions]);
       }
     } catch (err) {
       // A non-2xx is the common failure here; log the status `fetch` used to expose.
@@ -402,6 +396,12 @@ export default function SessionClient(props: SessionClientProps) {
           else next.delete(flashcardId);
           return next;
         });
+        if (action === 'suspend') {
+          // `currentIndex` indexes `visibleCards`; dropping an earlier card
+          // shrinks that list, so the same card would be skipped without this.
+          const suspendedIndex = visibleCards.findIndex((card) => card.id === flashcardId);
+          setCurrentIndex((prev) => indexAfterSuspension(suspendedIndex, prev));
+        }
         void queryClient.invalidateQueries({ queryKey: flashcardKeys.practice.all });
         toast.success(action === 'suspend' ? t('leech_suspend_done') : t('leech_restore_done'));
       } catch {
@@ -411,7 +411,7 @@ export default function SessionClient(props: SessionClientProps) {
         setLeechQueue((prev) => prev.filter((entry) => entry !== transition));
       }
     },
-    [leechSaving, queryClient, t],
+    [leechSaving, queryClient, t, visibleCards],
   );
 
   useEffect(() => {
@@ -527,7 +527,10 @@ export default function SessionClient(props: SessionClientProps) {
 
         if (!isCram) {
           const rawStage = card.reviewState?.leechStage;
-          preReviewStageRef.current.set(card.id, typeof rawStage === 'number' ? rawStage : 0);
+          preReviewRef.current.set(card.id, {
+            stage: typeof rawStage === 'number' ? rawStage : 0,
+            front: card.front,
+          });
         }
 
         pendingUpdatesRef.current.push({ flashcardId: card.id, wasCorrect, confidenceLevel });
@@ -604,7 +607,7 @@ export default function SessionClient(props: SessionClientProps) {
     hasFinalisedRef.current = false;
     answeredCountRef.current = 0;
     pendingUpdatesRef.current = [];
-    preReviewStageRef.current.clear();
+    preReviewRef.current.clear();
     setLeechQueue([]);
     setCramQueue(shuffleArray(cards));
     setCurrentIndex(0);
@@ -703,8 +706,11 @@ export default function SessionClient(props: SessionClientProps) {
     ? formatDate(activeLeech.leechRestUntil, locale)
     : '';
 
-  // One transition at a time; a transition queued by the final flush keeps the
-  // dialog up over the summary instead of being dropped at the last card.
+  // One transition at a time. The summary waits until the queue is empty:
+  // two open Radix modals hide each other from the accessibility tree and fight
+  // over focus, so the flush's alert shows first and the summary follows.
+  // The dialog is also rendered after the branch content, so it stays the
+  // last-mounted z-50 portal.
   const leechDialog = activeLeech ? (
     <AlertDialog open>
       <AlertDialogContent>
@@ -714,8 +720,8 @@ export default function SessionClient(props: SessionClientProps) {
           </AlertDialogTitle>
           <AlertDialogDescription>
             {activeLeech.suspended
-              ? t('leech_suspended_description')
-              : t('leech_rest_description', { date: leechRestDate })}
+              ? t('leech_suspended_description', { front: activeLeech.front })
+              : t('leech_rest_description', { front: activeLeech.front, date: leechRestDate })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -743,11 +749,11 @@ export default function SessionClient(props: SessionClientProps) {
   if (loading) {
     return (
       <>
-        {leechDialog}
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground">{tc('common_loading')}</p>
         </div>
+        {leechDialog}
       </>
     );
   }
@@ -755,21 +761,20 @@ export default function SessionClient(props: SessionClientProps) {
   if (error || (loaded && cards.length === 0)) {
     return (
       <>
-        {leechDialog}
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
           <p className="text-lg text-muted-foreground">{t('no_flashcards_available')}</p>
           <Button variant="outline" onClick={() => router.push(backUrl)}>
             <ArrowLeft data-icon="inline-start" /> {t('back_to_setup')}
           </Button>
         </div>
+        {leechDialog}
       </>
     );
   }
 
-  if (summaryData) {
+  if (summaryData && leechQueue.length === 0) {
     return (
       <>
-        {leechDialog}
         <div className="mx-auto max-w-2xl py-8">
           <SessionSummaryDialog
             data={summaryData}
@@ -778,6 +783,7 @@ export default function SessionClient(props: SessionClientProps) {
             onBackToSetup={handleBackToSetup}
           />
         </div>
+        {leechDialog}
       </>
     );
   }
@@ -788,18 +794,18 @@ export default function SessionClient(props: SessionClientProps) {
     if (sessionComplete || allCaughtUp) {
       return (
         <>
-          {leechDialog}
           <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
             <Loader2 className="size-8 animate-spin text-muted-foreground" />
             <p className="text-muted-foreground">{tc('common_loading')}</p>
           </div>
+          {leechDialog}
         </>
       );
     }
     return (
       <>
-        {leechDialog}
         <div className="flex justify-center py-12">{t('no_flashcards_available')}</div>
+        {leechDialog}
       </>
     );
   }
@@ -848,8 +854,6 @@ export default function SessionClient(props: SessionClientProps) {
 
   return (
     <>
-      {leechDialog}
-
       <div className="mx-auto flex max-w-2xl min-h-full flex-col">
         <div className="flex flex-1 flex-col gap-6">
           <div className="flex items-center justify-between">
@@ -947,6 +951,7 @@ export default function SessionClient(props: SessionClientProps) {
           ]}
         />
       </div>
+      {leechDialog}
     </>
   );
 }
