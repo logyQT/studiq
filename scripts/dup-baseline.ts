@@ -188,8 +188,32 @@ export function newClones(current: Clone[], base: Clone[], comparison: Compariso
   });
 }
 
+/**
+ * Git's own environment must not reach this script's child processes.
+ *
+ * A pre-commit hook runs while git holds the commit's **temporary** index and
+ * exports its path as `GIT_INDEX_FILE`. `git worktree add` below would then
+ * write that temporary index, and the commit it belongs to would be written
+ * from the base tree — an empty commit, silently. The scan always inspects this
+ * checkout's real index and the base ref's own tree, so every git call here
+ * drops the inherited repository overrides.
+ */
+function gitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.GIT_INDEX_FILE;
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  delete env.GIT_COMMON_DIR;
+  return env;
+}
+
 function git(args: string[], cwd: string): string {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    env: gitEnv(),
+  });
   if (result.status !== 0) {
     throw new GateError(
       `git ${args.join(' ')}: ${result.stderr.trim() || `exit ${result.status}`}`,
@@ -282,7 +306,10 @@ function withWorktree<T>(root: string, ref: string, use: (dir: string) => T): T 
   try {
     return use(realpathSync(dir));
   } finally {
-    const removed = spawnSync('git', ['worktree', 'remove', '--force', dir], { cwd: root });
+    const removed = spawnSync('git', ['worktree', 'remove', '--force', dir], {
+      cwd: root,
+      env: gitEnv(),
+    });
     if (removed.status !== 0) rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -291,6 +318,7 @@ export function compare(ref: string, cwd: string = process.cwd()): DupBaselineRe
   const root = repoRoot(cwd);
   const probe = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
     cwd: root,
+    env: gitEnv(),
   });
   if (probe.status !== 0) {
     throw new GateError(`base ref '${ref}' not found; fetch it first (e.g. git fetch origin main)`);

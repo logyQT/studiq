@@ -11,7 +11,15 @@
  * both halves of the replacement rule: a re-pairing is quiet, a copy is not.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -130,14 +138,14 @@ interface Verdict {
   result: DupBaselineResult | null;
 }
 
-function gate(repo: string, ...args: string[]): Verdict {
+function gate(repo: string, env: NodeJS.ProcessEnv = TEST_ENV): Verdict {
   let stdout: string;
   let status: number;
   try {
-    stdout = execFileSync('bun', [MODULE, '--json', '--ref', 'origin/main', ...args], {
+    stdout = execFileSync('bun', [MODULE, '--json', '--ref', 'origin/main'], {
       cwd: repo,
       encoding: 'utf8',
-      env: TEST_ENV,
+      env,
       stdio: 'pipe',
     });
     status = 0;
@@ -320,6 +328,33 @@ describe('dup-baseline: the gate against a repository', () => {
       newClone.second,
     ]);
     expect(named.some((name) => name.startsWith('copy.ts:'))).toBe(true);
+  });
+
+  it('finds the new clone without writing the commit-time index', () => {
+    // A pre-commit hook exports the commit's temporary index as
+    // GIT_INDEX_FILE. The worktree checkout must not write it: rewriting that
+    // index is what turned `git commit -a` into an empty commit.
+    const repo = repoWith({ 'lonely.ts': route('alpha') });
+    write(repo, 'src/copy.ts', route('alpha'));
+    git(repo, 'add', '-A');
+
+    const indexDir = mkdtempSync(join(tmpdir(), 'dup-baseline-index-'));
+    roots.push(indexDir);
+    const index = join(indexDir, 'index');
+    copyFileSync(join(repo, '.git/index'), index);
+    const beforeBytes = readFileSync(index);
+    const beforeMtime = statSync(index).mtimeMs;
+
+    const { status, result } = gate(repo, { ...TEST_ENV, GIT_INDEX_FILE: index });
+
+    expect(status).toBe(1);
+    const named = (result?.newClones ?? []).flatMap((newClone) => [
+      newClone.first,
+      newClone.second,
+    ]);
+    expect(named.some((name) => name.startsWith('copy.ts:'))).toBe(true);
+    expect(readFileSync(index).equals(beforeBytes)).toBe(true);
+    expect(statSync(index).mtimeMs).toBe(beforeMtime);
   });
 
   it('stays quiet when a third, untouched file is what made jscpd pair two files', () => {
