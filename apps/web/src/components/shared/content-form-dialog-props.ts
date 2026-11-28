@@ -1,9 +1,5 @@
+import type { GroupOption } from '@/hooks/use-group-options';
 import type { ContentFormValues } from '@/lib/share-fields';
-
-export interface GroupOption {
-  id: string;
-  name: string;
-}
 
 /**
  * The props every content form dialog (deck, question bank) shares: the row being edited, the

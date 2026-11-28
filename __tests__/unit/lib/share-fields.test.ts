@@ -42,6 +42,24 @@ describe('contentFormPayload (#1555)', () => {
     ).toEqual({ name: 'Renamed', description: 'kept', visibility: 'personal', groupIds: [] });
   });
 
+  it('treats a repeated group id as the same selection', () => {
+    expect(
+      contentFormPayload(
+        { visibility: 'group', groupIds: ['a', 'a', 'b'] },
+        { name: 'Renamed', description: 'kept', visibility: 'group', groupIds: ['b', 'a'] },
+      ),
+    ).toEqual({ name: 'Renamed', description: 'kept' });
+  });
+
+  it('sends both fields when a personal item becomes group-visible', () => {
+    expect(
+      contentFormPayload(
+        { visibility: 'personal', groupIds: [] },
+        { name: 'Renamed', description: 'kept', visibility: 'group', groupIds: ['a'] },
+      ),
+    ).toEqual({ name: 'Renamed', description: 'kept', visibility: 'group', groupIds: ['a'] });
+  });
+
   it('always carries the share set for a new item', () => {
     expect(contentFormPayload(null, { name: 'New', description: '' })).toEqual({
       name: 'New',
