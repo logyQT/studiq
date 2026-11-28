@@ -166,6 +166,9 @@ bun run env:observability   # MCP auth state and token path
   or stop a stack you do not own.
 - A response with no `x-trace-id`, or empty Tempo/Loki while the app answers, is
   an environment fault, not a product bug. Do not invent an id to fill the gap.
+- **Traces in Tempo but Loki empty:** check that the app posts `/v1/logs` to the
+  collector, and that `packages/server/src/lib/log.ts` imports `logs` from
+  `@opentelemetry/api` (the registry `NodeSDK` registers), not `@opentelemetry/api-logs`.
 
 ## The loop
 
