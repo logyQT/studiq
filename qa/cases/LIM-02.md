@@ -21,7 +21,7 @@ Konto TS (test-student@dev.local, plan Free, brak treści). Dostęp do Supabase 
 
 ## Expected result
 
-- Talie, fiszki i pytania: trzeci element jest odrzucony błędem limitu (USAGE_LIMIT_EXCEEDED / HTTP 429) z czytelnym komunikatem w interfejsie, a nie białym ekranem.
+- Talie, fiszki, banki i pytania: trzeci element jest odrzucony błędem limitu (USAGE_LIMIT_EXCEEDED / HTTP 429) z czytelnym komunikatem w interfejsie, a nie białym ekranem. Dla talii i banku komunikat jest w otwartym formularzu (dialog zachowuje wpisane dane, `role="alert"`), a toast nie jest wymagany; dla fiszki i pytania pozostaje toast.
 - Banki pytań: z kodu wynika, że limit max_question_banks NIE jest egzekwowany (tylko wyświetlany) – jeśli 3. bank da się utworzyć, zgłoś jako obserwację.
 
 ## Seed (QA-suite tenant)
@@ -67,16 +67,19 @@ bun scripts/qa-tenant.ts LIM-02 --fresh   # profil: __tests__/qa/profiles/LIM-02
 
 - Krok 2 (talie) — przy 10 taliach `POST /api/v1/flashcards/decks` zwraca **429**
   `{"success":false,"error":"USAGE_LIMIT_EXCEEDED"}`. UI: dialog „Utwórz talię” zostaje
-  otwarty, lista nadal działa (żadnego białego ekranu), a u góry pojawia się toast
-  „Nie udało się zapisać talii” (typ `error`, ~4 s).
+  otwarty, lista nadal działa (żadnego białego ekranu), a odmowa pojawia się **w
+  formularzu** (element `role="alert"`): „Nie udało się zapisać talii” z powodem z API.
+  Toast nie jest wymagany (#1560: dialog zachowuje wpisane dane i pokazuje błąd przy
+  polach).
 - Krok 3 (fiszki) — przy 100 fiszkach `POST /api/v1/flashcards` zwraca **429**
   `USAGE_LIMIT_EXCEEDED`. UI: w dialogu „Utwórz Nową Fiskę” toast „Nie udało się zapisać”,
   dialog pozostaje otwarty, a talia nadal pokazuje 100 fiszek.
 - Krok 4 (banki) — przy 5 bankach `POST /api/v1/questions/banks` zwraca **429**
   `USAGE_LIMIT_EXCEEDED`, więc obserwacja z kodu jest już nieaktualna: limit
   `max_question_banks` **jest** egzekwowany (naprawione w #183, potwierdzone też testem
-  integracyjnym `__tests__/integration/plan-limit-enforcement.test.ts`). UI: toast
-  „Coś poszło nie tak. Spróbuj ponownie.”, dialog „Nowy bank” zostaje otwarty.
+  integracyjnym `__tests__/integration/plan-limit-enforcement.test.ts`). UI: odmowa w
+  otwartym dialogu „Nowy bank” (`role="alert"`): „Nie udało się zapisać banku pytań” z
+  powodem z API (#1560); toast nie jest wymagany.
 - Krok 5 (pytania) — przy 50 pytaniach `POST /api/v1/questions` zwraca **429**
   `USAGE_LIMIT_EXCEEDED`. UI: toast „Nie udało się zapisać pytania”, dialog „Utwórz
   pytanie” zostaje otwarty (formularz WW wymaga 2 odpowiedzi i zaznaczonej poprawnej).

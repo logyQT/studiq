@@ -384,23 +384,152 @@ describe('QuestionBankService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('clears group links for an empty groupIds list without calling the guard', async () => {
+    // #1566: the bank follows the same shape rule as a deck and a topic. A group-visible
+    // bank cannot drop its last link in place; the unshare is the visibility flip below.
+    it('rejects an empty groupIds list on a group bank and keeps the link', async () => {
+      const existing = { id: 'b-1', name: 'Bank', created_by: ctx.userId, visibility: 'group' };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('b-1', { groupIds: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('clears the links when a partial update switches the bank to personal', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
+      const cleared = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'personal',
+        bank_groups: [],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // question_banks update
+      mock.from.mockReturnValueOnce(qb(undefined)); // questions cascade read
+      const deleteLinks = qb(undefined); // delete links
+      mock.from.mockReturnValueOnce(deleteLinks);
+      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+
+      const result = await service.update('b-1', { visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(deleteLinks.delete).toHaveBeenCalled();
+      expect(deleteLinks.eq).toHaveBeenCalledWith('bank_id', 'b-1');
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'personal', groupIds: [] }),
+      );
+      // #1562: the flip drops the stored link, so its group's teacher has to approve it.
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+    });
+
+    it('rejects switching a personal bank to group without a list', async () => {
+      const existing = { id: 'b-1', name: 'Bank', created_by: ctx.userId, visibility: 'personal' };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('b-1', { visibility: 'group' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('switches a personal bank to group and writes the sent links', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'personal',
+      };
+      const shared = { ...existing, visibility: 'group', bank_groups: [{ group_id: 'g-1' }] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // question_banks update
+      mock.from.mockReturnValueOnce(qb(undefined)); // questions cascade read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
+      mock.from.mockReturnValueOnce(qb(shared)); // getById
+
+      const result = await service.update('b-1', { visibility: 'group', groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      expect(insertLinks.insert).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'group', groupIds: ['g-1'] }),
+      );
+    });
+
+    it('refuses removing a stored group the caller does not teach', async () => {
       const existing = {
         id: 'b-1',
         name: 'Bank',
         created_by: ctx.userId,
         visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
       };
-      const cleared = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: [] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update('b-1', { visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('keeps the stored links when the body omits the share fields', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // update row
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('b-1', { name: 'Renamed' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
+    it('treats a re-sent identical share as unchanged and does not guard it', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
 
-      const result = await service.update('b-1', { groupIds: [] }, ctx);
+      const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
-      expect(mock.from).toHaveBeenCalledWith('bank_groups');
     });
   });
 

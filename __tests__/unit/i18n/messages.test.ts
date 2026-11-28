@@ -7,6 +7,8 @@ import { ROLE_TEMPLATE_NAMES } from '@studiq/authz';
 import { APP_ERRORS } from '@studiq/server/lib/errors';
 import { START_REFUSAL_CODES } from '#test/helpers/start-refusals';
 import { createTranslator } from 'next-intl';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const locales = { en, pl } as const;
@@ -508,6 +510,58 @@ describe('deck view bulk action copy (#364)', () => {
       }
     }
   });
+});
+
+/**
+ * Served QA printed `MISSING_MESSAGE: EduDeckViewPage.menu_remove_topic (en)`: the page asked
+ * for the singular key while that locale carried only the plural spelling. Every component the
+ * page renders is handed the page's translator, so collect every literal key they ask for and
+ * require it in both locales. A `Common` key counts, because `mergeCommon` folds that namespace
+ * into every other one.
+ */
+describe('deck view page keys', () => {
+  /** The deck page and the components it renders with its own translator. */
+  const DECK_VIEW_FILES = [
+    'apps/web/src/components/flashcards/screens/deck-detail-screen.tsx',
+    'apps/web/src/components/flashcards/dialogs/deck-detail-dialogs.tsx',
+    'apps/web/src/components/flashcards/dialogs/deck-dialogs.tsx',
+    'apps/web/src/components/flashcards/dialogs/bulk-dialogs.tsx',
+    'apps/web/src/components/flashcards/dialogs/create-card-dialog.tsx',
+    'apps/web/src/components/flashcards/dialogs/single-card-dialogs.tsx',
+    'apps/web/src/components/flashcards/dialogs/topic-dialogs.tsx',
+    'apps/web/src/components/flashcards/cards/flashcard-card.tsx',
+    'apps/web/src/components/flashcards/shared/flashcard-toolbar.tsx',
+  ] as const;
+
+  /** A literal first argument of `t`, `t.rich` or `t.markup`; dynamic keys are out of scope. */
+  const KEY = /\bt(?:\.rich|\.markup)?\('([^']+)'/g;
+
+  function usedKeys(): string[] {
+    const keys = new Set<string>();
+    for (const file of DECK_VIEW_FILES) {
+      const source = readFileSync(path.join(process.cwd(), file), 'utf8');
+      for (const match of source.matchAll(KEY)) keys.add(match[1] ?? '');
+    }
+    return [...keys];
+  }
+
+  it.each(DECK_VIEW_NAMESPACES)(
+    '%s defines every key the page asks for, in en and pl',
+    (namespace) => {
+      const keys = usedKeys();
+      // A broken extractor must not pass vacuously.
+      expect(keys.length).toBeGreaterThan(50);
+
+      for (const [locale, messages] of Object.entries(locales)) {
+        const table: Record<string, string> = messages[namespace];
+        const common: Record<string, string> = messages.Common;
+        for (const key of keys) {
+          const message = table[key] ?? common[key];
+          expect(message, `${locale}:${namespace}.${key}`).toBeTypeOf('string');
+        }
+      }
+    },
+  );
 });
 
 const quizReview = (locale: 'en' | 'pl') =>

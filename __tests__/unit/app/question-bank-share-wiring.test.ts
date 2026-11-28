@@ -30,6 +30,6 @@ describe('question bank share wiring (#1557)', () => {
 
   it('seeds the dialog from the stored share', () => {
     expect(screen).toContain('visibility: bank.visibility');
-    expect(screen).toContain('groupIds: bank.groupIds ?? NO_GROUPS');
+    expect(screen).toContain('groupIds: bank.groupIds ?? []');
   });
 });

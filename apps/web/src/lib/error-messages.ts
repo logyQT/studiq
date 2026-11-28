@@ -1,3 +1,5 @@
+import { ApiError, isNetworkError } from '@/lib/api';
+
 /** The slice of a next-intl translator (`useTranslations('Errors')`) the resolver needs. */
 export type ErrorTranslator = {
   (key: string): string;
@@ -21,4 +23,14 @@ export function translateErrorCode(tErr: ErrorTranslator, code: string | null | 
     if (tErr.has(prefixed)) return tErr(prefixed);
   }
   return tErr(FALLBACK_KEY);
+}
+
+/**
+ * The inline copy a content form shows when its save is refused: the resource's own failure
+ * line, plus the API's reason when the response carries an error code the catalog translates.
+ * A transport failure carries no server reason, so it keeps the plain failure line.
+ */
+export function saveFailureMessage(error: unknown, failed: string, tErr: ErrorTranslator): string {
+  if (isNetworkError(error) || !(error instanceof ApiError) || error.code === '') return failed;
+  return `${failed} ${translateErrorCode(tErr, error.code)}`;
 }

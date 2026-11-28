@@ -21,7 +21,8 @@ import { loadTenant, loginAs } from '#test/qa/fixtures/tenant';
  *
  * Walked on the shared app (pl) before writing this test:
  * - at the Free cap a further deck answers 429 `USAGE_LIMIT_EXCEEDED`, the
- *   create dialog stays open with an error toast (never a blank screen);
+ *   create dialog stays open and the refusal shows in the form (#1560), never a
+ *   blank screen;
  * - buying Plus from the individual ladder of `/pricing` ends on `/billing/success` and then
  *   `/app`; `/api/v1/me/personal-plan` reports Plus with `max_decks: 100`,
  *   `/app/billing` shows „Maks. talie 100”, and the deck that was just refused is
@@ -195,15 +196,19 @@ test.describe('LIM-03 — the Plus purchase raises the deck limit', () => {
     ).toBeVisible();
     await submitDeckDialog(page, blockedName);
 
+    // #1560: the deck form keeps the dialog and shows the refusal in place; no toast.
+    const blockedDialog = page.getByRole('dialog');
+    const blockedAlert = blockedDialog.getByRole('alert');
     await expect(
-      page.locator('[data-sonner-toast][data-type="error"]'),
-      'the over-limit deck shows a readable error, not a blank screen',
+      blockedAlert,
+      'the over-limit deck shows a readable error in the form, not a blank screen',
     ).toBeVisible();
+    await expect(blockedAlert, 'the error carries a message').toHaveText(/\S+/);
     await expect(
-      page.getByRole('dialog'),
+      blockedDialog,
       'the create dialog stays open after the refused deck',
     ).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: UI.cancel, exact: true }).click();
+    await blockedDialog.getByRole('button', { name: UI.cancel, exact: true }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
 
     // The product, not the test, refused it: the plan limit answered 429.

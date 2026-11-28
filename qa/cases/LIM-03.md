@@ -76,10 +76,11 @@ enforced (an observation for LIM-02, not this case).
   „10 talii”.
 - Creating the 11th deck (the case's "3rd" under the lowered LIM-02 limits) is
   refused: `POST /api/v1/flashcards/decks` answers **429**
-  `{"error":"USAGE_LIMIT_EXCEEDED"}`, the dialog stays open and an error toast
-  „Nie udało się zapisać talii” appears — a readable message, not a blank screen.
-  The copy is generic (LIM-02's "czytelny komunikat o limicie" concern); LIM-03
-  only asserts that the attempt fails cleanly and creates no deck.
+  `{"error":"USAGE_LIMIT_EXCEEDED"}`, the dialog stays open and the refusal
+  appears **in the form** (`role="alert"`: „Nie udało się zapisać talii” plus the
+  API reason) — a readable message, not a blank screen, and no toast is required
+  (#1560). LIM-03 only asserts that the attempt fails cleanly and creates no
+  deck.
 - Purchase path: `/pricing` → wiersz „Plus” → „Wybierz Plus” →
   `/checkout?session_id=…&plan_id=plus` (summary names Plus, „19,99 zł/miesiąc”,
   „Maks. talie 100”, „Razem”) → card `4242 4242 4242 4242`, `12/30`, `123`,

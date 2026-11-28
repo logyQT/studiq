@@ -21,7 +21,7 @@ interface SharingFieldsProps {
 }
 
 /**
- * Who a deck or a topic is shared with: "only me" or groups, and then which ones. The radio
+ * Who a content item is shared with: "only me" or groups, and then which ones. The radio
  * group takes its name from the visible label; the picker, which shows its selection as its
  * content, is named by the placeholder copy.
  */
@@ -84,4 +84,29 @@ export function SharingFields({
       )}
     </div>
   );
+}
+
+/**
+ * The copy a content form dialog hands to `SharingFields`, mapped once: the dialog props name
+ * the person and the group label, while the field component names them `personalLabel` and
+ * `groupLabel`. Kept in one place so the two spellings cannot drift apart per dialog.
+ */
+export type SharingFieldsCopy = ReturnType<typeof sharingFieldsCopy>;
+
+export function sharingFieldsCopy(fields: {
+  visibilityLabel?: string;
+  visibilityPersonalLabel?: string;
+  visibilityGroupLabel?: string;
+  groupsPlaceholder?: string;
+  groupsEmptyText?: string;
+  groupsRequiredText?: string;
+}) {
+  return {
+    visibilityLabel: fields.visibilityLabel,
+    personalLabel: fields.visibilityPersonalLabel,
+    groupLabel: fields.visibilityGroupLabel,
+    groupsPlaceholder: fields.groupsPlaceholder,
+    groupsEmptyText: fields.groupsEmptyText,
+    groupsRequiredText: fields.groupsRequiredText,
+  };
 }

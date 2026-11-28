@@ -28,6 +28,32 @@ export function evaluate(args: {
 }
 
 /**
+ * The groups whose teacher must approve a share change, or `null` when the
+ * audience does not change.
+ *
+ * A share change is a teacher decision. Adding a group needs its teacher, and so
+ * does removing one: `update` at `organization` scope alone must not let a caller
+ * shrink another teacher's audience. The returned union is the point — the caller
+ * must teach every group the change adds **or** removes.
+ *
+ * An unchanged set returns `null` so a rename or a re-sent identical list stays
+ * guard-free: an editor cannot be locked out of an edit by a link they did not
+ * touch (#1555, #1557).
+ */
+export function shareAudienceToAuthorize(
+  storedGroupIds: readonly string[],
+  plannedGroupIds: readonly string[],
+): string[] | null {
+  const stored = new Set(storedGroupIds);
+  const planned = new Set(plannedGroupIds);
+  const changed =
+    stored.size !== planned.size || [...stored].some((groupId) => !planned.has(groupId));
+
+  if (!changed) return null;
+  return [...new Set([...stored, ...planned])];
+}
+
+/**
  * Resolves a permission's effective scope from the request context ONLY.
  * `permissionScopes` is populated by with-auth in a single batched query
  * (one SELECT per request), which eliminates the N+1 per-permission

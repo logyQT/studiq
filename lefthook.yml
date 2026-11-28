@@ -1,23 +1,28 @@
 pre-commit:
   parallel: false
   commands:
+    # Check only. A commit must not rewrite or re-stage the author's files: the
+    # old `bun fmt --staged` + `stage_fixed` silently changed the index and
+    # could leave a newly added file out of the commit (#1505). A failure names
+    # the command that fixes it; the author stages the result.
     format:
       glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css,md,mdx,yml,yaml,toml,html}'
-      run: bun fmt --staged
-      stage_fixed: true
+      run: bun fmt --check {staged_files}
+      fail_text: 'Staged files are not formatted. Run `bun run format`, stage the result, and commit again.'
     # Lint exactly the scope `bun run lint` covers (apps/web/src, packages,
     # __tests__). `scripts/` and root configs are typechecked, not linted, so a
     # bare `--staged` run would fail the hook on findings CI never sees. Passing
     # the matched file list keeps the hook and CI on the same scope — see
-    # AGENTS.md → Commands.
-    fix:
+    # AGENTS.md → Commands. Like the format check, this reports and does not
+    # autofix, so the index and the working tree stay as the author staged them.
+    lint-staged:
       glob:
         # `**/` needs at least one directory in lefthook's glob, so each root
         # needs the direct-children pattern too.
         - '{apps/web/src,packages,__tests__}/**/*.{ts,tsx,js,jsx,mjs,cjs}'
         - '{apps/web/src,packages,__tests__}/*.{ts,tsx,js,jsx,mjs,cjs}'
-      run: bun lint --no-script --fix {staged_files}
-      stage_fixed: true
+      run: bun lint --no-script {staged_files}
+      fail_text: 'Staged files have lint findings. Run `bun run lint --fix` (or fix them), stage the result, and commit again.'
     lint:
       run: bun run lint
     knip:

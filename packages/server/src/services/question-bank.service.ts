@@ -7,6 +7,7 @@ import {
   check,
   Permission,
   resolveGroupResourceIds,
+  shareAudienceToAuthorize,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import type {
@@ -25,6 +26,7 @@ import {
   pickDefined,
   readPageWithTotal,
 } from '@studiq/server/lib/query-list';
+import { planShareLinks } from '@studiq/server/lib/share-links';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { heldNotice, sealFor } from '@studiq/server/lib/question-seal';
@@ -36,6 +38,11 @@ import { limitsResolver } from '@studiq/server/services/limits';
 
 /** `.in()` values travel in the request URL; ids are checked in chunks (matching the rest). */
 const ID_CHUNK = 200;
+
+/** A bank write reads its row with the share links, so the audience guard sees what is stored. */
+type QuestionBankWriteRow = Database['public']['Tables']['question_banks']['Row'] & {
+  bank_groups: { group_id: string }[] | null;
+};
 
 export class QuestionBankService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -216,14 +223,32 @@ export class QuestionBankService {
     if (isFailure(loaded)) return loaded;
     const bank = loaded.data;
 
-    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
-    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
-      // The link must belong to the CONTENT's org, not the caller's current UI org.
-      // NULL-org content (legacy personal rows) falls back to the active org.
+    // Share links only exist while the bank is group-visible; the link set follows the
+    // RESULTING visibility, so a partial body cannot desynchronise the two. The rules
+    // and the "group with zero links" answer live in `planShareLinks`, shared with
+    // decks and topics.
+    const share = planShareLinks({
+      sentVisibility: data.visibility,
+      sentGroupIds: data.groupIds,
+      storedVisibility: bank.visibility,
+    });
+    if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+    const requestedGroupIds = share.groupIds;
+
+    // A share change is a teacher decision, on every audience change: an added,
+    // removed or replaced group all need the caller to teach the groups involved.
+    const storedGroupIds = dbRows(bank.bank_groups).map((row) => row.group_id);
+    const audienceToAuthorize = shareAudienceToAuthorize(
+      storedGroupIds,
+      requestedGroupIds ?? storedGroupIds,
+    );
+    // The link must belong to the CONTENT's org, not the caller's current UI org.
+    // NULL-org content (legacy personal rows) falls back to the active org.
+    if (audienceToAuthorize) {
       const contentOrgId = bank.organization_id ?? ctx.activeOrgId ?? null;
       const canShare = await groupService.canShareContentToGroups(
         ctx,
-        requestedGroupIds,
+        audienceToAuthorize,
         contentOrgId,
       );
       if (isFailure(canShare)) return failure(canShare.error);
@@ -417,10 +442,10 @@ export class QuestionBankService {
     id: string,
     ctx: RequestContext,
     permission: string,
-  ): Promise<ServiceResult<Database['public']['Tables']['question_banks']['Row']>> {
+  ): Promise<ServiceResult<QuestionBankWriteRow>> {
     const { data: existing, error } = await supabase
       .from('question_banks')
-      .select('*')
+      .select('*, bank_groups(group_id)')
       .eq('id', id)
       .maybeSingle();
 

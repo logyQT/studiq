@@ -26,6 +26,8 @@ interface TopicCardProps {
   onToggleSelect: () => void;
   /** Enter selection mode; the menu also selects this card. */
   onSelect: () => void;
+  canUpdate: boolean;
+  canDelete: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -38,6 +40,8 @@ export function TopicCard({
   onDelete,
   onToggleSelect,
   onSelect,
+  canUpdate,
+  canDelete,
   t,
 }: TopicCardProps) {
   const gradientHex = getGradientHex(topic.name);
@@ -123,23 +127,27 @@ export function TopicCard({
               >
                 <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-              >
-                <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="text-destructive"
-              >
-                <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
-              </DropdownMenuItem>
+              {canUpdate && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit();
+                  }}
+                >
+                  <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -207,23 +215,27 @@ export function TopicCard({
                   >
                     <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit();
-                    }}
-                  >
-                    <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                    }}
-                    variant="destructive"
-                  >
-                    <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
-                  </DropdownMenuItem>
+                  {canUpdate && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit();
+                      }}
+                    >
+                      <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                    </DropdownMenuItem>
+                  )}
+                  {canDelete && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                      }}
+                      variant="destructive"
+                    >
+                      <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

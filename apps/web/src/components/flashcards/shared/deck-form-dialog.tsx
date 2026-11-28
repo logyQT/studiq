@@ -1,34 +1,31 @@
 'use client';
 
 import {
-  Button,
   Card,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
   Textarea,
 } from '@studiq/ui';
 import { useId, useState } from 'react';
-import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
+import { sharingFieldsCopy } from '@/components/flashcards/shared/sharing-fields';
+import { ContentShareSection } from '@/components/shared/content-share-section';
 import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
+import { ContentFormFooter } from '@/components/shared/content-form-footer';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 import { contentFormPayload } from '@/lib/share-fields';
 
-interface DeckFormDialogProps extends ContentFormDialogProps {
-  groupsRequiredText?: string;
-}
+type DeckFormDialogProps = ContentFormDialogProps;
 
 type FormBodyProps = Omit<
   ContentFormDialogProps,
-  'open' | 'onOpenChange' | 'title' | 'description'
+  'open' | 'onOpenChange' | 'title' | 'description' | 'bodyKey'
 > & {
   gradient: { from: string; to: string };
   onCancel: () => void;
-  groupsRequiredText?: string;
 };
 
 function FormBody({
@@ -49,6 +46,7 @@ function FormBody({
   groupsPlaceholder,
   groupsEmptyText,
   groupsRequiredText,
+  error,
 }: FormBodyProps) {
   const [formData, setFormData] = useState(
     initialValues ?? { name: '', description: '', visibility: 'personal' as const, groupIds: [] },
@@ -59,6 +57,12 @@ function FormBody({
   // A group-visible deck must share to at least one group, otherwise it is visible only
   // to its creator (#139). `groups` guard keeps the dialog usable without the group feature.
   const groupsMissing = !!groups && visibility === 'group' && groupIds.length === 0;
+  const share = {
+    visibility,
+    onVisibilityChange: setVisibility,
+    groupIds,
+    onGroupIdsChange: setGroupIds,
+  };
 
   return (
     <>
@@ -112,36 +116,30 @@ function FormBody({
             </div>
           </div>
         </Card>
-        {groups && (
-          <SharingFields
-            idPrefix="visibility"
-            visibility={visibility}
-            onVisibilityChange={setVisibility}
-            groups={groups}
-            groupIds={groupIds}
-            onGroupIdsChange={setGroupIds}
-            visibilityLabel={visibilityLabel}
-            personalLabel={visibilityPersonalLabel}
-            groupLabel={visibilityGroupLabel}
-            groupsPlaceholder={groupsPlaceholder}
-            groupsEmptyText={groupsEmptyText}
-            groupsRequiredText={groupsRequiredText}
-          />
-        )}
+        <ContentShareSection
+          idPrefix="visibility"
+          value={share}
+          groups={groups}
+          copy={sharingFieldsCopy({
+            visibilityLabel,
+            visibilityPersonalLabel,
+            visibilityGroupLabel,
+            groupsPlaceholder,
+            groupsEmptyText,
+            groupsRequiredText,
+          })}
+          error={error}
+        />
       </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onCancel}>
-          {cancelLabel}
-        </Button>
-        <Button
-          disabled={groupsMissing}
-          onClick={() =>
-            onSubmit(contentFormPayload(initialValues, { ...formData, visibility, groupIds }))
-          }
-        >
-          {submitLabel}
-        </Button>
-      </DialogFooter>
+      <ContentFormFooter
+        cancelLabel={cancelLabel}
+        submitLabel={submitLabel}
+        onCancel={onCancel}
+        submitDisabled={groupsMissing}
+        onSubmit={() =>
+          onSubmit(contentFormPayload(initialValues, { ...formData, visibility, groupIds }))
+        }
+      />
     </>
   );
 }
@@ -166,6 +164,8 @@ export function DeckFormDialog({
   groupsPlaceholder,
   groupsEmptyText,
   groupsRequiredText,
+  error,
+  bodyKey,
 }: DeckFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
 
@@ -177,6 +177,7 @@ export function DeckFormDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <FormBody
+          key={bodyKey}
           gradient={gradient}
           initialValues={initialValues}
           nameLabel={nameLabel}
@@ -194,6 +195,7 @@ export function DeckFormDialog({
           groupsPlaceholder={groupsPlaceholder}
           groupsEmptyText={groupsEmptyText}
           groupsRequiredText={groupsRequiredText}
+          error={error}
         />
       </DialogContent>
     </Dialog>

@@ -28,6 +28,7 @@
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
     "groups_empty": "Nie znaleziono grup",
+    "groups_required": "Wybierz co najmniej jedną grupę",
     "ERROR_ATTEMPTS_CLOSED": "Ta kartkówka została zakończona — nie można rozpocząć nowej próby.",
     "ERROR_ATTEMPTS_NOT_OPEN": "Ta kartkówka jeszcze się nie rozpoczęła.",
     "ERROR_ATTEMPT_EXPIRED": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",
@@ -959,6 +960,8 @@
     "menu_delete": "Usuń",
     "create_title": "Utwórz Nową Fiszkę",
     "create_desc": "Dodaj nową fiszkę do tej talii. Możesz przypisać wiele tematów.",
+    "cancel": "Anuluj",
+    "saving": "Zapisywanie...",
     "edit_title": "Edytuj Fiszkę",
     "edit_desc": "Zaktualizuj zawartość i tematy fiszki",
     "front_label": "Przód (Pytanie)",
@@ -966,6 +969,7 @@
     "back_label": "Tył (Odpowiedź)",
     "back_placeholder": "Wprowadź odpowiedź lub wyjaśnienie...",
     "topics_label": "Tematy (Opcjonalnie)",
+    "topics_placeholder": "Wybierz tematy",
     "media_label": "Multimedia (Opcjonalnie)",
     "no_topics_available": "Brak dostępnych tematów",
     "front_back_required": "Zarówno przód jak i tył są wymagane",
@@ -1069,7 +1073,8 @@
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
     "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
-    "optional": "(opcjonalnie)"
+    "optional": "(opcjonalnie)",
+    "deck_save_failed": "Nie udało się zapisać talii"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -1710,7 +1715,8 @@
     "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
     "back_label": "Tył (Odpowiedź)",
     "front_label": "Przód (Pytanie)",
-    "optional": "(opcjonalnie)"
+    "optional": "(opcjonalnie)",
+    "deck_save_failed": "Nie udało się zapisać talii"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
@@ -2677,7 +2683,8 @@
     "no_results_subject": "banków",
     "select_all": "Zaznacz Wszystkie",
     "deselect_all": "Odznacz Wszystkie",
-    "n_selected": "Wybrano {count}"
+    "n_selected": "Wybrano {count}",
+    "bank_save_failed": "Nie udało się zapisać banku pytań"
   },
   "QuestionTransfer": {
     "export_note": "Eksport zapisuje cały bank, razem z kluczem odpowiedzi i wyjaśnieniami, i jest dostępny tylko dla kadry dydaktycznej.",
