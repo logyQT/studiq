@@ -181,7 +181,9 @@ jobs:
           AI_OWN = (
               "__tests__/qa/AI/", "scripts/fake-llm/",
               "__tests__/qa/profiles/STU-47.json", "__tests__/qa/profiles/STU-48.json",
+              "__tests__/qa/profiles/EDU-DECK-05.json",
               "qa/cases/STU-47.md", "qa/cases/STU-48.md",
+              "qa/cases/EDU-DECK-05.md",
           )
           # The surface includes the two pages the specs drive, the error/reset
           # helpers the chat is made of and the usage controller behind the counter

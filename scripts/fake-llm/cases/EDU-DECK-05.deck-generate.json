@@ -1,0 +1,45 @@
+{
+  "key": "EDU-DECK-05:deck-generate",
+  "case": "EDU-DECK-05",
+  "match": { "lastUserContains": "Dodaj 3 fiszki o czasowniku", "hasTools": true },
+  "turns": [
+    {
+      "toolCalls": [
+        {
+          "id": "call_cards",
+          "name": "generate_flashcards",
+          "arguments": {
+            "task": "Dodaj 3 fiszki o czasowniku",
+            "deck_name": "Czasowniki nieregularne",
+            "count": 3,
+            "flashcards": [
+              { "front": "Co to jest bezokolicznik?", "back": "Nieosobowa forma czasownika." },
+              { "front": "Jak odmienia się „iść” w 1. osobie?", "back": "Idę." },
+              { "front": "Co oznacza tryb rozkazujący?", "back": "Polecenie lub prośbę." }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 210, "output": 140 }
+    },
+    {
+      "match": { "hasToolResult": true },
+      "toolCalls": [
+        {
+          "id": "call_finish",
+          "name": "finish",
+          "arguments": {
+            "type": "flashcards",
+            "deckName": "Czasowniki nieregularne",
+            "flashcards": [
+              { "front": "Co to jest bezokolicznik?", "back": "Nieosobowa forma czasownika." },
+              { "front": "Jak odmienia się „iść” w 1. osobie?", "back": "Idę." },
+              { "front": "Co oznacza tryb rozkazujący?", "back": "Polecenie lub prośbę." }
+            ]
+          }
+        }
+      ],
+      "usage": { "input": 320, "output": 60 }
+    }
+  ]
+}
