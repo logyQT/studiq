@@ -8,6 +8,7 @@ import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { assertTopicsLinkable, readableTopicIds } from '@studiq/server/lib/topic-access';
 import type {
   BatchCopyInput,
   BatchDeleteInput,
@@ -314,6 +315,21 @@ export class FlashcardService {
     const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
     if (isFailure(deck)) return deck;
 
+    // Every read that can fail the copy comes before the insert: an error after it would
+    // leave a card behind, and a retry would make a second one.
+    const { data: topicAssignments, error: topicFetchError } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('topic_id')
+      .eq('flashcard_id', id);
+
+    if (topicFetchError) return toDbFailure(topicFetchError);
+
+    // The copy takes only the topics the caller can read (#1541). It does not refuse: the
+    // caller asked for the card, not for a particular topic.
+    const sourceTopicIds = dbRows(topicAssignments).map((a) => a.topic_id);
+    const readable = await readableTopicIds(supabase, sourceTopicIds, ctx);
+    if (isFailure(readable)) return readable;
+
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')
       .insert({
@@ -329,18 +345,10 @@ export class FlashcardService {
 
     if (insertError) return toDbFailure(insertError);
 
-    const { data: topicAssignments, error: topicFetchError } = await supabase
-      .from('flashcard_topic_assignments')
-      .select('topic_id')
-      .eq('flashcard_id', id);
-
-    if (topicFetchError) return toDbFailure(topicFetchError);
-
-    if (dbRows(topicAssignments).length > 0) {
-      const newTopicAssignments = dbRows(topicAssignments).map((a) => ({
-        flashcard_id: newFlashcard.id,
-        topic_id: a.topic_id,
-      }));
+    const newTopicAssignments = sourceTopicIds
+      .filter((topicId) => readable.data.has(topicId))
+      .map((topicId) => ({ flashcard_id: newFlashcard.id, topic_id: topicId }));
+    if (newTopicAssignments.length > 0) {
       await supabase.from('flashcard_topic_assignments').insert(newTopicAssignments);
     }
 
@@ -454,6 +462,21 @@ export class FlashcardService {
     const deck = await this.loadTargetDeck(supabase, data.targetDeckId, ctx);
     if (isFailure(deck)) return deck;
 
+    // Read before the insert, for the same reason as in `copy`.
+    const { data: topicAssignments, error: topicFetchError } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('flashcard_id, topic_id')
+      .in('flashcard_id', data.ids);
+
+    if (topicFetchError) return toDbFailure(topicFetchError);
+
+    const readable = await readableTopicIds(
+      supabase,
+      [...new Set(dbRows(topicAssignments).map((a) => a.topic_id))],
+      ctx,
+    );
+    if (isFailure(readable)) return readable;
+
     const cardsToInsert = originalRows.map((fc) => ({
       front: fc.front,
       back: fc.back,
@@ -472,19 +495,15 @@ export class FlashcardService {
     const inserted = dbRows(newFlashcards);
     if (inserted.length === 0) return failure('NOT_FOUND');
 
-    const { data: topicAssignments } = await supabase
-      .from('flashcard_topic_assignments')
-      .select('flashcard_id, topic_id')
-      .in('flashcard_id', data.ids);
-
-    if (topicAssignments && topicAssignments.length > 0) {
+    if (dbRows(topicAssignments).length > 0) {
       const oldToNew = new Map(
         originalRows.flatMap((fc, i) => {
           const copy = inserted[i];
           return copy ? [[fc.id, copy.id] as const] : [];
         }),
       );
-      const newAssignments = topicAssignments
+      const newAssignments = dbRows(topicAssignments)
+        .filter((a) => readable.data.has(a.topic_id))
         .map((a) => ({
           flashcard_id: oldToNew.get(a.flashcard_id),
           topic_id: a.topic_id,
@@ -565,49 +584,27 @@ export class FlashcardService {
     return success(cards);
   }
 
-  /**
-   * Guards new topic links: the caller may link only a topic they can read. The
-   * RLS policy on the link table does not do this, because it accepts a visible
-   * card **or** a visible topic. A topic that every card in `cardIds` already
-   * carries passes, so an editor can save a card without being able to read the
-   * topics it came with. A missing and an unreadable id are both `NOT_FOUND`.
-   */
-  private async assertTopicsLinkable(
+  /** The flashcard side of `assertTopicsLinkable`: `cardIds` keep the topics they have. */
+  private assertTopicsLinkable(
     supabase: SupabaseClient<Database>,
     topicIds: string[],
     ctx: RequestContext,
     cardIds: string[] = [],
   ): Promise<ServiceResult<never> | null> {
-    const requested = [...new Set(topicIds)];
-    if (requested.length === 0) return null;
-
-    const readable = new Set<string>();
-    const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (!isImpossibleFilter(filter)) {
-      const { data, error } = await applyAccessFilter(
-        supabase.from('topics').select('id').in('id', requested),
-        filter,
-      );
-      if (error) return toDbFailure(error);
-      for (const topic of dbRows(data)) readable.add(topic.id);
-    }
-
-    const unreadable = requested.filter((id) => !readable.has(id));
-    if (unreadable.length === 0) return null;
-    if (cardIds.length === 0) return failure('NOT_FOUND');
-
-    const { data: links, error } = await supabase
-      .from('flashcard_topic_assignments')
-      .select('flashcard_id, topic_id')
-      .in('flashcard_id', cardIds)
-      .in('topic_id', unreadable);
-    if (error) return toDbFailure(error);
-
-    const linked = new Set(dbRows(links).map((l) => `${l.flashcard_id}:${l.topic_id}`));
-    const carriedByAll = unreadable.every((topicId) =>
-      cardIds.every((cardId) => linked.has(`${cardId}:${topicId}`)),
-    );
-    return carriedByAll ? null : failure('NOT_FOUND');
+    return assertTopicsLinkable(supabase, topicIds, ctx, {
+      itemIds: cardIds,
+      readLinks: async (unreadable) => {
+        const { data, error } = await supabase
+          .from('flashcard_topic_assignments')
+          .select('flashcard_id, topic_id')
+          .in('flashcard_id', cardIds)
+          .in('topic_id', unreadable);
+        if (error) return toDbFailure(error);
+        return success(
+          dbRows(data).map((link) => ({ itemId: link.flashcard_id, topicId: link.topic_id })),
+        );
+      },
+    });
   }
 
   /**

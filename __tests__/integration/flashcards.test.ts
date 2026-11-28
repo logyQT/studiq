@@ -10,6 +10,7 @@ import {
   useRealSupabase,
   cleanupFlashcardDecks,
   cleanupFlashcards,
+  createServiceClient,
   cleanupFlashcardTopics,
   mockUser,
 } from '#test/integration/helpers';
@@ -418,6 +419,39 @@ describe(`Flashcards Integration`, () => {
       expect(response.ok).toBe(true);
       const cards = await listCards(front);
       expect(cards.map((card) => card.flashcard_topic_assignments)).toEqual([
+        [{ topic_id: topicId }],
+      ]);
+    });
+  });
+
+  describe('topic access on copy (#1541)', () => {
+    it('copies only the topics the caller can read', async () => {
+      mockUser(teacher.user);
+      const front = `fc-${suiteId}-copy-topics`;
+      expect((await createWithTopics(front, deckId, [topicId])).ok).toBe(true);
+      const [source] = await listCards(front);
+      if (!source) throw new Error('the source card was not created');
+      // A link the API refuses, as shared content can carry one.
+      const service = createServiceClient();
+      const { error } = await service
+        .from('flashcard_topic_assignments')
+        .insert({ flashcard_id: source.id, topic_id: foreignTopicId });
+      if (error) throw new Error(error.message);
+
+      const { request, params } = createNextRequestWithParams(
+        'http://localhost/api/v1/flashcards/batch/copy',
+        { action: 'copy' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [source.id], targetDeckId: deckId }),
+        },
+      );
+      const response = await batchAction(request, { params });
+      expect(response.ok, await response.clone().text()).toBe(true);
+
+      const copies = (await listCards(front)).filter((card) => card.id !== source.id);
+      expect(copies.map((card) => card.flashcard_topic_assignments)).toEqual([
         [{ topic_id: topicId }],
       ]);
     });

@@ -90,6 +90,15 @@ function chain(result: unknown, count?: number): FakeQueryBuilder<ChainResult> {
   return c;
 }
 
+/** A read the database refuses. */
+function failingRead() {
+  const failed = { data: null, error: { code: 'XX000', message: 'connection reset' } };
+  const builder = chain(null);
+  const promise = Promise.resolve(failed);
+  // On the builder itself: its chain methods return it, so a copy would be left behind.
+  return Object.assign(builder, { then: promise.then.bind(promise) });
+}
+
 describe('FlashcardService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   const ctx: RequestContext = {
@@ -526,6 +535,82 @@ describe('FlashcardService', () => {
 
   describe('topic links (#1515)', () => {
     const card = { id: 'fc-1', front: 'Q', back: 'A' };
+
+    it('copies a card with only the topics the caller can read (#1541)', async () => {
+      const links = chain(null);
+      mock.from.mockReturnValueOnce(chain(card));
+      mock.from.mockReturnValueOnce(chain({ id: 'd-1', visibility: 'personal' }));
+      mock.from.mockReturnValueOnce(chain([{ topic_id: 't-1' }, { topic_id: 't-x' }]));
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.from.mockReturnValueOnce(chain({ id: 'fc-new' }));
+      mock.from.mockReturnValueOnce(links);
+      mock.from.mockReturnValue(chain({ id: 'fc-new' }));
+
+      const result = await service.copy('fc-1', { targetDeckId: 'd-1' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(links.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-new', topic_id: 't-1' }]);
+    });
+
+    it('batch copies cards with only the topics the caller can read (#1541)', async () => {
+      const links = chain(null);
+      mock.from.mockReturnValueOnce(chain([card]));
+      mock.from.mockReturnValueOnce(chain({ id: 'd-1', visibility: 'personal' }));
+      mock.from.mockReturnValueOnce(
+        chain([
+          { flashcard_id: 'fc-1', topic_id: 't-1' },
+          { flashcard_id: 'fc-1', topic_id: 't-x' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(chain([{ id: 't-1' }]));
+      mock.from.mockReturnValueOnce(chain([{ id: 'fc-new' }]));
+      mock.from.mockReturnValue(links);
+
+      const result = await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(links.insert).toHaveBeenCalledWith([{ flashcard_id: 'fc-new', topic_id: 't-1' }]);
+    });
+
+    it.each(['copy', 'batchCopy'] as const)(
+      '%s creates no card when the topic access read fails',
+      async (method) => {
+        const steps = [
+          chain(method === 'copy' ? card : [card]),
+          chain({ id: 'd-1', visibility: 'personal' }),
+          chain([{ flashcard_id: 'fc-1', topic_id: 't-1' }]),
+          failingRead(),
+        ];
+        const rest = chain([{ id: 'fc-new' }]);
+        for (const step of steps) mock.from.mockReturnValueOnce(step);
+        mock.from.mockReturnValue(rest);
+
+        const result =
+          method === 'copy'
+            ? await service.copy('fc-1', { targetDeckId: 'd-1' }, ctx)
+            : await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
+
+        expect(result.success).toBe(false);
+        // A retry after this error must not find a first copy already made. Every query is
+        // checked: an insert before the failed read would sit on an earlier one.
+        expect([...steps, rest].flatMap((query) => query.insert.mock.calls)).toEqual([]);
+        expect(mock.from).toHaveBeenCalledTimes(4);
+      },
+    );
+
+    it('batchCopy creates no card when the topic link read fails (#1541)', async () => {
+      const steps = [chain([card]), chain({ id: 'd-1', visibility: 'personal' }), failingRead()];
+      const rest = chain([{ id: 'fc-new' }]);
+      for (const step of steps) mock.from.mockReturnValueOnce(step);
+      mock.from.mockReturnValue(rest);
+
+      const result = await service.batchCopy({ ids: ['fc-1'], targetDeckId: 'd-1' }, ctx);
+
+      // Carrying on would copy the cards without their topics and report success.
+      expect(result).toMatchObject({ success: false, error: 'INTERNAL_SERVER' });
+      expect([...steps, rest].flatMap((query) => query.insert.mock.calls)).toEqual([]);
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
 
     it('refuses create with an unreadable topic and writes nothing', async () => {
       const cards = chain([], 0);
