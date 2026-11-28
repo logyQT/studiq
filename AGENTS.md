@@ -681,6 +681,9 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:7001`.
   records carry the active `trace_id` for Loki ↔ Tempo correlation, and **falls
   back to `console` whenever the logs pipeline is inactive** (`OTEL_SDK_DISABLED=true`
   or before `instrumentation.ts` registers the provider) so errors are never lost.
+  `logs` and `SeverityNumber` come from `@opentelemetry/api`, the registry
+  `NodeSDK` registers; `@opentelemetry/api-logs` is a separate legacy registry
+  whose records never reach the exporter (#1110).
   Do not invent `@/lib/logger` or add a second logging abstraction
 - Agent step/tool traces are persisted via `enqueueTrace` (`@studiq/server/lib/trace-queue`) → `agent-trace.service`
 - Config: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
