@@ -28,6 +28,7 @@
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
     "groups_empty": "Nie znaleziono grup",
+    "groups_required": "Wybierz co najmniej jedną grupę",
     "ERROR_ATTEMPTS_CLOSED": "Ta kartkówka została zakończona — nie można rozpocząć nowej próby.",
     "ERROR_ATTEMPTS_NOT_OPEN": "Ta kartkówka jeszcze się nie rozpoczęła.",
     "ERROR_ATTEMPT_EXPIRED": "Twoja próba zakończyła się wraz z zamknięciem kartkówki i nie została wysłana.",

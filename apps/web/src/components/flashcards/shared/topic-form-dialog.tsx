@@ -36,6 +36,7 @@ interface TopicFormDialogProps {
   onCancel: () => void;
   t: ReturnType<typeof useTranslations>;
   groups?: GroupOption[];
+  groupsRequiredText?: string;
 }
 
 export function TopicFormDialog({
@@ -48,9 +49,14 @@ export function TopicFormDialog({
   onCancel,
   t,
   groups,
+  groupsRequiredText,
 }: TopicFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
   const id = useId();
+  // A group-visible topic must share to at least one group, the same rule the deck form
+  // enforces (#1561). The server answers 422; the dialog must not offer the state.
+  const groupsMissing =
+    !!groups && formData.visibility === 'group' && (formData.groupIds ?? []).length === 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -107,6 +113,7 @@ export function TopicFormDialog({
               groupLabel={t('visibility_group')}
               groupsPlaceholder={t('groups_placeholder')}
               groupsEmptyText={t('groups_empty')}
+              groupsRequiredText={groupsRequiredText}
             />
           )}
         </div>
@@ -114,7 +121,9 @@ export function TopicFormDialog({
           <Button variant="outline" onClick={onCancel}>
             {t('common_cancel')}
           </Button>
-          <Button onClick={onSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
+          <Button disabled={groupsMissing} onClick={onSubmit}>
+            {editing ? t('common_update') : t('common_create')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

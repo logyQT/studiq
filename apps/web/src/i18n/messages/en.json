@@ -28,6 +28,7 @@
     "visibility_group": "Groups",
     "groups_placeholder": "Select groups...",
     "groups_empty": "No groups found",
+    "groups_required": "Select at least one group",
     "ERROR_ATTEMPTS_CLOSED": "This assessment has closed — no new attempt can be started.",
     "ERROR_ATTEMPTS_NOT_OPEN": "This assessment has not opened yet.",
     "ERROR_ATTEMPT_EXPIRED": "Your attempt ended when the assessment closed and was not submitted.",

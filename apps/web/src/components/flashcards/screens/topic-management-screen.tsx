@@ -163,6 +163,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         onCancel={resetForm}
         t={t}
         groups={screen.groupsData}
+        groupsRequiredText={t('groups_required')}
       />
 
       <TopicViewDialog
