@@ -568,12 +568,30 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('batch', () => {
-    it('returns results array with isLeech per card', async () => {
+    it('returns results array with the leech state per card', async () => {
       setupBatchMocks(
         [{ error: null }, { error: null }],
         [
-          { data: { is_leech: false, user_id: ctx.userId, flashcard_id: 'fc-1' }, error: null },
-          { data: { is_leech: true, user_id: ctx.userId, flashcard_id: 'fc-2' }, error: null },
+          {
+            data: {
+              is_leech: false,
+              user_id: ctx.userId,
+              flashcard_id: 'fc-1',
+              leech_stage: 0,
+              leech_rest_until: null,
+            },
+            error: null,
+          },
+          {
+            data: {
+              is_leech: true,
+              user_id: ctx.userId,
+              flashcard_id: 'fc-2',
+              leech_stage: 1,
+              leech_rest_until: '2026-12-05T00:00:00.000Z',
+            },
+            error: null,
+          },
         ],
       );
 
@@ -592,8 +610,20 @@ describe('FlashcardPracticeService', () => {
       const data = batchPayload(result);
       expect(data.success).toBe(true);
       expect(data.results).toHaveLength(2);
-      expect(data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
-      expect(data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
+      expect(data.results[0]).toEqual({
+        flashcardId: 'fc-1',
+        isLeech: false,
+        leechStage: 0,
+        leechRestUntil: null,
+        suspended: false,
+      });
+      expect(data.results[1]).toEqual({
+        flashcardId: 'fc-2',
+        isLeech: true,
+        leechStage: 1,
+        leechRestUntil: '2026-12-05T00:00:00.000Z',
+        suspended: false,
+      });
     });
 
     it('returns error on failed insert', async () => {
@@ -870,6 +900,7 @@ describe('FlashcardPracticeService', () => {
         review: 1,
         relearning: 0,
         leeched: 0,
+        suspended: 0,
         practicedCards: 8,
         averageAccuracy: 75,
         averageEasinessFactor: 2.5,
@@ -901,6 +932,7 @@ describe('FlashcardPracticeService', () => {
         review: 0,
         relearning: 0,
         leeched: 0,
+        suspended: 0,
         practicedCards: 0,
         averageAccuracy: 0,
         averageEasinessFactor: 0,
@@ -944,6 +976,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });
@@ -952,6 +986,70 @@ describe('FlashcardPracticeService', () => {
       expect(cardQuery.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
       expect(cardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(cardPage(result).items.map((i) => i.id)).toEqual(['fc-1']);
+    });
+
+    it('applies the suspended-id filter before the page limit so a suspended card past the slice still shows (#1063)', async () => {
+      await mockAccessibleFilter({ created_by: 'test-user-id' });
+
+      const suspendedDecks = chain({ data: [], error: null });
+      const cardQuery = chain({
+        data: [{ id: 'fc-suspended', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' }],
+        error: null,
+      });
+      const suspensionIds = chain({ data: [{ flashcard_id: 'fc-suspended' }], error: null });
+      const states = chain({
+        data: [
+          {
+            flashcard_id: 'fc-suspended',
+            learning_state: 'review',
+            is_leech: true,
+            leech_stage: 3,
+            leech_rest_until: null,
+          },
+        ],
+        error: null,
+      });
+      const pageSuspensions = chain({
+        data: [{ flashcard_id: 'fc-suspended' }],
+        error: null,
+      });
+      const practice = chain({ data: [], error: null });
+      mock.from
+        .mockReturnValueOnce(suspendedDecks)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(suspensionIds)
+        .mockReturnValueOnce(states)
+        .mockReturnValueOnce(pageSuspensions)
+        .mockReturnValueOnce(practice);
+
+      const result = await service.getAllCardStats(ctx, { state: 'suspended', limit: 100 });
+
+      expect(cardQuery.in).toHaveBeenCalledWith('id', ['fc-suspended']);
+      // The filter has to reach the query: filtering after the page slice loses a
+      // suspended card that sorts past the first 100 rows.
+      expect(cardQuery.in.mock.invocationCallOrder[0]!).toBeLessThan(
+        cardQuery.limit.mock.invocationCallOrder[0]!,
+      );
+      expect(cardPage(result).items.map((i) => i.id)).toEqual(['fc-suspended']);
+      expect(cardPage(result).items[0]).toMatchObject({ suspended: true });
+    });
+
+    it('returns an empty page without querying flashcards when the suspended-id list is empty (#1063)', async () => {
+      await mockAccessibleFilter({ created_by: 'test-user-id' });
+
+      const suspendedDecks = chain({ data: [], error: null });
+      const cardQuery = chain({ data: [], error: null });
+      const suspensionIds = chain({ data: [], error: null });
+      mock.from
+        .mockReturnValueOnce(suspendedDecks)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(suspensionIds);
+
+      const result = await service.getAllCardStats(ctx, { state: 'suspended' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(cardQuery.limit).not.toHaveBeenCalled();
     });
 
     it('returns an empty page when the filter is impossible', async () => {
@@ -982,6 +1080,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx);
@@ -1033,6 +1133,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });
@@ -1114,6 +1216,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });

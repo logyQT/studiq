@@ -610,6 +610,8 @@ export type Database = {
           last_reviewed_at: string | null;
           learning_state: string;
           learning_step: number;
+          leech_rest_until: string | null;
+          leech_stage: number;
           next_review_at: string;
           repetitions: number;
           sm2_lapse_count: number;
@@ -626,6 +628,8 @@ export type Database = {
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
+          leech_rest_until?: string | null;
+          leech_stage?: number;
           next_review_at?: string;
           repetitions?: number;
           sm2_lapse_count?: number;
@@ -641,6 +645,8 @@ export type Database = {
           last_reviewed_at?: string | null;
           learning_state?: string;
           learning_step?: number;
+          leech_rest_until?: string | null;
+          leech_stage?: number;
           next_review_at?: string;
           repetitions?: number;
           sm2_lapse_count?: number;
@@ -2258,6 +2264,43 @@ export type Database = {
           visibility?: string;
         };
         Relationships: [];
+      };
+      suspended_cards: {
+        Row: {
+          created_at: string;
+          flashcard_id: string;
+          reason: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          flashcard_id: string;
+          reason?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          flashcard_id?: string;
+          reason?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'suspended_cards_flashcard_id_fkey';
+            columns: ['flashcard_id'];
+            isOneToOne: false;
+            referencedRelation: 'flashcards';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'suspended_cards_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       suspended_decks: {
         Row: {

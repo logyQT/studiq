@@ -19,12 +19,22 @@ import {
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { useApiQuery } from '@/hooks/use-api';
-import { formatDateTime } from '@/lib/datetime';
+import { toast } from 'sonner';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { apiPut } from '@/lib/api';
+import { formatDate, formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
-const STATE_FILTERS = ['all', 'new', 'learning', 'review', 'relearning', 'leech'] as const;
+const STATE_FILTERS = [
+  'all',
+  'new',
+  'learning',
+  'review',
+  'relearning',
+  'leech',
+  'suspended',
+] as const;
 
 function StateBadge({ state }: { state: CardStatsItem['state'] }) {
   const t = useTranslations('AppStatsPage');
@@ -48,12 +58,24 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
   const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
 
+  const restore = useApiMutation<unknown, void>({
+    mutationFn: () => apiPut(`/api/v1/flashcards/${item.id}`, { suspended: false }),
+    invalidateKeys: [flashcardKeys.practice.all],
+    onError: () => toast.error(t('restore_failed')),
+  });
+
   const intervalLabel =
     item.intervalValue == null || !item.intervalUnit
       ? '--'
       : item.intervalUnit === 'minutes'
         ? t('interval_minutes', { count: item.intervalValue })
         : t('interval_days', { count: item.intervalValue });
+
+  const restsUntil =
+    item.leechRestUntil && new Date(item.leechRestUntil).getTime() > Date.now()
+      ? item.leechRestUntil
+      : null;
+  const canRestore = item.suspended || restsUntil !== null;
 
   return (
     <>
@@ -64,6 +86,7 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
         <td className="py-3 px-4">
           <div className="flex items-center gap-2">
             <StateBadge state={item.state} />
+            {item.suspended && <Badge variant="outline">{t('state_suspended')}</Badge>}
             {item.state === 'leech' && <AlertTriangle className="h-3 w-3 text-destructive" />}
           </div>
         </td>
@@ -145,6 +168,27 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
                   interval: intervalLabel,
                 })}
               </p>
+            )}
+            {restsUntil && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t('resting_until', { date: formatDate(restsUntil, locale) })}
+              </p>
+            )}
+            {canRestore && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={restore.isPending}
+                onClick={() =>
+                  restore.mutate(undefined, {
+                    onSuccess: () => toast.success(t('restored')),
+                  })
+                }
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t('restore_card')}
+              </Button>
             )}
           </td>
         </tr>

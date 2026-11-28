@@ -66,8 +66,9 @@ Expected:
 ## Expected result
 
 - /app/stats przekierowuje do /app/stats/content.
-- Karty: Wszystkie fiszki, Przećwiczone, Śr. poprawność, Śr. łatwość; podział na stany (Nowa, W nauce, Powtórka, Poprawa, Oporne).
+- Karty: Wszystkie fiszki, Przećwiczone, Śr. poprawność, Śr. łatwość; podział na stany (Nowa, W nauce, Powtórka, Poprawa, Oporne, Zawieszone).
 - Tabela: Stan, Przód, Próby, Poprawność, EF, Interwał; wiersz rozwija szczegóły (Pytanie/Odpowiedź/Powtórzenia/Krok nauki/Pomyłki/Ostatnia powtórka).
+- Filtr stanu zawiera „Zawieszone”; wiersz zawieszonej fiszki ma plakietkę „Zawieszone”, a rozwinięty wiersz — datę „Odpoczywa do …” dla trwającego odpoczynku i akcję „Przywróć do nauki”.
 - Sekcje „Najsłabsze talie” i „Najsłabsze tematy” (lub komunikaty „ćwicz dalej!”).
 
 ## As-built notes (walked on the shared app, 2026-10-29)
@@ -84,9 +85,11 @@ app:
   the per-card accuracy, „Śr. łatwość” the mean easiness factor of the practiced
   cards.
 - The state vocabulary is this page's filter row („Wszystkie”, „Nowe”,
-  „Do nauczenia”, „Do utrwalenia”, „Do przypomnienia”, „Oporne”) and the state
-  badge of each table row („Nowa”, „W nauce”, „Powtórka”, „Poprawa”, „Oporne”);
-  filtering narrows the table by state.
+  „Do nauczenia”, „Do utrwalenia”, „Do przypomnienia”, „Oporne”, „Zawieszone”)
+  and the state badge of each table row („Nowa”, „W nauce”, „Powtórka”,
+  „Poprawa”, „Oporne”, „Zawieszone”); filtering narrows the table by state. A
+  suspended card keeps its state badge and gains the „Zawieszone” badge, and its
+  expanded row offers „Przywróć do nauki” (#1063).
 - Table columns „Stan / Przód / Próby / Poprawność / EF / Interwał”; a row expands
   into „Pytanie / Odpowiedź / Powtórzenia / Krok nauki / Pomyłki /
   Ostatnia powtórka” (plus the next-review line).

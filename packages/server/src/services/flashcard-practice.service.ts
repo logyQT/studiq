@@ -9,6 +9,7 @@ import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import {
   type BatchPracticeInput,
+  type BatchPracticeResultItem,
   type CardStatsItem,
   type CompleteSessionInput,
   DueBreakdownSchema,
@@ -101,6 +102,7 @@ const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
   review: 0,
   relearning: 0,
   leeched: 0,
+  suspended: 0,
   practicedCards: 0,
   averageAccuracy: 0,
   averageEasinessFactor: 0,
@@ -126,7 +128,18 @@ type ReviewStateRow = {
   repetitions: number;
   sm2_lapse_count: number;
   is_leech: boolean;
+  leech_stage: number;
+  leech_rest_until: string | null;
 };
+
+/** Leeches rest 7 days after the threshold lapse, then 30 days, then suspend. */
+const LEECH_REST_DAYS = [7, 30] as const;
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
 
 export class FlashcardPracticeService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -184,7 +197,7 @@ export class FlashcardPracticeService {
     if (data.mode === 'cram') return success({ success: true, results: [] });
 
     const supabase = await this.clientFactory();
-    const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
+    const results: BatchPracticeResultItem[] = [];
 
     for (const item of data.items) {
       const { error: practiceError } = await supabase.from('flashcard_practice').insert({
@@ -204,9 +217,13 @@ export class FlashcardPracticeService {
         ctx,
       );
       if (!reviewStateResult.success) return reviewStateResult;
+      const state = reviewStateResult.data;
       results.push({
         flashcardId: item.flashcardId,
-        isLeech: reviewStateResult.data.is_leech,
+        isLeech: state.is_leech,
+        leechStage: state.leech_stage,
+        leechRestUntil: state.leech_rest_until,
+        suspended: state.leech_stage === 3,
       });
     }
 
@@ -368,6 +385,23 @@ export class FlashcardPracticeService {
 
     const quality = flashcardSpacedRepetitionService.mapToQuality(rating);
 
+    // Only a *new* lapse at or past the threshold advances the ladder. A correct
+    // review must leave both the stage and the rest untouched, and a rescheduled
+    // review of an already-leeched card must not advance it again (#1063).
+    const existingStage = existing?.leech_stage ?? 0;
+    const lapseIncreased = result.lapseCount > (existing?.sm2_lapse_count ?? 0);
+    const advanced = lapseIncreased && result.lapseCount >= settings.leech_threshold;
+    const leechStage = advanced ? Math.min(existingStage + 1, 3) : existingStage;
+
+    let leechRestUntil: string | null = existing?.leech_rest_until ?? null;
+    if (advanced) {
+      if (leechStage === 1) leechRestUntil = addDays(new Date(), LEECH_REST_DAYS[0]).toISOString();
+      else if (leechStage === 2)
+        leechRestUntil = addDays(new Date(), LEECH_REST_DAYS[1]).toISOString();
+      // Stage 3 is an indefinite suspension: no rest date, the exclusion row does the work.
+      else leechRestUntil = null;
+    }
+
     let nextReviewAt = result.nextReviewAt;
     if (result.learningState === 'review') {
       const fuzzRangeDays = flashcardSpacedRepetitionService.getFuzzRangeDays(result.newInterval);
@@ -393,6 +427,8 @@ export class FlashcardPracticeService {
           learning_step: result.learningStep,
           sm2_lapse_count: result.lapseCount,
           is_leech: result.isLeech,
+          leech_stage: leechStage,
+          leech_rest_until: leechRestUntil,
         },
         {
           onConflict: 'user_id, flashcard_id',
@@ -402,6 +438,20 @@ export class FlashcardPracticeService {
       .single();
 
     if (error) return toDbFailure(error);
+
+    if (advanced && leechStage === 3) {
+      // The suspension is what removes the card from review, so a failed insert
+      // has to fail the write instead of leaving it due.
+      const { error: suspendError } = await supabase.from('suspended_cards').upsert(
+        {
+          user_id: ctx.userId,
+          flashcard_id: flashcardId,
+          reason: 'leech',
+        },
+        { onConflict: 'user_id, flashcard_id', ignoreDuplicates: true },
+      );
+      if (suspendError) return toDbFailure(suspendError);
+    }
 
     if (!existing) {
       const { error: introError } = await supabase
@@ -693,6 +743,15 @@ export class FlashcardPracticeService {
       query = query.eq('created_by', cardFilter.created_by);
     }
 
+    // A learner with more than a page of cards can have a suspended card past
+    // the 100-row slice, so this filter has to reach the query, not the page.
+    if (filters?.state === 'suspended') {
+      const cardSuspensionIds = await this.getCardSuspensionIds(ctx);
+      if (cardSuspensionIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false });
+      query = query.in('id', cardSuspensionIds);
+    }
+
     if (suspendedCardIds.length > 0) {
       query = query.filter('id', 'not.in', `(${suspendedCardIds.join(',')})`);
     }
@@ -721,6 +780,14 @@ export class FlashcardPracticeService {
       .in('flashcard_id', flashcardIds);
 
     const stateMap = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
+
+    const { data: suspensions } = await supabase
+      .from('suspended_cards')
+      .select('flashcard_id')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', flashcardIds);
+
+    const suspendedIds = new Set((suspensions ?? []).map((s) => s.flashcard_id));
 
     const { data: practiceRows } = await supabase
       .from('flashcard_practice')
@@ -775,6 +842,9 @@ export class FlashcardPracticeService {
         nextReviewAt: state?.next_review_at ?? null,
         repetitions: state?.repetitions ?? null,
         isLeech,
+        suspended: suspendedIds.has(fc.id),
+        leechStage: state?.leech_stage ?? 0,
+        leechRestUntil: state?.leech_rest_until ?? null,
         learningStep: state?.learning_step ?? null,
         // „Pomyłki” is the practice log's wrong-answer count — the SM-2 lapse
         // counter is 0 until a card graduates, so it cannot represent this.
@@ -782,7 +852,9 @@ export class FlashcardPracticeService {
       };
     });
 
-    if (filters?.state) {
+    // `suspended` is resolved by the query above (before the page slice); the
+    // other states are derived from the row, so they filter after the map.
+    if (filters?.state && filters.state !== 'suspended') {
       items = items.filter((i) => i.state === filters.state);
     }
 
@@ -841,6 +913,7 @@ export class FlashcardPracticeService {
     return dbRows(data).map((r) => r.id);
   }
 
+  /** Cards that belong to a deck the caller suspended (deck-level exclusion). */
   private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
     const supabase = await this.clientFactory();
 
@@ -858,6 +931,18 @@ export class FlashcardPracticeService {
       .in('deck_id', deckIds);
 
     return [...new Set((flashcards ?? []).map((f) => f.id))];
+  }
+
+  /** The caller's own card suspensions (`suspended_cards`), the ids the session action writes. */
+  private async getCardSuspensionIds(ctx: RequestContext): Promise<string[]> {
+    const supabase = await this.clientFactory();
+
+    const { data } = await supabase
+      .from('suspended_cards')
+      .select('flashcard_id')
+      .eq('user_id', ctx.userId);
+
+    return [...new Set((data ?? []).map((s) => s.flashcard_id))];
   }
 
   async completeSession(
@@ -899,7 +984,7 @@ export class FlashcardPracticeService {
     const { data: reviewStates } = await supabase
       .from('flashcard_review_state')
       .select(
-        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, sm2_lapse_count, is_leech',
+        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, sm2_lapse_count, is_leech, leech_stage, leech_rest_until',
       )
       .eq('user_id', ctx.userId)
       .in('flashcard_id', matchingIds);
@@ -943,6 +1028,11 @@ export class FlashcardPracticeService {
                 learningStep: state.learning_step,
                 sm2LapseCount: state.sm2_lapse_count,
                 isLeech: state.is_leech,
+                // The client compares these with the batch result to spot the
+                // transition that advances the ladder, so a resting leech does
+                // not reopen the dialog on every review.
+                leechStage: state.leech_stage,
+                leechRestUntil: state.leech_rest_until,
               }
             : null,
         };

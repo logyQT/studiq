@@ -76,12 +76,12 @@
   --input: oklch(0.600 0.020 264);
 
   /*
-   * Charts — categorical, equal weight on paper (>= 3:1 each). Six steps: five
-   * states plus `--chart-6`, the red that lets the leeched state read as a
+   * Charts — categorical, equal weight on paper (>= 3:1 each). Six steps for the
+   * six card states: `--chart-6` is the red that lets the leeched state read as a
    * problem without borrowing `--destructive` (a UI semantic, not a series
-   * colour). The sixth is `--destructive`'s hue at this ramp's lightness, so it
-   * stays a chart step rather than a second status colour. `--chart-4` (magenta)
-   * stays declared though no series reads it — it is part of the palette.
+   * colour), and `--chart-4` (magenta) marks the suspended state. The red is
+   * `--destructive`'s hue at this ramp's lightness, so it stays a chart step
+   * rather than a second status colour.
    */
   --chart-1: oklch(0.455 0.215 264);
   --chart-2: oklch(0.410 0.070 195);

@@ -13,6 +13,8 @@ interface StateBreakdownChartProps {
  * Each state owns one ramp step. Leeched takes `--chart-6`, the ramp's only red:
  * the state that needs attention must read as a problem, and `--destructive` is a
  * UI semantic (errors, danger actions) rather than a data-series colour.
+ * Suspended takes `--chart-4` (magenta), distinct from both the red and the
+ * traffic-light hues of the four ordinary states.
  */
 const COLORS = {
   neverPracticed: 'var(--chart-2)',
@@ -20,6 +22,7 @@ const COLORS = {
   review: 'var(--chart-5)',
   relearning: 'var(--chart-3)',
   leeched: 'var(--chart-6)',
+  suspended: 'var(--chart-4)',
 };
 
 /** Recharts legend label renderer — hoisted so the reference stays stable across renders. */
@@ -36,6 +39,7 @@ export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
     { name: t('state_review'), value: states.review, fill: COLORS.review },
     { name: t('state_relearning'), value: states.relearning, fill: COLORS.relearning },
     { name: t('state_leech'), value: states.leeched, fill: COLORS.leeched },
+    { name: t('state_suspended'), value: states.suspended, fill: COLORS.suspended },
   ].filter((d) => d.value > 0);
 
   const total = data.reduce((sum, d) => sum + d.value, 0);
