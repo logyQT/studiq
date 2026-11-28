@@ -72,7 +72,7 @@ const UI = {
   manageGroups: 'Zarządzaj grupami',
   cancel: 'Anuluj',
   ratings: ['Nie pamiętam (reset)', 'Trudne (zostań)', 'Dobrze (dalej)', 'Łatwe (zakończ)'],
-  sidebarTrigger: 'Toggle Sidebar',
+  sidebarTrigger: 'Przełącz pasek boczny',
 } as const;
 
 interface Envelope<T> {
