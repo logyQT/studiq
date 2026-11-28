@@ -7,6 +7,7 @@ import {
   check,
   Permission,
   resolveGroupResourceIds,
+  shareAudienceToAuthorize,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import type {
@@ -36,6 +37,11 @@ import { limitsResolver } from '@studiq/server/services/limits';
 
 /** `.in()` values travel in the request URL; ids are checked in chunks (matching the rest). */
 const ID_CHUNK = 200;
+
+/** A bank write reads its row with the share links, so the audience guard sees what is stored. */
+type QuestionBankWriteRow = Database['public']['Tables']['question_banks']['Row'] & {
+  bank_groups: { group_id: string }[] | null;
+};
 
 export class QuestionBankService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -217,13 +223,25 @@ export class QuestionBankService {
     const bank = loaded.data;
 
     const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
-    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
-      // The link must belong to the CONTENT's org, not the caller's current UI org.
-      // NULL-org content (legacy personal rows) falls back to the active org.
+    // A share change is a teacher decision, on every audience change: an added,
+    // removed or replaced group all need the caller to teach the groups involved.
+    const storedGroupIds = dbRows(bank.bank_groups).map((row) => row.group_id);
+    const visibilityLeavesGroup =
+      data.visibility !== undefined && data.visibility !== bank.visibility;
+    // Inline instead of `planShareLinks` on purpose: a bank keeps its stored links
+    // on a flip to personal, unlike a deck or a topic, so a flip back to group with
+    // no sent list reuses them with no teacher check. #1566 covers that guard.
+    const plannedGroupIds =
+      requestedGroupIds ??
+      (visibilityLeavesGroup && data.visibility !== 'group' ? [] : storedGroupIds);
+    const audienceToAuthorize = shareAudienceToAuthorize(storedGroupIds, plannedGroupIds);
+    // The link must belong to the CONTENT's org, not the caller's current UI org.
+    // NULL-org content (legacy personal rows) falls back to the active org.
+    if (audienceToAuthorize) {
       const contentOrgId = bank.organization_id ?? ctx.activeOrgId ?? null;
       const canShare = await groupService.canShareContentToGroups(
         ctx,
-        requestedGroupIds,
+        audienceToAuthorize,
         contentOrgId,
       );
       if (isFailure(canShare)) return failure(canShare.error);
@@ -417,10 +435,10 @@ export class QuestionBankService {
     id: string,
     ctx: RequestContext,
     permission: string,
-  ): Promise<ServiceResult<Database['public']['Tables']['question_banks']['Row']>> {
+  ): Promise<ServiceResult<QuestionBankWriteRow>> {
     const { data: existing, error } = await supabase
       .from('question_banks')
-      .select('*')
+      .select('*, bank_groups(group_id)')
       .eq('id', id)
       .maybeSingle();
 

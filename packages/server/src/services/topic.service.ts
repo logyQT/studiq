@@ -6,6 +6,7 @@ import {
   Permission,
   resolveGroupResourceIds,
   resolveScope,
+  shareAudienceToAuthorize,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import type {
@@ -43,6 +44,11 @@ function defaultTopicVisibility(ctx: RequestContext): 'group' | 'personal' {
   const scope = resolveScope(ctx, Permission.TOPIC_CREATE);
   return scope === 'group' || scope === 'organization' ? 'group' : 'personal';
 }
+
+/** A topic write reads its row with the share links, so the audience guard sees what is stored. */
+type TopicWriteRow = Database['public']['Tables']['topics']['Row'] & {
+  topic_groups: { group_id: string }[] | null;
+};
 
 export class TopicService {
   constructor(private clientFactory: () => Promise<SupabaseClient<Database>>) {}
@@ -176,12 +182,22 @@ export class TopicService {
     if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
     const requestedGroupIds = share.groupIds;
 
+    // A share change is a teacher decision, on every audience change: an added,
+    // removed or replaced group all need the caller to teach the groups involved.
+    // `planShareLinks` answers the links the update would leave; the stored embed
+    // answers the links it has now. A rename and a re-sent identical list keep the
+    // two equal and stay guard-free; a removal and a flip to personal do not.
+    const storedGroupIds = dbRows(topic.topic_groups).map((row) => row.group_id);
+    const audienceToAuthorize = shareAudienceToAuthorize(
+      storedGroupIds,
+      requestedGroupIds ?? storedGroupIds,
+    );
     // Share links belong to the CONTENT's org, not the caller's current UI org;
     // legacy NULL-org content falls back to the active org.
-    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
+    if (audienceToAuthorize) {
       const canShare = await groupService.canShareContentToGroups(
         ctx,
-        requestedGroupIds,
+        audienceToAuthorize,
         topic.organization_id ?? ctx.activeOrgId ?? null,
       );
       if (isFailure(canShare)) return failure(canShare.error);
@@ -239,10 +255,10 @@ export class TopicService {
     id: string,
     ctx: RequestContext,
     permission: string,
-  ): Promise<ServiceResult<Database['public']['Tables']['topics']['Row']>> {
+  ): Promise<ServiceResult<TopicWriteRow>> {
     const { data: existing, error } = await supabase
       .from('topics')
-      .select('*')
+      .select('*, topic_groups(group_id)')
       .eq('id', id)
       .maybeSingle();
 

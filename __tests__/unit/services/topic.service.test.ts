@@ -443,6 +443,7 @@ describe('TopicService', () => {
         created_by: ctx.userId,
         organization_id: 'org-1',
         visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
       };
       const cleared = {
         id: 't-1',
@@ -464,11 +465,11 @@ describe('TopicService', () => {
       expect(updateQuery.update).toHaveBeenCalledWith({ visibility: 'personal' });
       expect(deleteLinks.delete).toHaveBeenCalled();
       expect(deleteLinks.eq).toHaveBeenCalledWith('topic_id', 't-1');
-      // Unsharing must not depend on the caller teaching the groups it removes.
-      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       expect(result.data).toEqual(
         expect.objectContaining({ visibility: 'personal', groupIds: [] }),
       );
+      // #1562: the flip drops the stored link, so its group's teacher has to approve it.
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
     });
 
     it('rejects switching a personal topic to group without a list', async () => {
@@ -515,6 +516,7 @@ describe('TopicService', () => {
         created_by: ctx.userId,
         organization_id: 'org-1',
         visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
       };
       const read = {
         id: 't-1',
@@ -531,6 +533,52 @@ describe('TopicService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(expect.objectContaining({ name: 'Renamed', groupIds: ['g-1'] }));
       expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+      // #1562: a rename sends no share fields, so the audience guard stays off.
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
+    // #1562: removing a group is a share change too, so the caller must teach the stored group.
+    it('refuses removing a stored group the caller does not teach', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update('t-1', { visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+    });
+
+    it('treats a re-sent identical share as unchanged and does not guard it', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('t-1', { groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
     });
   });
 

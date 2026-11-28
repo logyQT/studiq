@@ -384,12 +384,14 @@ describe('QuestionBankService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('clears group links for an empty groupIds list without calling the guard', async () => {
+    // #1562: removing a group is a share change too, so the caller must teach the stored group.
+    it('guards the stored group when an empty groupIds list removes it', async () => {
       const existing = {
         id: 'b-1',
         name: 'Bank',
         created_by: ctx.userId,
         visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
       };
       const cleared = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: [] };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
@@ -399,8 +401,68 @@ describe('QuestionBankService', () => {
       const result = await service.update('b-1', { groupIds: [] }, ctx);
 
       expect(result.success).toBe(true);
-      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
       expect(mock.from).toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('refuses removing a stored group the caller does not teach', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update('b-1', { groupIds: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('leaves the guard off a rename that sends no share fields', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // update row
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('b-1', { name: 'Renamed' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
+    it('treats a re-sent identical share as unchanged and does not guard it', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        visibility: 'group',
+        bank_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
     });
   });
 
