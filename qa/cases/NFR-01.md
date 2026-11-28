@@ -11,6 +11,26 @@
 
 Język polski.
 
+## Seed (QA-suite tenant)
+
+Automatyzacja nie używa kont z ręcznego seeda. Przypadek potrzebuje wyłącznie polskiego
+interfejsu i zawartości dla czterech modułów, więc wystarcza domyślny tenant `content`:
+
+```bash
+bun run env:run -- bun scripts/qa-tenant.ts NFR-01 --fresh
+```
+
+- Profil `content`, bez pliku profilu: organizacja `qa-nfr-01-<suffix>`, manager,
+  nauczyciel, student i grupa domyślna `G1`. Spec czyta dane przez `loadTenant('NFR-01')`.
+- Przebieg otwiera ekrany STU, EDU, MGR i BIL jako student, nauczyciel i manager, a
+  następnie ekrany publiczne `/login` i `/pricing`.
+- Ekran `/join` wymaga prawdziwego zaproszenia: spec tworzy je przez
+  `POST /api/v1/organization/invites` w tym samym tenancie i usuwa je przez `DELETE` przed
+  końcem przebiegu, więc nie zostawia wiersza.
+- Spec nie czyta ani nie zapisuje wierszy globalnych: katalogu planów, flag funkcji,
+  ustawień platformy ani statystyk singletonowych. Nazwy planów (`Free`, `Plus`) są
+  dozwolone.
+
 ## Steps
 
 1. Przejdź po wszystkich ekranach z modułów STU, EDU, MGR, BIL.
