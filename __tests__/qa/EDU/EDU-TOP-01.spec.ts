@@ -83,6 +83,7 @@ const COPY = {
   deleteTitle: 'Usunąć temat?',
   deleteDesc: 'To trwale usunie temat. Tej akcji nie można cofnąć.',
   filters: 'Filtry',
+  filterSearch: 'Szukaj filtrów...',
   ownerMine: 'Moje',
   groups: 'Grupy',
   viewFlashcards: 'Przeglądaj fiszki',
@@ -468,6 +469,49 @@ test.describe('@case:EDU-TOP-01 @area:EDU @prio:P2 educator topics CRUD and filt
     // The individual groups live in the flyout beside the list, not in it.
     await groupsRow.hover();
     await expect(groupRow(group.name)).toBeVisible();
+
+    // ── Step 4c: the filter search (#1244) ─────────────────────────────────
+    // The search box exists to find a group. It must also find the dimension by
+    // its own label, and the flyout it opens must stay beside that row.
+    const filterSearch = page.getByPlaceholder(COPY.filterSearch);
+    await filterSearch.fill(COPY.groups);
+    await expect(groupsRow, '„Grupy” survives a search for its own label').toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(groupRow(group.name).first(), 'ArrowRight enters the flyout').toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(groupRow(group.name), 'Escape closes the flyout').toHaveCount(0);
+    await groupsRow.hover();
+    await expect(groupRow(group.name), 'the flyout still lists the groups').toBeVisible();
+    const flyoutBox = await page.locator('[data-slot="hover-card-content"]').boundingBox();
+    const rowBox = await groupsRow.boundingBox();
+    expect(
+      flyoutBox?.x ?? -1,
+      'the flyout sits beside the „Grupy” row, not at the viewport corner',
+    ).toBeGreaterThan((rowBox?.x ?? 0) + (rowBox?.width ?? 0) - 2);
+
+    // A query narrows the list but never leaves the flyout with no anchor: the
+    // matching group is an ordinary row, and no panel opens on its own.
+    await filterSearch.fill(group.name);
+    await expect(groupsRow, 'the dimension row is filtered out by a group name').toHaveCount(0);
+    await expect(
+      page.locator('[data-slot="hover-card-content"]'),
+      'no flyout is force-opened while searching',
+    ).toHaveCount(0);
+    await expect(filterRow(group.name), 'the matching group is listed as a row').toBeVisible();
+    const groupRequest = page.waitForRequest((request) => {
+      if (!request.url().includes(`${TOPICS_URL}?`)) return false;
+      return new URL(request.url()).searchParams.get('groups') === group.id;
+    });
+    await filterRow(group.name).click();
+    await groupRequest;
+    await expect(filterRow(group.name)).toHaveAttribute('aria-checked', 'true');
+    // The educator's only group *is* „Grupy”, so the trigger names the dimension.
+    await expect(filters).toContainText(COPY.groups);
+    await filterRow(group.name).click();
+    await expect(filterRow(group.name)).toHaveAttribute('aria-checked', 'false');
+    await filterSearch.fill('');
+    await expect(groupsRow, 'clearing the query brings the dimension row back').toBeVisible();
+    await expect(filters).toContainText(COPY.filters);
 
     // Clicking „Grupy” applies every group the educator is in.
     await groupsRow.click();

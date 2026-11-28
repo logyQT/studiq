@@ -16,13 +16,14 @@ Zalogowany teacher1.
 1. Otwórz /edu/topics.
 2. Utwórz temat „Algebra”.
 3. Zmień nazwę, a następnie usuń.
-4. Sprawdź przycisk „Filtry”: wymiar „Moje” i wymiar „Grupy” (grupy w panelu obok listy).
+4. Sprawdź przycisk „Filtry”: wymiar „Moje” i wymiar „Grupy” (grupy w panelu obok listy). W polu „Szukaj filtrów…” wpisz „Grupy”, potem nazwę grupy.
 
 ## Expected result
 
 - Toasty utworzenia/aktualizacji/usunięcia; pusta nazwa → „Nazwa tematu jest wymagana”.
 - Temat powiązany z fiszkami/pytaniami pokazuje poprawną liczbę fiszek.
 - Filtry: jeden przycisk „Filtry” z wierszami „Moje” i „Grupy”; brak selecta zakresu i brak opcji „Udostępnione”.
+- Szukanie filtrów: „Grupy” zostawia wiersz wymiaru i panel z grupami obok niego; nazwa grupy pokazuje pasującą grupę jako wiersz. Panel nigdy nie ląduje w rogu ekranu.
 
 ## Observed on the shared app (walk, qa-env-8)
 
@@ -50,6 +51,10 @@ Zalogowany teacher1.
 - The „Grupy” row selects the educator's groups in one click (the trigger shows a „Grupy”
   chip) and leaves only the `G1`-linked topics; ticking `G1` in the panel beside the list
   narrows the list the same way and leaves the row unselected.
+- „Szukaj filtrów…” finds the dimension by its own label: with `Grupy` typed the row stays,
+  ArrowRight enters the panel beside it, and the panel lists the groups. A group name typed
+  instead lists the matching group as an ordinary row, and no panel opens on its own, so
+  the panel can never detach to the viewport corner (#1244).
 
 ## QA tenant fixture (reconciled)
 
