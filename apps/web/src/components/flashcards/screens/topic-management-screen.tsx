@@ -14,6 +14,7 @@ import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialo
 import { CollectionScreen, useCollectionScreen } from '@/components/shared/collection-screen';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
+import { usePermission } from '@/hooks/use-permission';
 import { apiGet } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import { contentFormPayload } from '@/lib/share-fields';
@@ -31,6 +32,7 @@ interface TopicFormData {
 const EMPTY_FORM: TopicFormData = { name: '', visibility: 'personal', groupIds: [] };
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
+  const permission = usePermission();
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
   const [formData, setFormData] = useState<TopicFormData>(EMPTY_FORM);
 
@@ -136,6 +138,14 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           onView={() => setViewTopicId(topic.id)}
           onEdit={() => openEdit(topic)}
           onDelete={() => screen.setDeleteId(topic.id)}
+          canUpdate={permission('topic.update', {
+            createdBy: topic.created_by,
+            orgId: topic.organization_id ?? undefined,
+          })}
+          canDelete={permission('topic.delete', {
+            createdBy: topic.created_by,
+            orgId: topic.organization_id ?? undefined,
+          })}
           t={t}
         />
       )}
