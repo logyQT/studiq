@@ -437,6 +437,63 @@ describe('TopicService', () => {
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
     });
+
+    it('keeps the stored links when the body omits the share fields', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+      };
+      const read = {
+        id: 't-1',
+        name: 'Renamed',
+        visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // topics update
+      mock.from.mockReturnValueOnce(qb(read)); // getById
+
+      const result = await service.update('t-1', { name: 'Renamed' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ name: 'Renamed', groupIds: ['g-1'] }));
+      expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+    });
+  });
+
+  describe('share payload (#1556)', () => {
+    it('returns the linked group ids from a single read', async () => {
+      const row = {
+        id: 't-1',
+        name: 'Topic',
+        visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(row));
+
+      const result = await service.getById('t-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ groupIds: ['g-1'] }));
+    });
+
+    it('returns the linked group ids on each list row', async () => {
+      const page = qb([{ id: 't-1', name: 'Topic', topic_groups: [{ group_id: 'g-1' }] }]);
+      mock.from.mockReturnValueOnce(page);
+      mock.from.mockReturnValueOnce(qb(null, null, 1));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          items: [expect.objectContaining({ id: 't-1', groupIds: ['g-1'] })],
+        }),
+      );
+    });
   });
 
   describe('list filters (#595)', () => {

@@ -111,7 +111,11 @@ export class TopicService {
     return readPageWithTotal(
       pageQuery(
         applyFilters(
-          supabase.from('topics').select('*, flashcard_count:flashcard_topic_assignments(count)'),
+          supabase
+            .from('topics')
+            .select(
+              '*, flashcard_count:flashcard_topic_assignments(count), topic_groups(group_id)',
+            ),
         ),
         paging,
       ),
@@ -121,6 +125,7 @@ export class TopicService {
         map: (item) => ({
           ...item,
           flashcard_count: dbCount(item.flashcard_count),
+          groupIds: dbRows(item.topic_groups).map((group) => group.group_id),
         }),
       },
     );
@@ -132,11 +137,14 @@ export class TopicService {
 
     const supabase = await this.clientFactory();
     const { data, error } = await applyAccessFilter(
-      supabase.from('topics').select('*').eq('id', id),
+      supabase.from('topics').select('*, topic_groups(group_id)').eq('id', id),
       filter,
     ).maybeSingle();
     if (error || !data) return failure('NOT_FOUND');
-    return success(data);
+    return success({
+      ...data,
+      groupIds: dbRows(data.topic_groups).map((group) => group.group_id),
+    });
   }
 
   async update(
