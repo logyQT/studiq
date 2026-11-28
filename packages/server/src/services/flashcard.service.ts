@@ -234,25 +234,45 @@ export class FlashcardService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.clientFactory();
 
-    const denied = await this.assertCardWritable(supabase, id, ctx, Permission.FLASHCARD_UPDATE);
+    // Suspension is a per-user preference (suspended_cards), so a suspend-only body
+    // only needs read access. Anything that edits the card itself — including a mixed
+    // body and a no-op PUT — keeps the card.update gate, so a reader can never borrow
+    // this path to mutate content. Mirrors `flashcard-deck.service.update`.
+    const touchesCardContent =
+      data.front !== undefined ||
+      data.back !== undefined ||
+      data.visibility !== undefined ||
+      data.topicIds !== undefined ||
+      data.deckId !== undefined;
+
+    const denied = await this.assertCardWritable(
+      supabase,
+      id,
+      ctx,
+      touchesCardContent || data.suspended === undefined
+        ? Permission.FLASHCARD_UPDATE
+        : Permission.FLASHCARD_READ,
+    );
     if (denied) return denied;
 
     const refused = await this.assertTopicsLinkable(supabase, data.topicIds ?? [], ctx, [id]);
     if (refused) return refused;
 
-    const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
-    if (data.front) updateFields.front = data.front;
-    if (data.back) updateFields.back = data.back;
+    if (touchesCardContent) {
+      const updateFields: Database['public']['Tables']['flashcards']['Update'] = {};
+      if (data.front) updateFields.front = data.front;
+      if (data.back) updateFields.back = data.back;
 
-    const { data: flashcard, error } = await supabase
-      .from('flashcards')
-      .update(updateFields)
-      .eq('id', id)
-      .select()
-      .single();
+      const { data: flashcard, error } = await supabase
+        .from('flashcards')
+        .update(updateFields)
+        .eq('id', id)
+        .select()
+        .single();
 
-    if (error && error.code !== 'PGRST116') return toDbFailure(error);
-    if (!flashcard) return failure('NOT_FOUND');
+      if (error && error.code !== 'PGRST116') return toDbFailure(error);
+      if (!flashcard) return failure('NOT_FOUND');
+    }
 
     if (data.topicIds !== undefined) {
       await supabase.from('flashcard_topic_assignments').delete().eq('flashcard_id', id);
@@ -271,6 +291,37 @@ export class FlashcardService {
         .update({ deck_id: data.deckId ?? null })
         .eq('id', id);
       if (dError) return toDbFailure(dError);
+    }
+
+    if (data.suspended === true) {
+      const { error } = await supabase
+        .from('suspended_cards')
+        .upsert(
+          { user_id: ctx.userId, flashcard_id: id, reason: 'manual' },
+          { onConflict: 'user_id, flashcard_id', ignoreDuplicates: true },
+        );
+      if (error) return toDbFailure(error);
+    } else if (data.suspended === false) {
+      const { error: unsuspendError } = await supabase
+        .from('suspended_cards')
+        .delete()
+        .eq('user_id', ctx.userId)
+        .eq('flashcard_id', id);
+      if (unsuspendError) return toDbFailure(unsuspendError);
+
+      // Restore is the only early exit from a rest, and it also restores a resting
+      // (not suspended) card: full reset of the ladder for this caller (#1063).
+      const { error: resetError } = await supabase
+        .from('flashcard_review_state')
+        .update({
+          sm2_lapse_count: 0,
+          leech_stage: 0,
+          is_leech: false,
+          leech_rest_until: null,
+        })
+        .eq('user_id', ctx.userId)
+        .eq('flashcard_id', id);
+      if (resetError) return toDbFailure(resetError);
     }
 
     const { data: updatedFlashcard } = await supabase

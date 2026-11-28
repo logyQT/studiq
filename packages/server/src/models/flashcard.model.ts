@@ -64,6 +64,8 @@ export const UpdateFlashcardSchema = registry.register(
       .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     visibility: z.enum(['personal', 'group']).optional(),
+    /** Per-user preference, not card content: a suspend-only body only needs read access. */
+    suspended: z.boolean().optional(),
   }),
 );
 
