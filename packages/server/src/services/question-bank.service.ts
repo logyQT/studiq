@@ -228,6 +228,9 @@ export class QuestionBankService {
     const storedGroupIds = dbRows(bank.bank_groups).map((row) => row.group_id);
     const visibilityLeavesGroup =
       data.visibility !== undefined && data.visibility !== bank.visibility;
+    // Inline instead of `planShareLinks` on purpose: a bank keeps its stored links
+    // on a flip to personal, unlike a deck or a topic, so a flip back to group with
+    // no sent list reuses them with no teacher check. #1566 covers that guard.
     const plannedGroupIds =
       requestedGroupIds ??
       (visibilityLeavesGroup && data.visibility !== 'group' ? [] : storedGroupIds);
