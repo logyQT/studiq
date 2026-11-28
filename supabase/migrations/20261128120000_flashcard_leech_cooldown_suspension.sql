@@ -64,7 +64,7 @@ GRANT ALL ON public.suspended_cards TO service_role;
 -- should not depend on that).
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION get_due_flashcards(
+create or replace function public.get_due_flashcards(
   p_user_id UUID,
   p_filter_type TEXT DEFAULT 'own',
   p_organization_id UUID DEFAULT NULL,
@@ -195,7 +195,7 @@ $$;
 -- must not advertise its own date there either.
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION public.get_due_breakdown(
+create or replace function public.get_due_breakdown(
   p_user_id uuid,
   p_created_by uuid DEFAULT NULL,
   p_organization_id uuid DEFAULT NULL,
@@ -328,7 +328,7 @@ $$;
 -- change: suspension is a per-card flag, not an accessibility rule.
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
+create or replace function public.get_practice_state_breakdown(
   p_user_id uuid,
   p_created_by uuid DEFAULT NULL,
   p_organization_id uuid DEFAULT NULL
@@ -406,7 +406,7 @@ $$;
 -- if that invariant changes.
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION count_new_cards(
+create or replace function public.count_new_cards(
   p_user_id UUID,
   p_filter_type TEXT DEFAULT 'own',
   p_organization_id UUID DEFAULT NULL

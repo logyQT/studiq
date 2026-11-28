@@ -1,8 +1,13 @@
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asJson } from '#test/helpers/json';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
-import { createNextRequestWithParams, requiredAt } from '#test/integration/test-utils';
+import {
+  createNextRequestWithParams,
+  latestShippedFunction,
+  requiredAt,
+} from '#test/integration/test-utils';
 import { PUT as updateFlashcard } from '@/app/(backend)/api/v1/flashcards/[id]/route';
 
 // #1063: a leeched card used to leave review forever (`NOT is_leech`). The ladder
@@ -11,6 +16,32 @@ import { PUT as updateFlashcard } from '@/app/(backend)/api/v1/flashcards/[id]/r
 // change to the RPC bodies fails here rather than in the UI.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function requireLocalDatabaseUrl(): string {
+  const raw = process.env.SUPABASE_DB_URL;
+  if (!raw) {
+    throw new Error(
+      "leech-cooldown needs SUPABASE_DB_URL pointing at this checkout's local Supabase: the " +
+        'RPCs are installed from their migration so a mutation to that file reaches the ' +
+        'database. Run the suite through `bun run env:run -- bun run test:integration`.',
+    );
+  }
+  const { hostname } = new URL(raw);
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
+    throw new Error('leech-cooldown must run against the local stack, not a remote database');
+  }
+  return raw;
+}
+
+/**
+ * Install the shipped bodies over the direct connection. A copy here could pass
+ * while production ships something else, and a mutation to the migration has to
+ * reach the database to turn this suite red.
+ */
+const SHIPPED_FUNCTIONS = [
+  latestShippedFunction('get_due_flashcards'),
+  latestShippedFunction('get_practice_state_breakdown'),
+];
 
 interface DueCard {
   id: string;
@@ -38,6 +69,13 @@ describe('Leech cooldown and suspension (#1063)', () => {
     student = await before({ role: 'student', decks: 1, flashcards: 1 });
     cardId = requiredAt(student.created.flashcards, 0, 'seeded flashcard');
     db = createServiceClient();
+
+    const sql = postgres(requireLocalDatabaseUrl(), { max: 1, onnotice: () => {} });
+    try {
+      for (const definition of SHIPPED_FUNCTIONS) await sql.unsafe(definition);
+    } finally {
+      await sql.end();
+    }
   });
 
   beforeEach(async () => {
