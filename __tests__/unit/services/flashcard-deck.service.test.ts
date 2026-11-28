@@ -904,7 +904,7 @@ describe('FlashcardDeckService', () => {
       const result = await service.update('d-1', { visibility: 'personal' }, ctx);
 
       expect(result.success).toBe(true);
-      // No group list was sent, so there is nothing to authorize — the links are just dropped.
+      // The fixture stores no links, so the guard has nothing to authorize; the update drops none.
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       const linksBuilder = builderAt(4);
       expect(linksBuilder.delete).toHaveBeenCalled();
@@ -948,7 +948,7 @@ describe('FlashcardDeckService', () => {
       );
 
       expect(result.success).toBe(true);
-      // Parity with create(): a personal deck never carries group links, so no share guard runs.
+      // The fixture stores no links, so the guard has nothing to authorize; the sent list is ignored.
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       const linksBuilder = builderAt(4);
       expect(linksBuilder.delete).toHaveBeenCalled();

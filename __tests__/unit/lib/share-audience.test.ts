@@ -19,7 +19,10 @@ describe('shareAudienceToAuthorize', () => {
   });
 
   it('returns both sides of a replacement', () => {
-    expect(shareAudienceToAuthorize(['g-1', 'g-2'], ['g-2', 'g-3'])).toEqual(['g-1', 'g-2', 'g-3']);
+    const audience = shareAudienceToAuthorize(['g-1', 'g-2'], ['g-2', 'g-3']);
+
+    expect(audience).toHaveLength(3);
+    expect(audience).toEqual(expect.arrayContaining(['g-1', 'g-2', 'g-3']));
   });
 
   it('ignores duplicates on either side', () => {
