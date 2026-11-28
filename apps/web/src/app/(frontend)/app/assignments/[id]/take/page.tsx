@@ -11,8 +11,10 @@ import { toast } from 'sonner';
 import { SubmitConfirmDialog } from '@/components/assignments/submit-confirm-dialog';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
+import { useQuizDraftAutosave } from '@/hooks/use-quiz-draft-autosave';
 import { ApiError, apiPost } from '@/lib/api';
 import {
+  seedQuizAnswers,
   seedQuizPhotos,
   toSaveAnswersPayload,
   unansweredIndexes,
@@ -121,6 +123,13 @@ export default function TakeAssignmentPage() {
   });
   useBreadcrumbLabel(id, assignment?.title);
 
+  const draft = useQuizDraftAutosave({
+    attemptId: attemptId ?? '',
+    questions: attempt?.questions,
+    answers,
+    failureMessage: t('save_failed'),
+  });
+
   // „Kontynuuj” reopens the same attempt, so seed the inputs from whatever the
   // server already holds for it (the autosaved draft, #349) — otherwise the
   // resumed attempt looks empty (#369).
@@ -129,16 +138,14 @@ export default function TakeAssignmentPage() {
     if (!attempt || seededAttemptId.current === attempt.id) return;
     seededAttemptId.current = attempt.id;
 
-    const restored: Record<string, string> = {};
-    for (const [questionId, answer] of Object.entries(attempt.answers ?? {})) {
-      const value = answer.selected_answer_id ?? answer.text_answer;
-      if (value) restored[questionId] = value;
-    }
+    const restored = seedQuizAnswers(attempt.questions, attempt.answers);
+    // The server has this state already: only a change from it is saved.
+    draft.markSaved(attempt.questions, restored);
     setAnswers(restored);
     setPhotos(
       seedQuizPhotos(attempt.questions, attempt.images, (number) => t('saved_photo', { number })),
     );
-  }, [attempt, t]);
+  }, [attempt, t, draft]);
 
   const submitMutation = useApiMutation<unknown, { attemptId: string; answers: SavedAnswer[] }>({
     mutationFn: (body) =>
@@ -185,6 +192,7 @@ export default function TakeAssignmentPage() {
   const performSubmit = useCallback(async () => {
     if (!attempt || submitting) return;
     setSubmitting(true);
+    draft.stop();
     try {
       await submitMutation.mutateAsync({
         attemptId: attempt.id,
@@ -197,7 +205,7 @@ export default function TakeAssignmentPage() {
     // `answers`, `submitMutation`, `id` and `router` are all read above; the rule mis-infers them
     // as unused because they appear after `await`.
     // eslint-disable-next-line react-hooks/memo-dependencies -- all deps are used by this callback.
-  }, [attempt, answers, submitting, submitMutation, id, router]);
+  }, [attempt, answers, submitting, submitMutation, id, router, draft]);
 
   const handleSubmit = useCallback(async () => {
     try {
@@ -213,9 +221,11 @@ export default function TakeAssignmentPage() {
         router.replace(`/app/assignments/${id}`);
         return;
       }
+      // The attempt is still running, so its answers are saved again.
+      draft.resume();
       toast.error(t('submit_failed'));
     }
-  }, [performSubmit, t, id, router]);
+  }, [performSubmit, t, id, router, draft]);
 
   useEffect(() => {
     if (

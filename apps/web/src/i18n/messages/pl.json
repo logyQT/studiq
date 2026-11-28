@@ -3255,6 +3255,7 @@
     "ungraded": "Oczekuje na ocenę — pytania otwarte nie wchodzą jeszcze do wyniku."
   },
   "AppAssignmentTakePage": {
+    "save_failed": "Nie udało się zapisać odpowiedzi. Nie opuszczaj strony i sprawdź połączenie.",
     "saved_photo": "Zapisane zdjęcie {number}",
     "confirm_title": "Wysłać odpowiedzi?",
     "confirm_final": "Po wysłaniu nie można ich zmienić.",
