@@ -65,8 +65,9 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 
 ## Steps
 
-1. Sprawdź, że strona pokazuje karty trzech licencji AI, obie tabele, przycisk
-   „Przydziel miejsce” i akcje „Zwolnij miejsce”; nie ma przycisku „Kup miejsca”.
+1. Sprawdź, że strona pokazuje karty trzech licencji AI, obie tabele i przycisk
+   „Przydziel miejsce”; nie ma przycisku „Kup miejsca”. Akcja „Zwolnij miejsce” pojawia
+   się przy przydziale (MGR-SEAT-03).
 2. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
    `{"planKey":"ai_lite","quantity":3}`.
 3. Spróbuj ilości 0 oraz ujemnej tym samym żądaniem.
@@ -74,8 +75,9 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 ## Expected result
 
 - Strona renderuje karty „Licencje AI na miejsca” z ceną za miejsce i dziennym limitem
-  tokenów oraz tabele „Pule miejsc” i „Przydziały”; jest przycisk „Przydziel miejsce”
-  i akcja „Zwolnij miejsce”, a przycisku „Kup miejsca” nie ma (zakup w kolejnym kroku).
+  tokenów oraz tabele „Pule miejsc” i „Przydziały”; jest przycisk „Przydziel miejsce”,
+  a przycisku „Kup miejsca” nie ma (zakup w kolejnym kroku). Akcja „Zwolnij miejsce”
+  pojawia się przy przydziale (MGR-SEAT-03).
 - `POST` zwraca **201**, a pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne;
   wiersz nosi przyjazną nazwę licencji „StudiQ AI Lite”.
 - `POST` z ilością 0 lub ujemną zwraca **422** `UNPROCESSABLE_ENTITY` i nie tworzy puli.
@@ -86,8 +88,9 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   „Pule miejsc” (kolumny Plan / Wykupione / Przydzielone / Dostępne) oraz „Przydziały”. Świeża
   organizacja pokazuje „Brak skonfigurowanych pul miejsc” i „Nie przydzielono jeszcze
   żadnych miejsc”.
-- #1511 przywrócił przycisk „Przydziel miejsce” i akcje „Zwolnij miejsce”; przycisku
-  „Kup miejsca” nie ma (zakup w kolejnym kroku). Obie tabele i wszystkie `GET` działają.
+- #1511 przywrócił przycisk „Przydziel miejsce”; akcja „Zwolnij miejsce” pojawia się przy
+  przydziale (MGR-SEAT-03); przycisku „Kup miejsca” nie ma (zakup w kolejnym kroku). Obie
+  tabele i wszystkie `GET` działają.
 - Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"ai_lite","quantity":3}` →
   **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz „StudiQ AI Lite”
   z wartościami **3 / 0 / 3**. Wartości są liczone po stronie serwera (`total` /

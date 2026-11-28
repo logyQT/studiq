@@ -44,8 +44,8 @@ Expected:
 - `POST` zwraca **201**; pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne pod
   przyjazną nazwą „StudiQ AI Lite”.
 - `POST` z ilością 0 lub ujemną zwraca **422** i nie tworzy puli.
-- Strona ma przycisk „Przydziel miejsce” i akcje „Zwolnij miejsce”; przycisku „Kup miejsca”
-  nie ma.
+- Strona ma przycisk „Przydziel miejsce”; akcja „Zwolnij miejsce” pojawia się przy
+  przydziale (MGR-SEAT-03); przycisku „Kup miejsca” nie ma.
 
 ## Prerequisite context (tenant model)
 

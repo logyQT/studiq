@@ -307,10 +307,10 @@ export default function ManageSeatsPage() {
           <p className="mt-2 text-sm text-muted-foreground">{t('ai_only_note')}</p>
         </div>
         {licencePlansLoading ? (
-          <div className="flex items-center justify-center py-8">
+          <output className="flex items-center justify-center py-8">
             <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">{t('licence_tiers_loading')}</span>
-          </div>
+          </output>
         ) : licencePlansError ? (
           <div
             role="alert"
