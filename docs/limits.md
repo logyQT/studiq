@@ -2,7 +2,7 @@
 
 > Canonical reference for plan entitlements and quota resolution (#232).
 > Historical design: [`plans/archive/org-features-and-limits.md`](plans/archive/org-features-and-limits.md).
-> Last updated: 2026-11-27 (organization ladder: Launch / Team / Hub / Campus, cumulative features).
+> Last updated: 2026-11-28 (AI seat licences: a sales-channel axis and three licence plans, #1511).
 
 ## Summary
 
@@ -28,31 +28,52 @@ A plan is a **template**: `plan_entitlements` and `plan_limits` rows keyed by
   `billing_mode` (`stripe`, `invoice` or `none`) decides whether checkout may
   sell it, and `plan_assignments` pins it to organizations. See
   [plans/extendability.md](plans/extendability.md#adding-a-sales-led-contract-plan-unlisted).
+- **`sales_channels`** says where a plan is sold (#1511): `individual` (the plan
+  and organization checkout) or `seat_pool` (an organization seat licence). A
+  plan can be sold through both. Every buyer surface applies one channel filter
+  **on top of** `visibility`; the values are closed in `SALES_CHANNELS`
+  (`@studiq/authz`) and by a CHECK on the column. See
+  [plans/extendability.md](plans/extendability.md#adding-a-sales-channel).
+- The three **AI seat licences** — `ai_lite` / `ai_pro` / `ai_max` at
+  19.99 / 39.99 / 79.99 zł per seat per month — are `public` plans sold only on
+  the `seat_pool` channel. Each carries `ai.chat` and one daily quota. A seat
+  licence grants its own keys; the org plan does not filter it (ADR-0015 D38).
 
 ## Data model
 
-| Table / column                                                          | Meaning                                                                                                                                                                                                                            |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`). A plan carries no persona dimension: the same keys form one personal ladder and one organization ladder.                                                                               |
-| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                                                                                                       |
-| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                                                                                                       |
-| `profiles.personal_plan_key`                                            | Personal plan, nullable. A student or an educator starts on the free plan; a manager holds none (ADR-0007) and buys only for an organization. An organization purchase never writes it (#228).                                     |
-| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                                                                                                    |
-| `org_seat_pools` / `org_seat_assignments`                               | Opt-in per-user seat; the pool's `plan_key` FKs a `scope='personal'` plan whose keys are all `seatEligible` (D15/D33) — the pool is the licence. The UI no longer sells or assigns seats (#1493); the data path is kept for #1511. |
-| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                                                                                                 |
-| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                                                                                                          |
+| Table / column                                                          | Meaning                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `subscription_plans`                                                    | Plan catalog (`key`, name, price, `scope`). A plan carries no persona dimension: the same keys form one personal ladder and one organization ladder.                                                                                                                     |
+| `plan_entitlements (plan_key, entitlement_key)`                         | Feature template for a plan.                                                                                                                                                                                                                                             |
+| `plan_limits (plan_key, limit_key, limit_value)`                        | Limit template for a plan. `-1` = unlimited.                                                                                                                                                                                                                             |
+| `profiles.personal_plan_key`                                            | Personal plan, nullable. A student or an educator starts on the free plan; a manager holds none (ADR-0007) and buys only for an organization. An organization purchase never writes it (#228).                                                                           |
+| `organizations.plan`                                                    | Organization plan (catalogue default `launch`).                                                                                                                                                                                                                          |
+| `org_seat_pools` / `org_seat_assignments`                               | A pool of N seat licences; the pool's `plan_key` FKs a `scope='personal'` plan sold on the `seat_pool` channel, whose keys are all `seatEligible` (D15/D33, #1511). `org_seat_assignments` is one member occupying one licence; a seat grants the plan's own keys (D38). |
+| `user_feature_overrides (user_id, feature_key, is_enabled, expires_at)` | Strongest feature layer; expired rows are ignored.                                                                                                                                                                                                                       |
+| `entitlement_flags (key, is_enabled)`                                   | Global kill switch only; a missing row fails closed (D8).                                                                                                                                                                                                                |
 
 The `free` / `launch` defaults and the nullable manager plan come from the
 plan-catalogue migrations (`20261125170000_plan_catalog_owned_by_migrations.sql`,
-`20261126170000_plan_key_rename_manager_plan.sql` and
-`20261127090000_org_team_tier.sql`), not from the original table migrations. The
-current matrix is `20261127090000_org_team_tier.sql`: Free / Plus / Pro / Max on
-`free` / `plus` / `pro` / `max`, plus Launch / Team / Hub / Campus. The
-organization ladder is cumulative — Launch carries `flashcards` + `quiz`, Team
-adds `quiz.templates`, Hub adds `stats.insights`, Campus adds `branding` — with
-5/3, 25/10, 100/40 and 1 000/100 members/groups. No organization plan carries
-`max_ai_tokens_per_day` (AI is an organization licence in #1511), and an
+`20261126170000_plan_key_rename_manager_plan.sql`,
+`20261127090000_org_team_tier.sql` and `20261128090000_ai_seat_licences.sql`),
+not from the original table migrations. The current matrix is
+`20261128090000_ai_seat_licences.sql`: Free / Plus / Pro / Max on `free` /
+`plus` / `pro` / `max`, Launch / Team / Hub / Campus, and the three AI licences.
+The organization ladder is cumulative — Launch carries `flashcards` + `quiz`,
+Team adds `quiz.templates`, Hub adds `stats.insights`, Campus adds `branding` —
+with 5/3, 25/10, 100/40 and 1 000/100 members/groups. No organization plan
+carries `max_ai_tokens_per_day` (AI is an organization licence), and an
 organization plan is never a seat pool: a pool is a licence of a personal plan.
+
+| Plan      | Channel     | Entitlements | `max_ai_tokens_per_day` | Price / seat / month |
+| --------- | ----------- | ------------ | ----------------------- | -------------------- |
+| `ai_lite` | `seat_pool` | `ai.chat`    | 100 000                 | 19.99 zł             |
+| `ai_pro`  | `seat_pool` | `ai.chat`    | 300 000                 | 39.99 zł             |
+| `ai_max`  | `seat_pool` | `ai.chat`    | 1 000 000               | 79.99 zł             |
+
+The tiers differ in quota only. A licence plan carries **one** `plan_limits`
+row on purpose: a missing row is `0`, and `max(org, seat, personal)` ignores it
+(ADR-0015 D38). The quota is daily; the licence is billed monthly.
 
 Feature keys: `ENTITLEMENTS` in
 `packages/authz/src/entitlements.ts` (`ai.chat`, `flashcards`,
@@ -128,9 +149,11 @@ request on the ctx). Resolution order:
    - `org_roles.entitlement_profile`: `all` → the org plan ceiling, `learner` →
      `flashcards`, `quiz`, `ai.chat`, `branding` ∩ ceiling, `none` → nothing.
    - Seated (`org_seat_assignments` via `getSeatPlanKey`): the seat plan's
-     `plan_entitlements` are intersected with the ceiling (a seat adds only
-     keys the org plan carries). The role layer is therefore
-     `profile + seat ∩ ceiling`; there is no revoke subtraction (phase 7, D27).
+     `plan_entitlements` are granted as its own purchase — the org ceiling does
+     not filter them (ADR-0015 D38, #1511). `addPool` and the
+     `seatEligible ⇒ scope: 'personal'` invariant keep a seat from carrying an
+     org-scope key. The role layer is `profile + seat`; there is no revoke
+     subtraction (phase 7, D27).
 3. **Personal plan** — applied on top of the entitlement above:
    `profiles.personal_plan_key` → `plan_entitlements`. A plan the member pays for
    personally is never shadowed by an org on a lower tier — a student on StudiQ
@@ -174,16 +197,17 @@ widen it. Per-member keys (`scope: 'user'`) take the most permissive layer:
 `max(org, seat, personal)`, so an org on the free tier never undercuts a plan
 the member bought. A personal plan whose `scope='organization'` is excluded
 inside an org — it is the legacy org-buyer mirror (#228, D34). A missing
-`plan_limits` row is `0` (blocked) in every path.
+`plan_limits` row is `0` (blocked) in every path; for a **seat** it is a silent
+`0`, because a licence plan carries one quota row by design (ADR-0015 D38).
 
-| Context                                          | `scope: 'user'` keys               | `scope: 'org'` keys            |
-| ------------------------------------------------ | ---------------------------------- | ------------------------------ |
-| No active org                                    | personal plan                      | `0` (no org capacity to grant) |
-| Active org, seated verified member               | max(org, seat, personal)           | org plan                       |
-| Active org, unseated verified member             | max(org, personal)                 | org plan                       |
-| Active org, organization-scope personal plan     | max(org, seat) (personal excluded) | org plan                       |
-| Active org id without membership (forged cookie) | personal plan                      | `0`                            |
-| Plan lacks the key                               | `0` + `warn()`                     | `0` + `warn()`                 |
+| Context                                          | `scope: 'user'` keys                          | `scope: 'org'` keys            |
+| ------------------------------------------------ | --------------------------------------------- | ------------------------------ |
+| No active org                                    | personal plan                                 | `0` (no org capacity to grant) |
+| Active org, seated verified member               | max(org, seat, personal)                      | org plan                       |
+| Active org, unseated verified member             | max(org, personal)                            | org plan                       |
+| Active org, organization-scope personal plan     | max(org, seat) (personal excluded)            | org plan                       |
+| Active org id without membership (forged cookie) | personal plan                                 | `0`                            |
+| Plan lacks the key                               | `0` + `warn()` (org/personal); `0` for a seat | `0` + `warn()`                 |
 
 `ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
 `org_members` row before treating it as a tenant scope — and before reading the
@@ -286,7 +310,23 @@ midnight.
 
 `getEffectiveLimit` composes the per-member ceiling: `max(org, seat, personal)`
 with `-1` short-circuiting. A missing `plan_limits` row is `0`; a seat can only
-raise the org value, never lower it.
+raise the org value, never lower it. A licence plan reads its quota without the
+"missing limit" warning (D38).
+
+The AI quotas are per member per day:
+
+| Source         | `max_ai_tokens_per_day` |
+| -------------- | ----------------------- |
+| `free`         | 0                       |
+| `plus`         | 100 000                 |
+| `pro`          | 250 000                 |
+| `max`          | 500 000                 |
+| `ai_lite` seat | 100 000                 |
+| `ai_pro` seat  | 300 000                 |
+| `ai_max` seat  | 1 000 000               |
+
+The layers compose with `max`, so a Plus member on an `ai_pro` seat resolves
+300 000; neither layer can lower the other.
 
 After a stream finishes, `trackTokenUsage` calls
 `public.reserve_ai_tokens(p_day, p_input_tokens, p_output_tokens, p_limit)`
@@ -325,10 +365,10 @@ refetches. Resolution itself is immediate.
 
 ## Where to change plan data
 
-- **Templates** — `supabase/migrations/20261125170000_plan_catalog_owned_by_migrations.sql`
-  (the catalogue's single home since #1494; the seed no longer writes plan rows).
-  `bun run env:reset-db --yes` re-applies the matrix from the migrations,
-  discarding runtime edits.
+- **Templates** — `supabase/migrations/20261128090000_ai_seat_licences.sql`
+  (the single home since #1494; the seed never writes a plan row). It re-asserts
+  the whole eleven-plan matrix and deletes no plan. `bun run env:reset-db --yes`
+  re-applies the matrix from the migrations, discarding runtime edits.
 - **Runtime** — admin app: `GET/POST /api/v1/plan-limits`,
   `PUT/DELETE /api/v1/plan-limits/[id]` (id, not plan key). For
   `plan-features` the routes are `GET/POST /api/v1/plan-features` and
@@ -357,3 +397,9 @@ refetches. Resolution itself is immediate.
   `reserve_ai_tokens` with a real signed-in session: a concurrent burst (both
   increments stored, exactly one reports the ceiling), the single-call
   overshoot, `-1` unlimited, the null-actor raise, and the DELETE revoke.
+- `__tests__/integration/ai-seat-licence.test.ts` — the seat licence resolves
+  `ai.chat` and the tier quota for its assigned member only, and an assignment
+  row in another org grants nothing (#1511).
+- `__tests__/integration/plan-catalog.test.ts` — the eleven-plan matrix,
+  including each plan's channel and the three licences; a double replay leaves
+  the same matrix.

@@ -57,9 +57,9 @@ until the TS catalog knows the key (step 12 is not optional).
 
 The plan catalogue is migration-owned code (#1494): the seven plans, their
 entitlement sets, their limits and the flag rows live in two declarative
-matrices — `supabase/migrations/20261126130000_individual_plan_ladder.sql` (the
-four personal plans) and `20261126160000_organization_plan_ladder.sql` (the three
-organization plans) — and `supabase/seeds/00_plans.sql` writes no plan data. A
+matrices — `supabase/migrations/20261128090000_ai_seat_licences.sql` owns the
+eleven-plan matrix (the four personal plans, the four organization tiers and the
+three AI licences) — and `supabase/seeds/00_plans.sql` writes no plan data. A
 new key's plan rows go into the matrix that owns those plans;
 `__tests__/integration/plan-catalog.test.ts` mirrors the matrix literally, so it
 fails until the test is updated in the same PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
@@ -142,12 +142,13 @@ reader consults `plan_assignments` for a personal plan. So the seat-licence plan
 is **not** pinned, and the plan editor's "Assigned organizations" section does
 not list it. This slice adds no pin path for personal plans.
 
-The seats picker (`/manage/seats`) reads the public list today, so a bespoke
-seat-licence plan is **not offerable from that picker yet**. The operator
-bootstraps the pool manually (`org_seat_pools` / `addPool`) until a follow-up
-exposes unlisted personal plans to the picker. Seats are frozen at the UI
-(#1493); the data path stays for #1511. This slice deliberately does not change
-the picker.
+The seats picker (`/manage/seats`, PR2) reads
+`SubscriptionPlanService.listLicencePlans`: active, personal plans sold on the
+`seat_pool` channel, authenticated and gated by `org.seat.manage`. It does not
+filter `visibility`, so a bespoke unlisted licence plan is offerable there. The
+three AI licences are `public` anyway, which is the accepted price-list exposure
+(#1511 §7.3). Purchase and assignment are PR2+; this slice ships the catalogue,
+the resolver arm and the read.
 
 ### Retrofitting a gate onto a free read is a breaking change
 
@@ -163,6 +164,33 @@ one line and every case stayed green.
 Rule: choose a surface whose existing contract the key's plan set already covers.
 Gating a free read shared across personas means re-baselining every consumer and
 its QA cases in the same PR — a product decision, not an entitlement one.
+
+## Adding a sales channel
+
+A channel is a **value**, not a column (#1511). `subscription_plans.sales_channels`
+is `text[] not null default '{individual}'`, and `SALES_CHANNELS`
+(`packages/authz/src/plans.ts`) is the one owner of the closed set.
+
+| #   | Step                                                                                       | Where                           | Layer |
+| --- | ------------------------------------------------------------------------------------------ | ------------------------------- | ----- |
+| 1   | Append the value to `SALES_CHANNELS` and name it once (`SALES_CHANNEL_*`)                  | `packages/authz/src/plans.ts`   | code  |
+| 2   | Add it to the CHECK on `subscription_plans.sales_channels` in a new migration              | `supabase/migrations/`          | data  |
+| 3   | Add one filter at the new selling surface (`.contains('sales_channels', [value])`)         | the service that reads the plan | code  |
+| 4   | Put a plan on the channel with an array update; a plan sold through both keeps both values | admin plan editor or the matrix | data  |
+
+- **No DDL on plans and no change to an existing surface.** Each surface reads
+  one value: `listActive`/`getByKey` filter `individual`,
+  `listLicencePlans` filters `seat_pool`, and the individual checkout refuses a
+  plan without `individual`. A third channel touches only its own surface.
+- **`visibility` is applied first.** The channel narrows what a read offers; it
+  never replaces the `visibility='public' AND is_active` predicate.
+- **The TS tuple and the CHECK are pinned together.**
+  `__tests__/integration/catalog-invariants.test.ts` reads
+  `pg_get_constraintdef` and fails when the two disagree; the CHECK itself
+  rejects an empty array and any value outside the set.
+- **A channel is not a scope.** A seat licence is a `scope='personal'` plan on
+  `{seat_pool}`; `addPool` requires that channel, and the individual checkout
+  refuses the plan (`BAD_REQUEST`).
 
 ## Retiring an entitlement
 

@@ -129,6 +129,16 @@ describe('a plan catalogue sweep spares unlisted plans (#1495)', () => {
     );
     expect(findings).toEqual([]);
   });
+
+  it('the AI seat owning file deletes no plan row (#1511)', () => {
+    // `20261127090000` sweeps every plan its eight-row matrix does not list, so
+    // the licence matrix must not inherit that shape: a replay of this file may
+    // not remove a plan (a pool on `ai_lite` would be left dangling).
+    const source = withoutComments(
+      fs.readFileSync(path.join(MIGRATIONS_ROOT, '20261128090000_ai_seat_licences.sql'), 'utf8'),
+    );
+    expect([...source.matchAll(DELETE_PATTERN)]).toEqual([]);
+  });
 });
 
 describe('findingsInSource()', () => {

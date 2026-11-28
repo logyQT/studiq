@@ -51,6 +51,7 @@ function plan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     sortOrder: 1,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
     ...overrides,
   };
 }

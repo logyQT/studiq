@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { type RequestContext, SALES_CHANNEL_SEAT_POOL } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
@@ -69,10 +69,11 @@ export class SeatService {
 
   async addPool(ctx: RequestContext, input: CreatePoolInput): Promise<PoolResult> {
     // The licence check is catalog truth in one query (D15/D33): the plan must
-    // exist, be active, be `scope='personal'`, and every entitlement key it
-    // carries must be `seatEligible` in the live `entitlement_catalog` — a plan
-    // with no entitlements is not a licence. Refuse before writing anything,
-    // with the same field-error shape as the old tier-map refusal.
+    // exist, be active, be `scope='personal'`, be sold on the `seat_pool`
+    // channel (#1511), and every entitlement key it carries must be
+    // `seatEligible` in the live `entitlement_catalog` — a plan with no
+    // entitlements is not a licence. Refuse before writing anything, with the
+    // same field-error shape as the old tier-map refusal.
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
     const supabase = await this.clientFactory();
@@ -80,7 +81,7 @@ export class SeatService {
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select(
-        'key, is_active, scope, plan_entitlements(entitlement_key, entitlement_catalog(seat_eligible))',
+        'key, is_active, scope, sales_channels, plan_entitlements(entitlement_key, entitlement_catalog(seat_eligible))',
       )
       .eq('key', input.planKey)
       .maybeSingle();
@@ -92,6 +93,7 @@ export class SeatService {
       !!plan &&
       !!plan.is_active &&
       plan.scope === 'personal' &&
+      plan.sales_channels.includes(SALES_CHANNEL_SEAT_POOL) &&
       entitlements.length > 0 &&
       entitlements.every((row) => !!dbNested(row.entitlement_catalog)?.seat_eligible);
     if (!isLicence) {

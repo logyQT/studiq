@@ -59,6 +59,25 @@ describe('anon role grants (#191)', () => {
     expect((data ?? []).length, 'the anonymous flag payload is not empty').toBeGreaterThan(0);
   });
 
+  // #1511: the three AI licence plans are `public`, so an anonymous client
+  // reads eleven active public plans — a price list, not a secret. No anonymous
+  // surface sells a licence: `/pricing` and `getByKey` filter to the
+  // `individual` channel.
+  it('anon reads the eleven public plans, including the seat licences, and no unlisted row', async () => {
+    const { data, error } = await anon
+      .from('subscription_plans')
+      .select('key, visibility, is_active')
+      .order('key');
+
+    expect(error).toBeNull();
+    const rows: Array<{ key: string; visibility: string; is_active: boolean }> = data ?? [];
+    expect(rows).toHaveLength(11);
+    expect(rows.map((row) => row.key)).toEqual(
+      expect.arrayContaining(['ai_lite', 'ai_pro', 'ai_max']),
+    );
+    expect(rows.filter((row) => row.visibility !== 'public')).toEqual([]);
+  });
+
   it.each([
     'question_banks',
     'quizzes',

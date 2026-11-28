@@ -136,6 +136,7 @@ describe('SeatService', () => {
       key: 'pro',
       is_active: true,
       scope: 'personal',
+      sales_channels: ['seat_pool'],
       plan_entitlements: [
         { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
         { entitlement_key: 'ai.chat', entitlement_catalog: { seat_eligible: true } },
@@ -230,6 +231,7 @@ describe('SeatService', () => {
         key: 'campus',
         is_active: true,
         scope: 'organization',
+        sales_channels: ['individual'],
         plan_entitlements: [
           { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
         ],
@@ -250,11 +252,56 @@ describe('SeatService', () => {
       expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
+    it('refuses a personal plan that is not sold as a seat pool (#1511)', async () => {
+      const individualPlan = {
+        key: 'plus',
+        is_active: true,
+        scope: 'personal',
+        sales_channels: ['individual'],
+        plan_entitlements: [
+          { entitlement_key: 'ai.chat', entitlement_catalog: { seat_eligible: true } },
+        ],
+      };
+      mock.from.mockReturnValue(chain(null));
+      mock.from.mockReturnValueOnce(chain(individualPlan));
+
+      const result = await service.addPool(ctx, { planKey: 'plus', quantity: 2 });
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(result.details?.[0]?.path).toEqual(['planKey']);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts a plan sold on the seat_pool channel (ai_lite) (#1511)', async () => {
+      const licence = {
+        key: 'ai_lite',
+        is_active: true,
+        scope: 'personal',
+        sales_channels: ['seat_pool'],
+        plan_entitlements: [
+          { entitlement_key: 'ai.chat', entitlement_catalog: { seat_eligible: true } },
+        ],
+      };
+      mock.from
+        .mockReturnValueOnce(chain(licence))
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'ai_lite', total: 3, assigned: 0 }));
+
+      const result = await service.addPool(ctx, { planKey: 'ai_lite', quantity: 3 });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data).toEqual({ id: 'pool-1', planKey: 'ai_lite', total: 3, assigned: 0 });
+    });
+
     it('refuses a plan with a non-seat-eligible entitlement key, reading seatEligible from the live catalog (D33)', async () => {
       const brandedPlan = {
         key: 'hub',
         is_active: true,
         scope: 'personal',
+        sales_channels: ['seat_pool'],
         plan_entitlements: [
           { entitlement_key: 'flashcards', entitlement_catalog: { seat_eligible: true } },
           { entitlement_key: 'branding', entitlement_catalog: { seat_eligible: false } },
@@ -273,7 +320,13 @@ describe('SeatService', () => {
     });
 
     it('refuses a plan with no entitlements — not a licence (D33)', async () => {
-      const emptyPlan = { key: 'empty', is_active: true, scope: 'personal', plan_entitlements: [] };
+      const emptyPlan = {
+        key: 'empty',
+        is_active: true,
+        scope: 'personal',
+        sales_channels: ['seat_pool'],
+        plan_entitlements: [],
+      };
       mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(emptyPlan));
 
@@ -290,6 +343,7 @@ describe('SeatService', () => {
         key: 'pro',
         is_active: false,
         scope: 'personal',
+        sales_channels: ['seat_pool'],
         plan_entitlements: licencePlan.plan_entitlements,
       });
       mock.from.mockReturnValueOnce(inactive);

@@ -29,7 +29,7 @@ import { createServiceClient } from '#test/integration/helpers';
 
 const CATALOGUE_FILE = path.join(
   process.cwd(),
-  'supabase/migrations/20261127090000_org_team_tier.sql',
+  'supabase/migrations/20261128090000_ai_seat_licences.sql',
 );
 
 /**
@@ -45,6 +45,8 @@ interface PlanMatrixEntry {
   scope: 'personal' | 'organization';
   /** `price_monthly` in minor units; a typo here must not pass the guard. */
   price: number;
+  /** `sales_channels`: where the plan is sold (#1511). */
+  channels: string[];
   entitlements: string[];
   limits: Record<string, number>;
 }
@@ -53,6 +55,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   free: {
     scope: 'personal',
     price: 0,
+    channels: ['individual'],
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -66,6 +69,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   plus: {
     scope: 'personal',
     price: 1999,
+    channels: ['individual'],
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'],
     limits: {
       max_flashcards: 1000,
@@ -79,6 +83,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   pro: {
     scope: 'personal',
     price: 3999,
+    channels: ['individual'],
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: 5000,
@@ -92,6 +97,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   max: {
     scope: 'personal',
     price: 7999,
+    channels: ['individual'],
     entitlements: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: 25000,
@@ -105,6 +111,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   launch: {
     scope: 'organization',
     price: 0,
+    channels: ['individual'],
     entitlements: ['flashcards', 'quiz'],
     limits: {
       max_flashcards: 100,
@@ -119,6 +126,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   team: {
     scope: 'organization',
     price: 9900,
+    channels: ['individual'],
     entitlements: ['flashcards', 'quiz', 'quiz.templates'],
     limits: {
       max_flashcards: 1000,
@@ -133,6 +141,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   hub: {
     scope: 'organization',
     price: 29900,
+    channels: ['individual'],
     entitlements: ['flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: 5000,
@@ -147,6 +156,7 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
   campus: {
     scope: 'organization',
     price: 69900,
+    channels: ['individual'],
     entitlements: ['branding', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights'],
     limits: {
       max_flashcards: -1,
@@ -157,6 +167,27 @@ const MATRIX: Record<string, PlanMatrixEntry> = {
       max_students: 1000,
       max_quiz_attempts_per_day: -1,
     },
+  },
+  ai_lite: {
+    scope: 'personal',
+    price: 1999,
+    channels: ['seat_pool'],
+    entitlements: ['ai.chat'],
+    limits: { max_ai_tokens_per_day: 100000 },
+  },
+  ai_pro: {
+    scope: 'personal',
+    price: 3999,
+    channels: ['seat_pool'],
+    entitlements: ['ai.chat'],
+    limits: { max_ai_tokens_per_day: 300000 },
+  },
+  ai_max: {
+    scope: 'personal',
+    price: 7999,
+    channels: ['seat_pool'],
+    entitlements: ['ai.chat'],
+    limits: { max_ai_tokens_per_day: 1000000 },
   },
 };
 
@@ -278,6 +309,7 @@ interface CatalogSnapshot {
     key: string;
     scope: string;
     price_monthly: number | null;
+    sales_channels: string[];
   }>;
   entitlements: Array<{ plan_key: string; entitlement_key: string }>;
   limits: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
@@ -289,7 +321,7 @@ async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   return {
     plans: await sql<
       CatalogSnapshot['plans']
-    >`select key, scope, price_monthly from public.subscription_plans order by key`,
+    >`select key, scope, price_monthly, sales_channels from public.subscription_plans order by key`,
     entitlements: await sql<
       CatalogSnapshot['entitlements']
     >`select plan_key, entitlement_key from public.plan_entitlements order by plan_key, entitlement_key`,
@@ -299,7 +331,7 @@ async function readSnapshot(sql: postgres.ISql): Promise<CatalogSnapshot> {
   };
 }
 
-/** The keys of every plan row the eight-plan matrix does not list. */
+/** The keys of every plan row the eleven-plan matrix does not list. */
 async function runtimePlanKeys(tx: postgres.ISql): Promise<string[]> {
   const rows = await tx<Array<{ key: string }>>`
     select key from public.subscription_plans
@@ -377,6 +409,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     sort_order: number;
     visibility: string;
     billing_mode: string;
+    sales_channels: string[];
   }>;
   let entitlementRows: Array<{ plan_key: string; entitlement_key: string }>;
   let limitRows: Array<{ plan_key: string; limit_key: string; limit_value: number }>;
@@ -389,7 +422,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // created; the catalogue is the active set the product sells.
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope, price_monthly, sort_order, visibility, billing_mode')
+      .select('key, scope, price_monthly, sort_order, visibility, billing_mode, sales_channels')
       .eq('is_active', true)
       .order('key');
     if (plansError) throw new Error(`[plan-catalog] plan lookup failed: ${plansError.message}`);
@@ -451,7 +484,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     return planRows.filter((row) => row.visibility === 'public');
   }
 
-  it('is exactly the eight public matrix plans, with the expected scope/price, all public and Stripe-billed', () => {
+  it('is exactly the eleven public matrix plans, with the expected scope/price/channel', () => {
     // Exclusivity holds over the public catalogue, not the whole table: an admin
     // creates an unlisted contract plan at runtime and pins it to an
     // organization (B3, #1495).
@@ -471,6 +504,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
           price: row.price_monthly,
           visibility: row.visibility,
           billingMode: row.billing_mode,
+          channels: row.sales_channels,
         },
         key,
       ).toEqual({
@@ -478,13 +512,14 @@ describe('plan catalogue is migration-owned (#1494)', () => {
         price: expected.price,
         visibility: 'public',
         billingMode: 'stripe',
+        channels: expected.channels,
       });
     }
   });
 
   it('keeps a runtime unlisted plan out of the public matrix', async () => {
     // The QA stack holds one already; a fresh stack gets a temporary row that
-    // the rollback removes. Either way the public set is the eight, and the
+    // the rollback removes. Either way the public set is the eleven, and the
     // unlisted plan is not counted.
     const rollback = new Error('public matrix: roll back');
     let unlistedKey: string | undefined;
@@ -638,7 +673,7 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     expect(flagKeys).toEqual(expect.arrayContaining(EXPECTED_FLAGS));
   });
 
-  it('replaying the team tier refuses to sweep a pinned runtime plan, then leaves the same matrix', async () => {
+  it('replaying the AI seat matrix leaves the same eleven-plan matrix', async () => {
     const migrationSql = readFileSync(CATALOGUE_FILE, 'utf8');
     const before = await withDirect(readSnapshot);
 
@@ -647,27 +682,14 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // below after the rollback.
     const rollback = new Error('plan-catalog replay: roll back');
     let duringRun: CatalogSnapshot | undefined;
-    let pinnedRuntimeRefusal: Refusal | undefined;
 
     const replay = withDirect(async (sql) => {
       await sql.begin(async (tx) => {
         await seedSubscription(tx);
         expect(await appliedKey(tx), 'the fixture starts on a live tier').toBe('hub');
 
-        // B3: an admin created this plan at runtime and pinned it to an
-        // organization. The declarative sweep deletes every plan the matrix does
-        // not list, and the pin's `on delete restrict` refuses it with `23503`.
-        const runtimeKey = await ensurePinnedRuntimePlan(tx);
-        await tx.unsafe('savepoint pinned_replay');
-        pinnedRuntimeRefusal = await refusal(() => tx.unsafe(migrationSql));
-        await tx.unsafe('rollback to savepoint pinned_replay');
-
-        // Released inside the transaction, the sweep runs as it did before B3:
-        // twice, and the matrix is unchanged.
-        const released = await releaseRuntimePlans(tx);
-        expect(released, 'the pinned runtime plan was released for the sweep').toContain(
-          runtimeKey,
-        );
+        // The owning file deletes no plan row, so a runtime contract plan
+        // survives it. Applied twice, the matrix is unchanged.
         await tx.unsafe(migrationSql);
         await tx.unsafe(migrationSql);
 
@@ -683,22 +705,20 @@ describe('plan catalogue is migration-owned (#1494)', () => {
     // A different error must not be mistaken for the rollback signal.
     await expect(replay).rejects.toBe(rollback);
 
-    expect(pinnedRuntimeRefusal).toMatchObject({
-      code: '23503',
-      constraint: 'plan_assignments_plan_key_fkey',
-    });
     if (!duringRun) {
       throw new Error('the replay transaction never reached its assertions');
     }
 
     // The replayed catalogue is the matrix itself, row for row, after both
-    // applications — not only the same row count.
-    expect(duringRun.plans).toEqual(
+    // applications — not only the same row count. A runtime contract plan the
+    // stack already holds is outside the matrix and stays out of this diff.
+    expect(duringRun.plans.filter((plan) => plan.key in MATRIX)).toEqual(
       Object.entries(MATRIX)
         .map(([key, plan]) => ({
           key,
           scope: plan.scope,
           price_monthly: plan.price,
+          sales_channels: plan.channels,
         }))
         .toSorted((a, b) => a.key.localeCompare(b.key)),
     );

@@ -35,6 +35,10 @@ export {
   type PlanBillingMode,
   type PlanScope,
   type PlanVisibility,
+  SALES_CHANNEL_INDIVIDUAL,
+  SALES_CHANNEL_SEAT_POOL,
+  SALES_CHANNELS,
+  type SalesChannel,
 } from './plans';
 // ── Permissions ─────────────────────────────────────────────────────────────
 export {
