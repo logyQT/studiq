@@ -25,6 +25,7 @@ export interface DialogsState {
   moveTargetDeckId: string | null;
   copyTargetDeckId: string | null;
   deckEditOpen: boolean;
+  deckEditError: string | null;
   deckDeleteOpen: boolean;
   viewTopicId: string | null;
   addTopicOpen: boolean;
@@ -169,6 +170,7 @@ export function DeckDetailDialogs({
         onDeckDeleteOpenChange={handlers.onDeckDeleteOpenChange}
         onDeckUpdate={handlers.onDeckUpdate}
         onDeckDelete={handlers.onDeckDelete}
+        error={state.deckEditError ?? undefined}
         initialValues={
           currentDeck
             ? {

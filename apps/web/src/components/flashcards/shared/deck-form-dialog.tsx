@@ -49,6 +49,7 @@ function FormBody({
   groupsPlaceholder,
   groupsEmptyText,
   groupsRequiredText,
+  error,
 }: FormBodyProps) {
   const [formData, setFormData] = useState(
     initialValues ?? { name: '', description: '', visibility: 'personal' as const, groupIds: [] },
@@ -128,6 +129,11 @@ function FormBody({
             groupsRequiredText={groupsRequiredText}
           />
         )}
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
@@ -166,6 +172,7 @@ export function DeckFormDialog({
   groupsPlaceholder,
   groupsEmptyText,
   groupsRequiredText,
+  error,
 }: DeckFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
 
@@ -194,6 +201,7 @@ export function DeckFormDialog({
           groupsPlaceholder={groupsPlaceholder}
           groupsEmptyText={groupsEmptyText}
           groupsRequiredText={groupsRequiredText}
+          error={error}
         />
       </DialogContent>
     </Dialog>

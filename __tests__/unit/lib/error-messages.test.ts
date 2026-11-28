@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { translateErrorCode } from '@/lib/error-messages';
+import { saveFailureMessage, translateErrorCode } from '@/lib/error-messages';
+import { ApiError } from '@/lib/api';
 
 const messages: Record<string, string> = {
   UNAUTHORIZED: 'bad credentials',
@@ -28,5 +29,23 @@ describe('translateErrorCode', () => {
     expect(translateErrorCode(tErr, 'NOPE')).toBe('generic');
     expect(translateErrorCode(tErr, undefined)).toBe('generic');
     expect(translateErrorCode(tErr, '')).toBe('generic');
+  });
+});
+
+describe('saveFailureMessage', () => {
+  const failed = 'Failed to save deck';
+
+  it('names the resource and adds the API reason when the response carries a code', () => {
+    expect(saveFailureMessage(new ApiError('FORBIDDEN', 403), failed, tErr)).toBe(
+      'Failed to save deck forbidden',
+    );
+  });
+
+  it('keeps the resource line alone for a transport failure', () => {
+    expect(saveFailureMessage(new ApiError('NETWORK_ERROR', 0), failed, tErr)).toBe(failed);
+  });
+
+  it('keeps the resource line alone for an unknown error', () => {
+    expect(saveFailureMessage(new Error('boom'), failed, tErr)).toBe(failed);
   });
 });

@@ -24,4 +24,6 @@ export interface ContentFormDialogProps {
   visibilityGroupLabel?: string;
   groupsPlaceholder?: string;
   groupsEmptyText?: string;
+  /** Why the last save was refused; the dialog stays open with the fields intact. */
+  error?: string;
 }

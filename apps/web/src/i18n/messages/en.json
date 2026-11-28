@@ -1088,7 +1088,8 @@
     "deck_unsuspended": "Deck unsuspended",
     "suspended": "Suspended",
     "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats.",
-    "optional": "(optional)"
+    "optional": "(optional)",
+    "deck_save_failed": "Failed to save deck"
   },
   "EduFlashcardStatsPage": {
     "title": "Flashcard Statistics",
@@ -1728,7 +1729,8 @@
     "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats.",
     "back_label": "Back Side (Answer)",
     "front_label": "Front Side (Question)",
-    "optional": "(optional)"
+    "optional": "(optional)",
+    "deck_save_failed": "Failed to save deck"
   },
   "AppFlashcardTopicsPage": {
     "title": "Topics Manager",
@@ -2683,7 +2685,8 @@
     "no_results_subject": "banks",
     "select_all": "Select all",
     "deselect_all": "Deselect all",
-    "n_selected": "{count} selected"
+    "n_selected": "{count} selected",
+    "bank_save_failed": "Failed to save question bank"
   },
   "QuestionTransfer": {
     "export_note": "Exporting saves the whole bank, answer key and explanations included, and is available to teaching staff only.",

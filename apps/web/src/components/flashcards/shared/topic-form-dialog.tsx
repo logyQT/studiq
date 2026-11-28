@@ -37,6 +37,8 @@ interface TopicFormDialogProps {
   t: ReturnType<typeof useTranslations>;
   groups?: GroupOption[];
   groupsRequiredText?: string;
+  /** Why the last save was refused; the dialog stays open with the fields intact. */
+  error?: string;
 }
 
 export function TopicFormDialog({
@@ -50,6 +52,7 @@ export function TopicFormDialog({
   t,
   groups,
   groupsRequiredText,
+  error,
 }: TopicFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
   const id = useId();
@@ -115,6 +118,11 @@ export function TopicFormDialog({
               groupsEmptyText={t('groups_empty')}
               groupsRequiredText={groupsRequiredText}
             />
+          )}
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
           )}
         </div>
         <DialogFooter>

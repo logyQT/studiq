@@ -5,7 +5,7 @@ import type { Topic } from '@studiq/server/models/topic.model';
 import { Button } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CheckSquare, Plus, SquarePen, Tags } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { TopicCard } from '@/components/flashcards/cards/topic-card';
@@ -14,8 +14,10 @@ import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialo
 import { CollectionScreen, useCollectionScreen } from '@/components/shared/collection-screen';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
+import { useContentFormError } from '@/hooks/use-content-form-error';
 import { usePermission } from '@/hooks/use-permission';
 import { apiGet } from '@/lib/api';
+import { saveFailureMessage } from '@/lib/error-messages';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import { contentFormPayload } from '@/lib/share-fields';
 
@@ -33,6 +35,7 @@ const EMPTY_FORM: TopicFormData = { name: '', visibility: 'personal', groupIds: 
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const permission = usePermission();
+  const tErr = useTranslations('Errors');
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
   const [formData, setFormData] = useState<TopicFormData>(EMPTY_FORM);
 
@@ -43,6 +46,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     invalidateKeys: [topicKeys.all],
   });
   const { create, update, selection, items } = screen;
+  const [formError, setFormError] = useContentFormError(screen.dialogOpen);
 
   const { data: topicFlashcardsData } = useInfiniteQuery({
     queryKey: [
@@ -82,6 +86,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       toast.error(t('name_required'));
       return;
     }
+    setFormError(null);
     const stored = screen.editing
       ? { visibility: screen.editing.visibility, groupIds: screen.editing.groupIds }
       : null;
@@ -91,8 +96,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       else await create.mutateAsync(body);
       resetForm();
       toast.success(screen.editing ? t('topic_updated') : t('topic_created'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      setFormError(saveFailureMessage(error, t('save_failed'), tErr));
     }
   }
 
@@ -164,6 +169,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         t={t}
         groups={screen.groupsData}
         groupsRequiredText={t('groups_required')}
+        error={formError ?? undefined}
       />
 
       <TopicViewDialog

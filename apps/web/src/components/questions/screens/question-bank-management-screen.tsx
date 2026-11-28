@@ -3,7 +3,7 @@
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button } from '@studiq/ui';
 import { CheckSquare, Database, Plus, SquarePen } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { QuestionBankCard } from '@/components/questions/cards/question-bank-card';
 import { QuestionBankFormDialog } from '@/components/questions/shared/question-bank-form-dialog';
@@ -15,8 +15,10 @@ import {
 } from '@/components/shared/collection-screen';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
+import { useContentFormError } from '@/hooks/use-content-form-error';
 import { usePermission } from '@/hooks/use-permission';
 import { ApiError } from '@/lib/api';
+import { saveFailureMessage } from '@/lib/error-messages';
 import { questionKeys } from '@/lib/query-keys';
 import { type ContentFormValues } from '@/lib/share-fields';
 
@@ -30,6 +32,7 @@ const NO_GROUPS: string[] = [];
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const permission = usePermission();
+  const tErr = useTranslations('Errors');
 
   const screen = useCollectionScreen<QuestionBank>({
     url: '/api/v1/questions/banks',
@@ -40,6 +43,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     invalidateKeys: [questionKeys.banks.all],
   });
   const { create, update, selection } = screen;
+  const [formError, setFormError] = useContentFormError(screen.dialogOpen);
 
   /** #360 — a bank that still holds questions cannot be deleted. */
   const deleteFailureMessage = (error: unknown) =>
@@ -52,6 +56,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
       toast.error(t('common_error'));
       return;
     }
+    setFormError(null);
     // The dialog omits an unchanged share set (#1557). An empty description stays omitted, so the
     // server keeps the stored one.
     const body = {
@@ -67,8 +72,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         toast.success(t('bank_created'));
       }
       screen.closeDialog();
-    } catch {
-      toast.error(t('common_error'));
+    } catch (error) {
+      setFormError(saveFailureMessage(error, t('bank_save_failed'), tErr));
     }
   }
 
@@ -139,6 +144,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         description={screen.editing ? t('common_edit') : t('common_create')}
         submitLabel={screen.editing ? t('common_update') : t('common_create')}
         groups={screen.groupsData}
+        error={formError ?? undefined}
         {...contentFormDialogLabels(t)}
       />
     </CollectionScreen>

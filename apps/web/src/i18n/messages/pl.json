@@ -1070,7 +1070,8 @@
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
     "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
-    "optional": "(opcjonalnie)"
+    "optional": "(opcjonalnie)",
+    "deck_save_failed": "Nie udało się zapisać talii"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -1710,7 +1711,8 @@
     "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
     "back_label": "Tył (Odpowiedź)",
     "front_label": "Przód (Pytanie)",
-    "optional": "(opcjonalnie)"
+    "optional": "(opcjonalnie)",
+    "deck_save_failed": "Nie udało się zapisać talii"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
@@ -2664,7 +2666,8 @@
     "no_results_subject": "banków",
     "select_all": "Zaznacz Wszystkie",
     "deselect_all": "Odznacz Wszystkie",
-    "n_selected": "Wybrano {count}"
+    "n_selected": "Wybrano {count}",
+    "bank_save_failed": "Nie udało się zapisać banku pytań"
   },
   "QuestionTransfer": {
     "export_note": "Eksport zapisuje cały bank, razem z kluczem odpowiedzi i wyjaśnieniami, i jest dostępny tylko dla kadry dydaktycznej.",

@@ -426,7 +426,9 @@ describe('QuestionBankService', () => {
       expect(result.success).toBe(true);
       expect(deleteLinks.delete).toHaveBeenCalled();
       expect(deleteLinks.eq).toHaveBeenCalledWith('bank_id', 'b-1');
-      expect(result.data).toEqual(expect.objectContaining({ visibility: 'personal', groupIds: [] }));
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'personal', groupIds: [] }),
+      );
       // #1562: the flip drops the stored link, so its group's teacher has to approve it.
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
     });
@@ -464,7 +466,9 @@ describe('QuestionBankService', () => {
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
       expect(insertLinks.insert).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
-      expect(result.data).toEqual(expect.objectContaining({ visibility: 'group', groupIds: ['g-1'] }));
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'group', groupIds: ['g-1'] }),
+      );
     });
 
     it('refuses removing a stored group the caller does not teach', async () => {

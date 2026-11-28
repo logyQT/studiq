@@ -23,7 +23,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
@@ -40,6 +40,7 @@ import { useEntitlement } from '@/hooks/use-entitlement';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
+import { saveFailureMessage } from '@/lib/error-messages';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
 import type { ContentFormValues } from '@/lib/share-fields';
 
@@ -97,6 +98,7 @@ export function DeckDetailScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const permission = usePermission();
+  const tErr = useTranslations('Errors');
   const entitlement = useEntitlement();
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
@@ -274,6 +276,7 @@ export function DeckDetailScreen({
     moveTargetDeckId: null,
     copyTargetDeckId: null,
     deckEditOpen: false,
+    deckEditError: null,
     deckDeleteOpen: false,
 
     viewTopicId: null,
@@ -384,16 +387,21 @@ export function DeckDetailScreen({
       toast.error(t('name_required'));
       return;
     }
-    setD((prev) => ({ ...prev, deckEditOpen: false }));
+    setD((prev) => ({ ...prev, deckEditError: null }));
     try {
       await updateDeck.mutateAsync({
         id: deckId,
         ...data,
         description: data.description || undefined,
       });
+      // Close only after the save lands: a refusal must keep the dialog and the edit.
+      setD((prev) => ({ ...prev, deckEditOpen: false }));
       toast.success(t('deck_updated'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      setD((prev) => ({
+        ...prev,
+        deckEditError: saveFailureMessage(error, t('deck_save_failed'), tErr),
+      }));
     }
   }
 
@@ -598,6 +606,7 @@ export function DeckDetailScreen({
                     setD((prev) => ({
                       ...prev,
                       deckEditOpen: true,
+                      deckEditError: null,
                     }))
                   }
                 >
