@@ -18,13 +18,14 @@ import { ArrowLeft, Brain, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { FlashcardReview } from '@/components/flashcards/flashcard-review';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { ApiError, apiGet, apiPost } from '@/lib/api';
+import { ApiError, apiGet, apiPost, apiPut } from '@/lib/api';
 import { applyCramAction, cramActionForRating } from '@/lib/cram-queue';
-import { formatDateTime } from '@/lib/datetime';
+import { formatDate, formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
 import { overlayOpen } from '@/lib/shortcuts';
 
@@ -134,27 +135,49 @@ function isPracticeCard(value: unknown): value is PracticeCard {
   );
 }
 
-/** One row of the batch-practice response; `isLeech` marks a card that just became a leech. */
+/**
+ * One row of the batch-practice response. `leechStage` is the stage this write
+ * produced, so the session can tell a ladder transition from a card that merely
+ * is a leech. `suspended` is true only for stage 3.
+ */
 interface PracticeResult {
   flashcardId: string;
-  isLeech: boolean;
+  leechStage: number;
+  leechRestUntil: string | null;
+  suspended: boolean;
 }
 
-function isPracticeResult(value: unknown): value is PracticeResult {
-  if (typeof value !== 'object' || value === null) return false;
-  return (
-    'flashcardId' in value &&
-    typeof value.flashcardId === 'string' &&
-    'isLeech' in value &&
-    typeof value.isLeech === 'boolean'
-  );
+function toPracticeResult(value: unknown): PracticeResult | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('flashcardId' in value) || typeof value.flashcardId !== 'string') return null;
+  if (!('leechStage' in value) || typeof value.leechStage !== 'number') return null;
+  return {
+    flashcardId: value.flashcardId,
+    leechStage: value.leechStage,
+    leechRestUntil:
+      'leechRestUntil' in value && typeof value.leechRestUntil === 'string'
+        ? value.leechRestUntil
+        : null,
+    suspended: 'suspended' in value && value.suspended === true,
+  };
 }
 
 /** `{ results: [...] }` from the batch-practice endpoint, narrowed without an assertion. */
 function practiceResults(body: unknown): PracticeResult[] {
   if (typeof body !== 'object' || body === null || !('results' in body)) return [];
   const { results } = body;
-  return Array.isArray(results) ? results.filter(isPracticeResult) : [];
+  if (!Array.isArray(results)) return [];
+  return results.flatMap((value) => {
+    const result = toPracticeResult(value);
+    return result ? [result] : [];
+  });
+}
+
+/** A card whose leech stage moved forward on this write, queued for one dialog. */
+interface LeechTransition {
+  flashcardId: string;
+  leechRestUntil: string | null;
+  suspended: boolean;
 }
 
 function mapCards(data: unknown): Flashcard[] {
@@ -217,7 +240,11 @@ export default function SessionClient(props: SessionClientProps) {
     Array<{ flashcardId: string; wasCorrect: boolean; confidenceLevel: number }>
   >([]);
   const hasFinalisedRef = useRef(false);
-  const leechedCardIdsRef = useRef<Set<string>>(new Set());
+  /**
+   * Stage each card had when it was answered, so a batch result can report a
+   * transition instead of the session re-prompting for every due leech.
+   */
+  const preReviewStageRef = useRef<Map<string, number>>(new Map());
   const [suspendedIds, setSuspendedIds] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<Flashcard[]>([]);
   /**
@@ -244,10 +271,8 @@ export default function SessionClient(props: SessionClientProps) {
     durationMs: number;
     mode: string;
   } | null>(null);
-  const [leechDialogCardId, setLeechDialogCardId] = useState<string | null>(null);
-  const [leechDialogResolve, setLeechDialogResolve] = useState<
-    ((action: 'suspend' | 'keep') => void) | null
-  >(null);
+  const [leechQueue, setLeechQueue] = useState<LeechTransition[]>([]);
+  const [leechSaving, setLeechSaving] = useState(false);
 
   useEffect(() => {
     if (isCram && !props.deckId) router.replace('/app/study/cram');
@@ -335,9 +360,18 @@ export default function SessionClient(props: SessionClientProps) {
         items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
       });
       for (const r of practiceResults(body)) {
-        if (r.isLeech) {
-          leechedCardIdsRef.current.add(r.flashcardId);
-        }
+        const preStage = preReviewStageRef.current.get(r.flashcardId);
+        preReviewStageRef.current.delete(r.flashcardId);
+        // Cram records no stage, so it can never report a transition.
+        if (preStage === undefined || r.leechStage <= preStage) continue;
+        setLeechQueue((prev) => [
+          ...prev,
+          {
+            flashcardId: r.flashcardId,
+            leechRestUntil: r.leechRestUntil,
+            suspended: r.suspended,
+          },
+        ]);
       }
     } catch (err) {
       // A non-2xx is the common failure here; log the status `fetch` used to expose.
@@ -349,20 +383,35 @@ export default function SessionClient(props: SessionClientProps) {
     }
   }, [mode]);
 
-  const showLeechDialog = useCallback((cardId: string): Promise<'suspend' | 'keep'> => {
-    return new Promise((resolve) => {
-      setLeechDialogCardId(cardId);
-      setLeechDialogResolve(() => resolve);
-    });
+  const removeLeechTransition = useCallback((target: LeechTransition) => {
+    setLeechQueue((prev) => prev.filter((transition) => transition !== target));
   }, []);
 
-  const handleLeechAction = useCallback(
-    (action: 'suspend' | 'keep') => {
-      leechDialogResolve?.(action);
-      setLeechDialogCardId(null);
-      setLeechDialogResolve(null);
+  const resolveLeechTransition = useCallback(
+    async (transition: LeechTransition, action: 'suspend' | 'restore') => {
+      if (leechSaving) return;
+      setLeechSaving(true);
+      const { flashcardId } = transition;
+      try {
+        await apiPut(`/api/v1/flashcards/${flashcardId}`, {
+          suspended: action === 'suspend',
+        });
+        setSuspendedIds((prev) => {
+          const next = new Set(prev);
+          if (action === 'suspend') next.add(flashcardId);
+          else next.delete(flashcardId);
+          return next;
+        });
+        void queryClient.invalidateQueries({ queryKey: flashcardKeys.practice.all });
+        toast.success(action === 'suspend' ? t('leech_suspend_done') : t('leech_restore_done'));
+      } catch {
+        toast.error(action === 'suspend' ? t('leech_suspend_failed') : t('leech_restore_failed'));
+      } finally {
+        setLeechSaving(false);
+        setLeechQueue((prev) => prev.filter((entry) => entry !== transition));
+      }
     },
-    [leechDialogResolve],
+    [leechSaving, queryClient, t],
   );
 
   useEffect(() => {
@@ -476,6 +525,11 @@ export default function SessionClient(props: SessionClientProps) {
         const card = currentCard;
         if (!card) return;
 
+        if (!isCram) {
+          const rawStage = card.reviewState?.leechStage;
+          preReviewStageRef.current.set(card.id, typeof rawStage === 'number' ? rawStage : 0);
+        }
+
         pendingUpdatesRef.current.push({ flashcardId: card.id, wasCorrect, confidenceLevel });
         answeredCountRef.current++;
         if (answeredCountRef.current >= 10) {
@@ -535,23 +589,6 @@ export default function SessionClient(props: SessionClientProps) {
     /* eslint-enable react-hooks/memo-dependencies */
   );
 
-  useEffect(() => {
-    // Cram has no scheduling effect, so a leech dialog would only block a deck
-    // card behind a modal that cannot change anything (#617).
-    if (isCram) return;
-    if (!currentCard || leechDialogCardId) return;
-    const id = currentCard.id;
-    if (leechedCardIdsRef.current.has(id) || cardState.isLeech) {
-      void showLeechDialog(id).then((action) => {
-        if (action === 'suspend') {
-          setSuspendedIds((prev) => new Set(prev).add(id));
-          void advanceCard();
-        }
-        return undefined;
-      });
-    }
-  }, [isCram, currentCard, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
-
   const backUrl = isCram ? '/app/study/cram' : '/app/study';
 
   const handlePracticeAgain = useCallback(() => {
@@ -567,7 +604,8 @@ export default function SessionClient(props: SessionClientProps) {
     hasFinalisedRef.current = false;
     answeredCountRef.current = 0;
     pendingUpdatesRef.current = [];
-    leechedCardIdsRef.current = new Set();
+    preReviewStageRef.current.clear();
+    setLeechQueue([]);
     setCramQueue(shuffleArray(cards));
     setCurrentIndex(0);
     setFlipped(false);
@@ -660,36 +698,87 @@ export default function SessionClient(props: SessionClientProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  const activeLeech = leechQueue[0] ?? null;
+  const leechRestDate = activeLeech?.leechRestUntil
+    ? formatDate(activeLeech.leechRestUntil, locale)
+    : '';
+
+  // One transition at a time; a transition queued by the final flush keeps the
+  // dialog up over the summary instead of being dropped at the last card.
+  const leechDialog = activeLeech ? (
+    <AlertDialog open>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {activeLeech.suspended ? t('leech_suspended_title') : t('leech_rest_title')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {activeLeech.suspended
+              ? t('leech_suspended_description')
+              : t('leech_rest_description', { date: leechRestDate })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => removeLeechTransition(activeLeech)}>
+            {activeLeech.suspended
+              ? t('leech_leave_suspended')
+              : t('leech_keep_rest', { date: leechRestDate })}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={leechSaving}
+            onClick={() =>
+              void resolveLeechTransition(
+                activeLeech,
+                activeLeech.suspended ? 'restore' : 'suspend',
+              )
+            }
+          >
+            {activeLeech.suspended ? t('leech_restore') : t('leech_suspend')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  ) : null;
+
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">{tc('common_loading')}</p>
-      </div>
+      <>
+        {leechDialog}
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">{tc('common_loading')}</p>
+        </div>
+      </>
     );
   }
 
   if (error || (loaded && cards.length === 0)) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <p className="text-lg text-muted-foreground">{t('no_flashcards_available')}</p>
-        <Button variant="outline" onClick={() => router.push(backUrl)}>
-          <ArrowLeft data-icon="inline-start" /> {t('back_to_setup')}
-        </Button>
-      </div>
+      <>
+        {leechDialog}
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+          <p className="text-lg text-muted-foreground">{t('no_flashcards_available')}</p>
+          <Button variant="outline" onClick={() => router.push(backUrl)}>
+            <ArrowLeft data-icon="inline-start" /> {t('back_to_setup')}
+          </Button>
+        </div>
+      </>
     );
   }
 
   if (summaryData) {
     return (
-      <div className="mx-auto max-w-2xl py-8">
-        <SessionSummaryDialog
-          data={summaryData}
-          queueExhausted={allCaughtUp}
-          onPracticeAgain={sessionComplete && !allCaughtUp ? handlePracticeAgain : undefined}
-          onBackToSetup={handleBackToSetup}
-        />
-      </div>
+      <>
+        {leechDialog}
+        <div className="mx-auto max-w-2xl py-8">
+          <SessionSummaryDialog
+            data={summaryData}
+            queueExhausted={allCaughtUp}
+            onPracticeAgain={sessionComplete && !allCaughtUp ? handlePracticeAgain : undefined}
+            onBackToSetup={handleBackToSetup}
+          />
+        </div>
+      </>
     );
   }
 
@@ -698,13 +787,21 @@ export default function SessionClient(props: SessionClientProps) {
     // the loader so the brief card-less frame never reads „Brak dostępnych fiszek".
     if (sessionComplete || allCaughtUp) {
       return (
-        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground">{tc('common_loading')}</p>
-        </div>
+        <>
+          {leechDialog}
+          <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">{tc('common_loading')}</p>
+          </div>
+        </>
       );
     }
-    return <div className="flex justify-center py-12">{t('no_flashcards_available')}</div>;
+    return (
+      <>
+        {leechDialog}
+        <div className="flex justify-center py-12">{t('no_flashcards_available')}</div>
+      </>
+    );
   }
 
   const progress = isLimited ? (correctCount / targetCount) * 100 : 0;
@@ -751,22 +848,7 @@ export default function SessionClient(props: SessionClientProps) {
 
   return (
     <>
-      <AlertDialog open={leechDialogCardId !== null}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('leech_dialog_title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('leech_dialog_description')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => handleLeechAction('keep')}>
-              {t('leech_keep')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleLeechAction('suspend')}>
-              {t('leech_suspend')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {leechDialog}
 
       <div className="mx-auto flex max-w-2xl min-h-full flex-col">
         <div className="flex flex-1 flex-col gap-6">
