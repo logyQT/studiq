@@ -28,12 +28,13 @@ import { FIXTURE_MODEL_ANSWER } from '#test/helpers/question-text';
  *
  * Walked on the shared app (pl) before writing this test:
  * - deck 11: `POST /api/v1/flashcards/decks` → 429 `USAGE_LIMIT_EXCEEDED`; the
- *   create dialog stays open and an error toast appears ("Nie udało się zapisać
- *   talii"), never a blank screen;
+ *   create dialog stays open and the refusal shows in the form ("Nie udało się
+ *   zapisać talii" plus the API reason), never a blank screen (#1560);
  * - card 101: `POST /api/v1/flashcards` → 429; toast "Nie udało się zapisać";
  * - bank 6: `POST /api/v1/questions/banks` → 429 (the case's "not enforced"
- *   observation is obsolete — #183 fixed `max_question_banks`); toast "Coś poszło
- *   nie tak. Spróbuj ponownie.";
+ *   observation is obsolete — #183 fixed `max_question_banks`); the refusal
+ *   shows in the open dialog ("Nie udało się zapisać banku pytań" plus the API
+ *   reason) (#1560);
  * - question 51: `POST /api/v1/questions` → 429; toast "Nie udało się zapisać
  *   pytania".
  * Every refusal leaves the counter untouched.
@@ -49,6 +50,8 @@ const CASE = 'LIM-02';
 
 const UI = {
   errorToast: '[data-sonner-toast][data-type="error"]',
+  deckSaveFailed: 'Nie udało się zapisać talii',
+  bankSaveFailed: 'Nie udało się zapisać banku pytań',
   newDeck: 'Nowa talia',
   deckNamePlaceholder: 'np. Przygotowanie do egzaminu, Rozdział 1...',
   newCard: 'Nowa Fiszka',
@@ -337,8 +340,11 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Free cap', () 
     let refused = waitForPost(page, '/api/v1/flashcards/decks');
     await dialog.getByRole('button', { name: UI.create, exact: true }).click();
     expect((await refused).status(), 'the UI deck create is refused with 429').toBe(429);
-    await expect(errorToast, 'the over-limit deck shows a readable error toast').toBeVisible();
-    await expect(errorToast, 'the toast carries a message, not an empty box').toHaveText(/\S+/);
+    // #1560: a refused content save keeps the dialog and names the resource in the form.
+    const deckAlert = dialog.getByRole('alert');
+    await expect(deckAlert, 'the over-limit deck shows a readable error in the form').toBeVisible();
+    await expect(deckAlert, 'the error carries a message, not an empty box').toHaveText(/\S+/);
+    await expect(deckAlert, 'the error names the deck').toContainText(UI.deckSaveFailed);
     await expect(dialog, 'the deck dialog stays open — no blank screen').toBeVisible();
     expect((await listDecks(page)).total, 'the UI deck attempt created nothing').toBe(LIMIT.decks);
 
@@ -371,8 +377,11 @@ test.describe('@case:LIM-02 @area:LIM @prio:P1 plan limits at the Free cap', () 
     refused = waitForPost(page, '/api/v1/questions/banks');
     await dialog.getByRole('button', { name: UI.create, exact: true }).click();
     expect((await refused).status(), 'the UI bank create is refused with 429').toBe(429);
-    await expect(errorToast, 'the over-limit bank shows a readable error toast').toBeVisible();
-    await expect(errorToast, 'the toast carries a message, not an empty box').toHaveText(/\S+/);
+    // #1560: the bank form shows the refusal too; its dialog stays open.
+    const bankAlert = dialog.getByRole('alert');
+    await expect(bankAlert, 'the over-limit bank shows a readable error in the form').toBeVisible();
+    await expect(bankAlert, 'the error carries a message, not an empty box').toHaveText(/\S+/);
+    await expect(bankAlert, 'the error names the question bank').toContainText(UI.bankSaveFailed);
     await expect(dialog, 'the bank dialog stays open — no blank screen').toBeVisible();
     expect((await listBanks(page)).items.length, 'the UI bank attempt created nothing').toBe(
       LIMIT.banks,
