@@ -14,8 +14,11 @@ export interface ShareLinkUpdate {
  *   not survive the switch to `personal`);
  * - `group` with a sent list → that list replaces the stored one;
  * - `group` with nothing sent → the stored links stay, but only when the row already was
- *   group-visible. Otherwise the answer is invalid, because "group with zero links" is a
- *   state the API never stores. Unsharing has to go through `visibility: 'personal'`.
+ *   group-visible. Otherwise the update is invalid, because it would produce "group with
+ *   zero links". Topics can reach that state on create: `POST /api/v1/topics` without
+ *   `visibility` and `bulkCreate` both store `group` with no links. The state is harmless,
+ *   because no links means creator-only access. Unsharing a stored row has to go through
+ *   `visibility: 'personal'`, so the 422 applies to an update only.
  */
 export function planShareLinks(input: {
   sentVisibility?: 'personal' | 'group';
