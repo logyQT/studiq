@@ -236,12 +236,14 @@ export type Database = {
           entitlement_applied_plan_key: string | null;
           id: string;
           last_event_created: number;
+          licence_pool_id: string | null;
           livemode: boolean;
           organization_id: string | null;
           pending_plan_key: string | null;
           plan_key: string;
           price_id: string;
           purchaser_user_id: string | null;
+          quantity: number;
           snapshot_generation: number;
           status: string;
           stripe_subscription_id: string;
@@ -262,12 +264,14 @@ export type Database = {
           entitlement_applied_plan_key?: string | null;
           id?: string;
           last_event_created?: number;
+          licence_pool_id?: string | null;
           livemode: boolean;
           organization_id?: string | null;
           pending_plan_key?: string | null;
           plan_key: string;
           price_id: string;
           purchaser_user_id?: string | null;
+          quantity?: number;
           snapshot_generation?: number;
           status: string;
           stripe_subscription_id: string;
@@ -287,12 +291,14 @@ export type Database = {
           entitlement_applied_plan_key?: string | null;
           id?: string;
           last_event_created?: number;
+          licence_pool_id?: string | null;
           livemode?: boolean;
           organization_id?: string | null;
           pending_plan_key?: string | null;
           plan_key?: string;
           price_id?: string;
           purchaser_user_id?: string | null;
+          quantity?: number;
           snapshot_generation?: number;
           status?: string;
           stripe_subscription_id?: string;
@@ -313,6 +319,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'billing_customers';
             referencedColumns: ['id', 'user_id', 'livemode'];
+          },
+          {
+            foreignKeyName: 'billing_subscriptions_licence_pool_id_fkey';
+            columns: ['licence_pool_id'];
+            isOneToOne: false;
+            referencedRelation: 'org_seat_pools';
+            referencedColumns: ['id'];
           },
           {
             foreignKeyName: 'billing_subscriptions_organization_id_fkey';
@@ -2225,6 +2238,7 @@ export type Database = {
           name: string;
           price_monthly: number | null;
           price_yearly: number | null;
+          sales_channels: string[];
           scope: string;
           sort_order: number | null;
           updated_at: string | null;
@@ -2242,6 +2256,7 @@ export type Database = {
           name: string;
           price_monthly?: number | null;
           price_yearly?: number | null;
+          sales_channels?: string[];
           scope: string;
           sort_order?: number | null;
           updated_at?: string | null;
@@ -2258,6 +2273,7 @@ export type Database = {
           name?: string;
           price_monthly?: number | null;
           price_yearly?: number | null;
+          sales_channels?: string[];
           scope?: string;
           sort_order?: number | null;
           updated_at?: string | null;

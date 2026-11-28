@@ -1,4 +1,4 @@
-import { AccountType } from '@studiq/authz';
+import { AccountType, SALES_CHANNEL_INDIVIDUAL } from '@studiq/authz';
 import {
   billingModeAllowsSelfServe,
   isPubliclyListable,
@@ -48,12 +48,14 @@ export function isOrganizationPlanFamily(plan: Pick<CatalogPlan, 'scope'>): bool
 /**
  * A plan may be *applied* when it exists, is active and its billing mode allows
  * self-serve checkout (B3: `invoice` and `none` are sales-led, never bought
- * through checkout). A personal plan is applicable to a content subscriber; a
- * manager is an organization buyer and holds no personal plan (ADR-0007), so a
- * personal plan is refused for them. An organization plan is applicable too,
- * and the owner rule below decides who may buy it. A free plan is applicable
- * only when its billing mode allows checkout (`stripe`): it is then reached by
- * a lifecycle change (the mock's completion command, Stripe's
+ * through checkout). A personal plan is applicable to a content subscriber when
+ * it is sold on the `individual` channel — a `seat_pool`-only licence is bought
+ * by the organization through the pool path, never here (#1511). A manager is
+ * an organization buyer and holds no personal plan (ADR-0007), so a personal
+ * plan is refused for them. An organization plan is applicable too, and the
+ * owner rule below decides who may buy it. A free plan is applicable only when
+ * its billing mode allows checkout (`stripe`): it is then reached by a
+ * lifecycle change (the mock's completion command, Stripe's
  * `customer.subscription.deleted`), not by a purchase.
  */
 export async function resolveApplicablePlan(
@@ -69,6 +71,9 @@ export async function resolveApplicablePlan(
   if (!billingModeAllowsSelfServe(plan.billingMode)) return failure('BAD_REQUEST');
 
   const isOrgPlan = isOrganizationPlanFamily(plan);
+  if (!isOrgPlan && !plan.salesChannels.includes(SALES_CHANNEL_INDIVIDUAL)) {
+    return failure('BAD_REQUEST');
+  }
   if (!isOrgPlan && caller.accountType === AccountType.MANAGER) return failure('FORBIDDEN');
 
   return success({ plan, isOrgPlan });

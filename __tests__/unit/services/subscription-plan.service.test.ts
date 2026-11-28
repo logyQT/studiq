@@ -16,6 +16,7 @@ interface FakeQueryBuilder<T> {
   eq: Mock;
   neq: Mock;
   in: Mock;
+  contains: Mock;
   order: Mock;
   limit: Mock;
   single: Mock;
@@ -25,9 +26,9 @@ interface FakeQueryBuilder<T> {
   finally: Promise<QueryResult<T>>['finally'];
 }
 
-function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
-  const result: QueryResult<T> = { data: data ?? null, error };
-  const promise = Promise.resolve(result);
+function qb<T>(initial: T | null, error: DbError | null = null): FakeQueryBuilder<T> {
+  let data: T | null = initial;
+  const resolved = (): QueryResult<T> => ({ data, error });
   const b: FakeQueryBuilder<T> = {
     select: vi.fn(),
     insert: vi.fn(),
@@ -36,13 +37,31 @@ function qb<T>(data: T, error: DbError | null = null): FakeQueryBuilder<T> {
     eq: vi.fn(),
     neq: vi.fn(),
     in: vi.fn(),
+    contains: vi.fn((column: string, values: readonly unknown[]) => {
+      // Filter like PostgREST: a `contains` on an array column keeps the rows
+      // whose value holds every requested element. A column the row does not
+      // carry matches nothing, so a filter added to a read the test does not
+      // expect (a channel filter in `getMyPlan`, say) is visible as NOT_FOUND.
+      const holds = (value: unknown) =>
+        Array.isArray(value) && values.every((wanted) => value.includes(wanted));
+      const valueOf = (row: unknown): unknown =>
+        typeof row === 'object' && row !== null
+          ? Object.getOwnPropertyDescriptor(row, column)?.value
+          : undefined;
+      if (Array.isArray(data)) {
+        data = data.filter((row) => holds(valueOf(row)));
+      } else if (data !== null && typeof data === 'object') {
+        if (!holds(valueOf(data))) data = null;
+      }
+      return b;
+    }),
     order: vi.fn(),
     limit: vi.fn(),
-    single: vi.fn().mockResolvedValue(result),
-    maybeSingle: vi.fn().mockResolvedValue(result),
-    then: promise.then.bind(promise),
-    catch: promise.catch.bind(promise),
-    finally: promise.finally.bind(promise),
+    single: vi.fn(() => Promise.resolve(resolved())),
+    maybeSingle: vi.fn(() => Promise.resolve(resolved())),
+    then: (onFulfilled, onRejected) => Promise.resolve(resolved()).then(onFulfilled, onRejected),
+    catch: (onRejected) => Promise.resolve(resolved()).catch(onRejected),
+    finally: (onFinally) => Promise.resolve(resolved()).finally(onFinally),
   };
   for (const method of [
     b.select,
@@ -66,7 +85,7 @@ function expectSuccess<T>(result: ServiceResult<T>): T {
   return result.data;
 }
 
-function planRow(key: string, scope: string = 'personal') {
+function planRow(key: string, scope: string = 'personal', salesChannels: string[] | null = null) {
   return {
     id: `p-${key}`,
     key,
@@ -79,6 +98,7 @@ function planRow(key: string, scope: string = 'personal') {
     is_active: true,
     visibility: 'public',
     billing_mode: 'stripe',
+    sales_channels: salesChannels ?? ['individual'],
     scope,
   };
 }
@@ -89,6 +109,7 @@ function mockPlanTables(
   opts: Parameters<typeof mockResolverTables>[1],
   planKey: string | null,
   scope: string = 'personal',
+  salesChannels: string[] | null = null,
 ) {
   mockResolverTables(mock, opts);
   const baseImpl: (table: string) => unknown = vi.mocked(mock.from).getMockImplementation()!;
@@ -96,7 +117,7 @@ function mockPlanTables(
     if (table !== 'subscription_plans') return baseImpl(table);
     // Key-aware catalog read: a lookup for any other key finds no row, so a
     // wrong plan key resolves NOT_FOUND instead of silently passing.
-    const row = planKey ? planRow(planKey, scope) : null;
+    const row = planKey ? planRow(planKey, scope, salesChannels) : null;
     const plansQb = qb(row);
     plansQb.eq = vi.fn((column: string, value: unknown) =>
       column === 'key' && value !== planKey ? qb(null) : plansQb,
@@ -140,6 +161,7 @@ describe('SubscriptionPlanService', () => {
           is_active: true,
           visibility: 'public',
           billing_mode: 'stripe',
+          sales_channels: ['individual'],
         },
       ];
       const features = [{ plan_key: 'free', entitlement_key: 'quiz' }];
@@ -158,8 +180,14 @@ describe('SubscriptionPlanService', () => {
 
     it('maps scope to the PlanInfo field', async () => {
       const plans = [
-        { id: 'p-1', key: 'hub', name: 'Hub', scope: 'organization' },
-        { id: 'p-2', key: 'pro', name: 'Pro', scope: 'personal' },
+        {
+          id: 'p-1',
+          key: 'hub',
+          name: 'Hub',
+          scope: 'organization',
+          sales_channels: ['individual'],
+        },
+        { id: 'p-2', key: 'pro', name: 'Pro', scope: 'personal', sales_channels: ['individual'] },
       ];
       mock.from.mockReturnValueOnce(qb(plans));
       mock.from.mockReturnValueOnce(qb([]));
@@ -244,6 +272,22 @@ describe('SubscriptionPlanService', () => {
 
       expect(result.success).toBe(true);
       expect(plansQb.eq).toHaveBeenCalledWith('visibility', 'public');
+    });
+
+    it('returns only plans sold on the individual channel (#1511)', async () => {
+      const plans = [
+        planRow('free'),
+        { ...planRow('ai_lite'), sales_channels: ['seat_pool'] },
+        { ...planRow('hybrid'), sales_channels: ['individual', 'seat_pool'] },
+      ];
+      mock.from.mockReturnValueOnce(qb(plans));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(expectSuccess(result).map((plan) => plan.key)).toEqual(['free', 'hybrid']);
     });
 
     it('returns error on plans query failure', async () => {
@@ -376,6 +420,37 @@ describe('SubscriptionPlanService', () => {
     });
   });
 
+  describe('listLicencePlans', () => {
+    it('returns only active personal plans sold as seat pools (#1511)', async () => {
+      const plans = [
+        planRow('free'),
+        { ...planRow('ai_lite'), sales_channels: ['seat_pool'] },
+        { ...planRow('ai_pro'), sales_channels: ['seat_pool'] },
+        { ...planRow('hybrid'), sales_channels: ['individual', 'seat_pool'] },
+      ];
+      const plansQb = qb(plans);
+      mock.from.mockReturnValueOnce(plansQb);
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listLicencePlans();
+
+      expect(expectSuccess(result).map((plan) => plan.key)).toEqual([
+        'ai_lite',
+        'ai_pro',
+        'hybrid',
+      ]);
+      expect(plansQb.eq).toHaveBeenCalledWith('is_active', true);
+      expect(plansQb.eq).toHaveBeenCalledWith('scope', 'personal');
+    });
+
+    it('returns error on the plans query failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      expect((await service.listLicencePlans()).success).toBe(false);
+    });
+  });
+
   describe('getMyPlan', () => {
     it('returns the seat plan to a seated student in an active org, with the effective union, #270', async () => {
       mockPlanTables(
@@ -426,10 +501,10 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(true);
       const plan = expectSuccess(result);
       expect(plan.key).toBe('pro');
-      // features/limits are the effective resolved set: the seat's ai.chat is
-      // not in the launch ceiling, so it is not effective; the user-scope
-      // limits are max(org, seat, personal) and org-scope limits stay the org's.
-      expect(plan.features).toEqual(['flashcards', 'quiz']);
+      // features/limits are the effective resolved set: the seat grants its own
+      // `ai.chat` (D38); the user-scope limits are max(org, seat, personal) and
+      // org-scope limits stay the org's.
+      expect(plan.features).toEqual(['ai.chat', 'flashcards', 'quiz', 'stats.insights']);
       expect(plan.limits.max_flashcards).toBe(2000);
       expect(plan.limits.max_ai_tokens_per_day).toBe(200000);
       expect(plan.limits.max_students).toBe(5);
@@ -438,6 +513,47 @@ describe('SubscriptionPlanService', () => {
         { planKey: 'pro', origin: 'seat' },
         { planKey: 'free', origin: 'personal' },
       ]);
+    });
+
+    it('renders a seat licence that the public reads filter out (#1511)', async () => {
+      // `listActive` and `getByKey` filter to the `individual` channel. The
+      // caller's own plan is read by key, so a `seat_pool`-only licence still
+      // renders — and carries the tier's quota.
+      mockPlanTables(
+        mock,
+        {
+          orgPlan: 'launch',
+          roleProfile: 'learner',
+          seatPlanKey: 'ai_lite',
+          personalPlanKey: 'free',
+          planEntitlements: {
+            launch: ['flashcards', 'quiz'],
+            ai_lite: ['ai.chat'],
+            free: ['flashcards', 'quiz'],
+          },
+          planLimits: {
+            launch: { max_flashcards: 100, max_ai_tokens_per_day: 0 },
+            ai_lite: { max_ai_tokens_per_day: 100000 },
+            free: { max_flashcards: 100, max_ai_tokens_per_day: 0 },
+          },
+        },
+        'ai_lite',
+        'personal',
+        ['seat_pool'],
+      );
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
+      });
+
+      const plan = expectSuccess(result);
+      expect(plan.key).toBe('ai_lite');
+      expect(plan.salesChannels).toEqual(['seat_pool']);
+      expect(plan.features).toContain('ai.chat');
+      expect(plan.limits.max_ai_tokens_per_day).toBe(100000);
+      expect(plan.sources).toContainEqual({ planKey: 'ai_lite', origin: 'seat' });
     });
 
     it('returns the org plan for a member holding org.billing.manage in an active org, never the seat, #181/D34', async () => {
@@ -737,6 +853,7 @@ describe('SubscriptionPlanService', () => {
         is_active: true,
         visibility: 'public',
         billing_mode: 'stripe',
+        sales_channels: ['individual'],
       };
       const plansQb = qb(plan);
       mock.from.mockReturnValueOnce(plansQb);
@@ -779,6 +896,20 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getByKey('max');
 
       expect(expectSuccess(result).features).toEqual(['quiz']);
+    });
+
+    it('answers NOT_FOUND for a seat_pool-only licence (#1511)', async () => {
+      // The follow-on reads are mocked so the channel filter is the only thing
+      // that can answer NOT_FOUND: without it the plan composes and the
+      // assertion below fails on the result, not on a missing fixture.
+      mock.from.mockReturnValueOnce(qb({ ...planRow('ai_lite'), sales_channels: ['seat_pool'] }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getByKey('ai_lite');
+
+      expect(result).toEqual({ success: false, error: 'NOT_FOUND' });
     });
 
     it('returns NOT_FOUND when not found', async () => {
@@ -1052,10 +1183,15 @@ describe('SubscriptionPlanService', () => {
         scope: 'organization',
         visibility: 'unlisted',
         billingMode: 'invoice',
+        salesChannels: ['individual', 'seat_pool'],
       });
 
       expect(b.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ visibility: 'unlisted', billing_mode: 'invoice' }),
+        expect.objectContaining({
+          visibility: 'unlisted',
+          billing_mode: 'invoice',
+          sales_channels: ['individual', 'seat_pool'],
+        }),
       );
     });
   });

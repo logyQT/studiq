@@ -1005,7 +1005,7 @@ describe('RLS tenant isolation (#191)', () => {
   it('seat pools/assignments: members read their own seat but cannot write (B4)', async () => {
     const { data: pool, error: poolCreateError } = await service
       .from('org_seat_pools')
-      .insert({ organization_id: orgA.orgId, plan_key: 'hub', total: 5, assigned: 0 })
+      .insert({ organization_id: orgA.orgId, plan_key: 'ai_pro', total: 5, assigned: 0 })
       .select('id')
       .single();
     expect(poolCreateError).toBeNull();
@@ -1020,7 +1020,7 @@ describe('RLS tenant isolation (#191)', () => {
 
     const { error: memberPoolError } = await studentSession.from('org_seat_pools').insert({
       organization_id: orgA.orgId,
-      plan_key: 'campus',
+      plan_key: 'ai_max',
       total: 3,
       assigned: 0,
     });
@@ -1044,7 +1044,7 @@ describe('RLS tenant isolation (#191)', () => {
     // Managers can still create pools.
     const { error: managerPoolError } = await adminSession.from('org_seat_pools').insert({
       organization_id: orgA.orgId,
-      plan_key: 'campus',
+      plan_key: 'ai_lite',
       total: 3,
       assigned: 0,
     });
@@ -1154,9 +1154,9 @@ describe('RLS tenant isolation (#191)', () => {
 
   it('a seated custom role resolves the seat plan, not management authority (RLS mirrors FeatureResolver)', async () => {
     // A custom role is on the `none` profile, so the org-plan fallback used to
-    // grant every plan capability. The seat adds the seat plan's keys
-    // intersected with the org ceiling; since #1493 the organization ceiling is
-    // the two baseline keys, so the seat adds those (review-1-r2 B1).
+    // grant every plan capability. Under D38 the seat grants its own keys: the
+    // AI Max licence carries `ai.chat` only, and the org ceiling does not
+    // filter it (review-1-r2 B1).
     const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
     const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
 
@@ -1177,9 +1177,8 @@ describe('RLS tenant isolation (#191)', () => {
     const unseatedCustomId = await createUser(unseatedEmail, 'student', 'unseated-custom');
 
     try {
-      // The seat arm intersects the org ceiling (a seat can add a key the org
-      // plan carries, never one it does not); the hub ceiling is the baseline
-      // pair, so the seat's baseline keys survive the intersection.
+      // The seat licence is the purchase: it grants its own keys without the
+      // org ceiling filtering them (D38).
       const { error: planError } = await service
         .from('organizations')
         .update({ plan: 'hub' })
@@ -1196,7 +1195,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'ai_max', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1220,19 +1219,15 @@ describe('RLS tenant isolation (#191)', () => {
       });
       expect(unseatedEntitlements).toEqual([]);
 
-      // A seat adds seat-eligible keys through `seat plan ∩ ceiling`; `max` and
-      // the Hub ceiling both carry the four keys, and `none` grants nothing.
+      // The `none` profile grants nothing, so the AI Max licence's own key
+      // (`ai.chat`) can only arrive through the seat, and it is not intersected
+      // with the Hub ceiling (D38).
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedCustomId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
-      expect(seatedEntitlements.toSorted()).toEqual([
-        'flashcards',
-        'quiz',
-        'quiz.templates',
-        'stats.insights',
-      ]);
+      expect(seatedEntitlements).toEqual(['ai.chat']);
       expect(seatedEntitlements).not.toContain('branding');
 
       // Peer promotion is filtered out by the org_members UPDATE policy.
@@ -1283,12 +1278,11 @@ describe('RLS tenant isolation (#191)', () => {
   });
 
   it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
-    // A `none`-profile custom role in a `hub` org with a `max` seat. The
+    // A `none`-profile custom role in a `hub` org with an AI Max seat. The
     // resolver must use the seat plan for the seated actor; before the r4 fix
-    // the org-plan fallback still granted the org plan through PostgREST. Since
-    // #1493 the hub ceiling is the baseline pair, so the seat's baseline keys
-    // are the only ones the intersection can add — and `none` alone grants
-    // nothing, so they can only arrive through the seat.
+    // the org-plan fallback still granted the org plan through PostgREST. The
+    // seat grants its own `ai.chat` (D38), and `none` alone grants nothing, so
+    // the key can only arrive through the seat.
     const seatedEmail = `rls191-seat-plan-${tag}@dev.local`;
     const controlEmail = `rls191-seat-plan-control-${tag}@dev.local`;
 
@@ -1331,7 +1325,7 @@ describe('RLS tenant isolation (#191)', () => {
 
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 1, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'ai_max', total: 1, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();
@@ -1355,19 +1349,14 @@ describe('RLS tenant isolation (#191)', () => {
       const controlSession = await signIn(controlEmail);
 
       // Resolution must follow the seat plan: the `none` profile grants
-      // nothing, so the four keys can only arrive through the seat branch, and
-      // the Campus-only `branding` stays denied.
+      // nothing, so the licence's own `ai.chat` can only arrive through the
+      // seat branch (D38), and the org-scope `branding` stays denied.
       const seatedEntitlements = await entitlementsFor(seatedSession, {
         userId: seatedId,
         activeOrgId: orgA.orgId,
         orgRoleId: customRole!.id,
       });
-      expect(seatedEntitlements.toSorted()).toEqual([
-        'flashcards',
-        'quiz',
-        'quiz.templates',
-        'stats.insights',
-      ]);
+      expect(seatedEntitlements).toEqual(['ai.chat']);
       expect(seatedEntitlements).not.toContain('branding');
 
       // The app denies group creation for this user; PostgREST must too.
@@ -1439,7 +1428,7 @@ describe('RLS tenant isolation (#191)', () => {
     try {
       const { data: pool, error: poolError } = await service
         .from('org_seat_pools')
-        .insert({ organization_id: orgA.orgId, plan_key: 'max', total: 5, assigned: 0 })
+        .insert({ organization_id: orgA.orgId, plan_key: 'ai_max', total: 5, assigned: 0 })
         .select('id')
         .single();
       expect(poolError).toBeNull();

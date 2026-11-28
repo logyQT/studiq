@@ -18,6 +18,21 @@ const PUBLIC_TABLES = [
   'subscription_plans',
 ];
 
+/** The eleven-plan matrix owned by `20261128090000_ai_seat_licences.sql`. */
+const MATRIX_PLAN_KEYS = [
+  'free',
+  'plus',
+  'pro',
+  'max',
+  'launch',
+  'team',
+  'hub',
+  'campus',
+  'ai_lite',
+  'ai_pro',
+  'ai_max',
+];
+
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -57,6 +72,23 @@ describe('anon role grants (#191)', () => {
     const { data, error } = await anon.from('entitlement_flags').select('key, is_enabled');
     expect(error).toBeNull();
     expect((data ?? []).length, 'the anonymous flag payload is not empty').toBeGreaterThan(0);
+  });
+
+  // #1511: the three AI licence plans are `public`, so an anonymous client
+  // reads them with the rest of the price list — a price list, not a secret. No
+  // anonymous surface sells a licence: `/pricing` and `getByKey` filter to the
+  // `individual` channel. The matrix keys are asserted by name, not by count:
+  // another suite's temporary active plan may be visible here while it runs.
+  it('anon reads the eleven public plans, including the seat licences, and no unlisted row', async () => {
+    const { data, error } = await anon
+      .from('subscription_plans')
+      .select('key, visibility, is_active')
+      .order('key');
+
+    expect(error).toBeNull();
+    const rows: Array<{ key: string; visibility: string; is_active: boolean }> = data ?? [];
+    expect(rows.map((row) => row.key)).toEqual(expect.arrayContaining(MATRIX_PLAN_KEYS));
+    expect(rows.filter((row) => row.visibility !== 'public')).toEqual([]);
   });
 
   it.each([

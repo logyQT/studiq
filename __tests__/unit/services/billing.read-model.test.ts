@@ -61,6 +61,7 @@ function planInfo(overrides: Partial<PlanInfo> = {}): PlanInfo {
     sortOrder: 1,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
     isActive: true,
     scope: 'personal',
     seatEligible: false,
@@ -79,6 +80,7 @@ function catalogPlan(overrides: Partial<CatalogPlan> = {}): CatalogPlan {
     sortOrder: 1,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
     ...overrides,
   };
 }

@@ -120,8 +120,10 @@ describe('active_org_id membership gate (#186)', () => {
       orgRoleId: memberRole.id,
     });
 
-    // Seated member (#270): a StudiQ Pro seat makes the seat plan the member's
-    // effective plan for features and limits, so `/me/plan` must serve it too.
+    // Seated member (#270): an org-funded AI Pro licence makes the seat plan the
+    // member's effective plan for features and limits, so `/me/plan` must serve
+    // it too. Under D38 the seat grants its own keys; it is not intersected with
+    // the Hub ceiling.
     const seatedUser = await createTestUser({ role: 'student', password: PASSWORD });
     await seedOrgMembership({
       organizationId: orgId,
@@ -131,7 +133,7 @@ describe('active_org_id membership gate (#186)', () => {
 
     const { data: seatPool, error: poolError } = await service
       .from('org_seat_pools')
-      .insert({ organization_id: orgId, plan_key: 'pro', total: 1 })
+      .insert({ organization_id: orgId, plan_key: 'ai_pro', total: 1 })
       .select('id')
       .single();
     if (poolError) {
@@ -186,17 +188,17 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await json<MyPlanBody>(res);
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('pro');
-    expect(body.data.limits.max_ai_tokens_per_day).toBe(250000);
+    // The seat plan is what `/me/plan` reports, even though `listActive` filters
+    // a `seat_pool`-only plan out of the catalogue.
+    expect(body.data.key).toBe('ai_pro');
+    // `max(org hub 0, seat ai_pro 300000, personal free 0)`: the AI quota is the
+    // licence's own; the org ladder carries none.
+    expect(body.data.limits.max_ai_tokens_per_day).toBe(300000);
+    // `max(org hub 500, seat ai_pro absent→0, personal free 10)`.
     expect(body.data.limits.max_decks).toBe(500);
-    // The seat ∩ the Hub ceiling: the baseline pair plus the two features the
-    // Hub tier carries (`quiz.templates`, `stats.insights`).
-    expect(body.data.features.toSorted()).toEqual([
-      'flashcards',
-      'quiz',
-      'quiz.templates',
-      'stats.insights',
-    ]);
+    // The learner profile over the Hub ceiling gives the baseline pair; the seat
+    // adds its own `ai.chat` without the ceiling filtering it (D38).
+    expect(body.data.features.toSorted()).toEqual(['ai.chat', 'flashcards', 'quiz']);
   });
 
   it('serves the org plan to the org manager', async () => {

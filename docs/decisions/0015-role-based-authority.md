@@ -587,8 +587,15 @@ A seat is a per-member personal-plan grant within the org's license.
 - `assignSeat` checks no persona: a plan carries no `audience` (B1 retired the
   D33 check), so a pool is offered to any member of the organization. The
   licence rules are the plan's `scope` and its `seatEligible` keys.
-- Seat entitlements are intersected with the org ceiling: a seat cannot grant an
-  entitlement the org did not buy.
+- A seat licence grants its own keys. The pool subscription **is** the
+  purchase, so the org ceiling does not filter the seat (D38). A seat therefore
+  never carries an org-scope key: `seatEligible ⇒ scope: 'personal'` is a
+  catalog invariant, pinned by `catalog-invariants`.
+- A seat is per member, never per role (#1146). `assignSeat` requires an
+  `org_members` row in the active org, and the member's role is irrelevant: a
+  student, an educator and a manager hold the same licence. `assigned` is a
+  server-owned counter — a manager's client may write `total` only (column
+  privilege).
 - Seats never grant permissions and never raise `scope: 'org'` limits.
 - A seat may **raise** a user-scope limit, never lower it (`max(org, seat,
 personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
@@ -608,6 +615,37 @@ personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
 > `scope`, `audience` and a derived `seatEligible` (true iff the plan has at
 > least one entitlement and all of them are `seatEligible`); `forAccountType`
 > is removed.
+
+> **2026-11-28 (D38, #1511).** A seat licence grants **its own keys**; the org
+> ceiling no longer filters it. B2 removed `ai.chat` from all four organization
+> plans on purpose, so the old `profile + seat ∩ ceiling` arm could never grant
+> an AI seat: the ceiling was `{flashcards, quiz, quiz.templates, stats.insights, branding}`, and no seat key survived the intersection
+> (`MGR-SEAT-02` records the workaround: the AI came from the member's personal
+> plan, not the Max seat). Adding `ai.chat` to the org plans is not the fix —
+> `applyProfile` grants the ceiling to every `all` role, so that row would fund
+> AI for every Teacher and Admin on a paid org tier. The pool subscription is
+> the purchase, so "the org bought it" holds through the pool, not through the
+> org plan. The bracket `inOrg && orgPlanKey && ctx.orgRoleId` stays.
+>
+> Consequences, all pinned:
+>
+> - **The invariant moves to the catalog.** A licence plan is
+>   `scope='personal'` and every key is `seatEligible` (`addPool`), so a seat
+>   can only carry a personal key. `catalog-invariants` now asserts
+>   `seatEligible ⇒ scope: 'personal'` across `ENTITLEMENTS`.
+> - **A partial licence is silent.** A licence plan carries one quota row
+>   (`max_ai_tokens_per_day`), so `composeLimits` reads the seat's value without
+>   the "plan is missing a limit" warning (F6). The warning keeps its meaning for
+>   the org and personal layers, which claim to be full plans. Do not paper over
+>   it with fourteen `0` rows: a missing `plan_limits` row is already `0`.
+> - **The sales channel is the gate.** The three AI tiers are `public` plans
+>   with `sales_channels = {seat_pool}`; `listActive`/`getByKey` filter to
+>   `individual` and `listLicencePlans` filters to `seat_pool`. `public` is an
+>   accepted price-list exposure for the anonymous key (the read is a price
+>   list; no anonymous surface sells a licence).
+>
+> Role independence (#1146) is recorded in the §5.4 bullets: a seat is
+> per member, not per role, and `assigned` is writable only by the server.
 
 ### 5.5 Personal plans
 
@@ -670,7 +708,7 @@ resolveEntitlements(ctx):
     roleSet  = role.profile === 'all'     ? ceiling
              : role.profile === 'learner' ? LEARNER_ENTITLEMENTS ∩ ceiling
              : ∅
-    seatSet  = seat ? planEntitlements(seat.plan) ∩ ceiling : ∅
+    seatSet  = seat ? planEntitlements(seat.plan) : ∅   // D38: the pool is the purchase
     personal = personalPlanApplies(ctx) ? personalEntitlements ∩ PERSONAL_PORTABLE : ∅
     set      = roleSet ∪ seatSet ∪ personal
 

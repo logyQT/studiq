@@ -3,6 +3,8 @@ import {
   isEntitlementKey,
   type PlanSource,
   type RequestContext,
+  SALES_CHANNEL_INDIVIDUAL,
+  SALES_CHANNEL_SEAT_POOL,
 } from '@studiq/authz';
 import { hasPermission, Permission } from '@studiq/server/lib/authz';
 import { isPubliclyListable, isSelfServePlan } from '@studiq/server/lib/payment/plan-availability';
@@ -38,6 +40,12 @@ export interface PlanInfo {
   visibility: string;
   /** `stripe`, `invoice` or `none` (B3). */
   billingMode: string;
+  /**
+   * Where the plan is sold (#1511): `individual`, `seat_pool`, or both. The
+   * public reads filter to `individual`; `listLicencePlans` filters to
+   * `seat_pool`.
+   */
+  salesChannels: string[];
   /**
    * Derived (B3): the plan is public and its billing mode allows checkout. The
    * web app reads this boolean, never the two raw values above.
@@ -167,6 +175,7 @@ export class SubscriptionPlanService {
       scope: plan.scope,
       visibility: plan.visibility,
       billingMode: plan.billing_mode,
+      salesChannels: plan.sales_channels,
       selfServe: isSelfServePlan({
         visibility: plan.visibility,
         billingMode: plan.billing_mode,
@@ -256,9 +265,11 @@ export class SubscriptionPlanService {
   }
 
   /**
-   * No filters returns every active public plan — the public pricing behaviour
-   * (D34). `unlisted` plans are sales-led contracts (B3) and never appear here,
-   * so no public page and no checkout form reads through this method.
+   * No filters returns every active public plan sold on the `individual`
+   * channel — the public pricing behaviour (D34, #1511). `unlisted` plans are
+   * sales-led contracts (B3) and a `seat_pool`-only licence is not an
+   * individual purchase, so neither ever appears here: no public page and no
+   * checkout form reads through this method.
    */
   async listActive(filters: PlanCatalogFilters = {}): Promise<ServiceResult<PlanInfo[]>> {
     const supabase = await this.clientFactory();
@@ -267,7 +278,8 @@ export class SubscriptionPlanService {
       .from('subscription_plans')
       .select('*')
       .eq('is_active', true)
-      .eq('visibility', 'public');
+      .eq('visibility', 'public')
+      .contains('sales_channels', [SALES_CHANNEL_INDIVIDUAL]);
 
     if (filters.scope) {
       query = query.eq('scope', filters.scope);
@@ -279,6 +291,28 @@ export class SubscriptionPlanService {
 
     // Public read: advertise only what the resolver would grant (#1484).
     return this.planViews(supabase, plans, true);
+  }
+
+  /**
+   * The plans an organization can buy as seats (#1511): active, personal and
+   * sold on the `seat_pool` channel. This is the seats picker's read, so it
+   * needs no visibility filter — a licence is `public` anyway, and the caller
+   * holds `org.seat.manage`.
+   */
+  async listLicencePlans(): Promise<ServiceResult<PlanInfo[]>> {
+    const supabase = await this.clientFactory();
+
+    const { data: plans, error } = await supabase
+      .from('subscription_plans')
+      .select('*')
+      .eq('is_active', true)
+      .eq('scope', 'personal')
+      .contains('sales_channels', [SALES_CHANNEL_SEAT_POOL])
+      .order('sort_order', { ascending: true });
+
+    if (error) return toDbFailure(error);
+
+    return this.planViews(supabase, plans);
   }
 
   /**
@@ -294,7 +328,9 @@ export class SubscriptionPlanService {
    * persona. `features` and `limits` are the **effective** resolved
    * set/limits (`max(org, seat, personal)` for user-scope keys, the org plan
    * for org-scope keys), and `sources` additively carries the union (D28).
-   * No field is renamed or removed before phase 6.
+   * No field is renamed or removed before phase 6. The seat plan is read by key,
+   * so a `seat_pool`-only licence — which `listActive` and `getByKey` filter
+   * out — still renders as the caller's own plan (#1511).
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
@@ -382,9 +418,9 @@ export class SubscriptionPlanService {
   }
 
   /**
-   * The public plan detail. An unlisted plan (B3) is not public detail: the
-   * `[key]` route and the mock checkout form both answer `NOT_FOUND`, the same
-   * answer a missing key gets.
+   * The public plan detail. An unlisted plan (B3) or a `seat_pool`-only licence
+   * (#1511) is not public detail: the `[key]` route and the mock checkout form
+   * both answer `NOT_FOUND`, the same answer a missing key gets.
    */
   async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.clientFactory();
@@ -393,6 +429,7 @@ export class SubscriptionPlanService {
       .from('subscription_plans')
       .select('*')
       .eq('key', key)
+      .contains('sales_channels', [SALES_CHANNEL_INDIVIDUAL])
       .maybeSingle();
 
     if (error) return toDbFailure(error);
@@ -561,6 +598,7 @@ export class SubscriptionPlanService {
         scope: input.scope,
         visibility: input.visibility,
         billing_mode: input.billingMode,
+        sales_channels: input.salesChannels,
       })
       .select()
       .single();
@@ -585,6 +623,7 @@ export class SubscriptionPlanService {
     if (input.scope !== undefined) updateData.scope = input.scope;
     if (input.visibility !== undefined) updateData.visibility = input.visibility;
     if (input.billingMode !== undefined) updateData.billing_mode = input.billingMode;
+    if (input.salesChannels !== undefined) updateData.sales_channels = input.salesChannels;
 
     const { data, error } = await supabase
       .from('subscription_plans')

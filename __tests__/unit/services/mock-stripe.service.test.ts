@@ -22,6 +22,7 @@ const studentPlan: CatalogPlan = {
   sortOrder: 1,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 const orgPlan: CatalogPlan = {
   key: 'campus',
@@ -33,6 +34,7 @@ const orgPlan: CatalogPlan = {
   sortOrder: 8,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 const freeStudentPlan: CatalogPlan = {
   key: 'free',
@@ -44,6 +46,7 @@ const freeStudentPlan: CatalogPlan = {
   sortOrder: 0,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 const freeOrgPlan: CatalogPlan = {
   key: 'launch',
@@ -55,6 +58,7 @@ const freeOrgPlan: CatalogPlan = {
   sortOrder: 3,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 const inactivePlan: CatalogPlan = { ...studentPlan, key: 'old', isActive: false };
 

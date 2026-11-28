@@ -29,6 +29,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     sortOrder: 1,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
   },
   pro: {
     key: 'pro',
@@ -40,6 +41,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     sortOrder: 2,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
   },
   hub: {
     key: 'hub',
@@ -51,6 +53,7 @@ const CATALOG: Record<string, CatalogPlan> = {
     sortOrder: 3,
     visibility: 'public',
     billingMode: 'stripe',
+    salesChannels: ['individual'],
   },
 };
 

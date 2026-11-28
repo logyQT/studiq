@@ -66,8 +66,9 @@ type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number }
  * their own narrow purposes), and it owns `org_roles.entitlement_profile`,
  * `entitlement_flags`, `user_feature_overrides`, `org_seat_*`,
  * `organizations.plan` and `profiles.personal_plan_key` as resolution inputs.
- * The role layer is `profile + seat ∩ ceiling`: phase 7 dropped the revoke store
- * (D27, premarket), so nothing sits between the profile and the seat any more.
+ * The role layer is `profile + seat`: phase 7 dropped the revoke store
+ * (D27, premarket), and D38 stopped filtering a seat through the org ceiling —
+ * the pool subscription is the purchase (#1511).
  *
  * Resolution order (§6.1):
  *
@@ -79,9 +80,8 @@ type PlanLimitRow = { plan_key: string; limit_key: string; limit_value: number }
  *      `LEARNER_ENTITLEMENTS ∩ ceiling`, `none` = ∅. A missing ctx role id
  *      grants no entitlement; the org plan is still read, because limits use
  *      it for every member.
- *   3. Seat plan — `planEntitlements(seat.plan) ∩ ceiling`; consulted only
- *      inside a verified org (a stale seat row plus a forged cookie supplies
- *      nothing).
+ *   3. Seat plan — every key of the seat plan (D38); consulted only inside a
+ *      verified org (a stale seat row plus a forged cookie supplies nothing).
  *   4. Personal plan — outside an org, all its keys; inside an org only the
  *      `personalPortable` whitelist (D3).
  *   5. User overrides — an active row is the final word on its key in both
@@ -273,7 +273,7 @@ export class EntitlementResolver {
       limitsByPlan,
     });
 
-    // ── 6 + 7 + 8. Org layer: profile, revokes, seat ∩ ceiling ────────────
+    // ── 6 + 7 + 8. Org layer: profile and seat ────────────────────────────
     if (inOrg && orgPlanKey) {
       sources.org = { planKey: orgPlanKey, origin: 'org' };
       planSources.push(sources.org);
@@ -283,13 +283,16 @@ export class EntitlementResolver {
       const ceiling = entitlementsByPlan.get(orgPlanKey) ?? new Set<EntitlementKey>();
       this.applyProfile(enabled, entitlementProfile, ceiling);
 
-      // A seat plan intersects the ceiling: it can add a key the org plan
-      // carries, never one it does not (§6.1). The role layer is
-      // `profile + seat ∩ ceiling`; phase 7 dropped the revoke store, so there
-      // is no subtraction between the two arms (D27, premarket).
+      // A seat licence grants every key of the seat plan: the organization
+      // bought those keys through the pool subscription, so the org ceiling
+      // does not filter them (D38, #1511). `addPool` refuses a plan that is not
+      // `scope='personal'` with every key `seatEligible`, and the catalog
+      // invariant `seatEligible ⇒ personal` keeps that boundary: an org-scope
+      // key — the only thing `seatEligible: false` marks — cannot ride a seat,
+      // so a seat still cannot widen the org's scope.
       if (seatPlanKey) {
         for (const key of entitlementsByPlan.get(seatPlanKey) ?? []) {
-          if (ceiling.has(key)) enabled.add(key);
+          enabled.add(key);
         }
         sources.seat = { planKey: seatPlanKey, origin: 'seat' };
         planSources.push(sources.seat);
@@ -383,7 +386,11 @@ export class EntitlementResolver {
    * | Org member, seated         | `max(org, seat, personal)`          | org plan      |
    * | Org-scope personal plan    | personal excluded (D34)             | org plan      |
    * | Non-member / forged cookie | personal plan                       | `0`           |
-   * | Missing `plan_limits` row  | `0` + warn                          | `0` + warn    |
+   * | Missing `plan_limits` row  | `0` + warn (org/personal); `0` for a seat | `0` + warn |
+   *
+   * A licence plan carries one quota row on purpose, so its missing keys are a
+   * silent `0` (F6); the warning keeps its meaning for the org and personal
+   * layers, which claim to be full plans.
    *
    * `inOrg` is always membership-verified, so a forged `active_org_id` lands in
    * the "no org" row even when a stale seat row exists.
@@ -411,9 +418,14 @@ export class EntitlementResolver {
       // that applies: outside an org the org/seat plans are already nulled
       // above, so only the personal plan can be a candidate. `-1`
       // short-circuits the max.
-      const candidates = [orgPlanKey, seatPlanKey, personalPlanKey]
+      const candidates = [orgPlanKey, personalPlanKey]
         .filter((key): key is string => key != null)
         .map((key) => this.planLimitValue(limitsByPlan, key, limitKey));
+      // A seat sells the keys it carries; a missing row is 0, not a faulty
+      // plan. A licence plan is a partial plan by design (one quota row), so
+      // the "missing limit" warning would fire on every seated resolution.
+      const seatValue = seatPlanKey ? limitsByPlan.get(seatPlanKey)?.get(limitKey) : undefined;
+      if (seatValue !== undefined) candidates.push(seatValue);
       limits[limitKey] =
         candidates.length === 0 ? 0 : candidates.includes(-1) ? -1 : Math.max(...candidates);
     }

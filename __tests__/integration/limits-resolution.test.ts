@@ -183,6 +183,8 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('a base seat does not zero the personal AI allowance in a hub org (phase-3 exit case)', async () => {
     await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
+    // `free` is a legacy pre-#1511 pool row, kept on purpose: no licence tier
+    // has a 0 quota, and the case needs a seat whose 0 must not lower the max.
     await seatUser(fixture.orgId!, fixture.user.id, 'free');
     // The organization ladder carries no AI quota since #1493; the member's
     // paid personal plan supplies it (`personalPortable`).
@@ -384,6 +386,7 @@ describe(`Limits resolve live through the single resolver (ADR-0015 §6.2)`, () 
 
   it('the resolution reports the effective primary plan and the union sources', async () => {
     await service.from('organizations').update({ plan: 'hub' }).eq('id', fixture.orgId!);
+    // Legacy pre-#1511 pool row: the case asserts source provenance, not a tier.
     await seatUser(fixture.orgId!, fixture.user.id, 'free');
 
     const { plan, sources } = await resolver.resolveEntitlements(memberCtx());

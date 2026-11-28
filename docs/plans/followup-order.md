@@ -62,6 +62,17 @@ C1 gives most of the code reduction with no route change. Do D1 only after C1.
 | ---- | --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | E1   | **#1489** | Rework onboarding on top of the shell and the new plan set. | A new user reaches a usable shell with the right items. Onboarding asks nothing that the shell or the plan already answers. | B, C, D    |
 
+## F. Sell AI per seat
+
+| Step | Issue     | What it does                                                                                              | Exit criterion                                                                                                  | Depends on |
+| ---- | --------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------- |
+| F1   | **#1511** | Org-funded AI seat licences: a `seat_pool` sales channel, Lite/Pro/Max, a seat grants its own keys (D38). | A seated member resolves `ai.chat` and the tier quota; the individual surfaces still show the same eight plans. | B          |
+
+PR1 ships the channel, the three licence plans and the resolver arm (`feat(plans)`).
+It also folds in #1146: a seat is per member, not per role, and `assigned` is
+service-role only. PR2–PR6 add the seats picker, the purchase by quantity, the
+cap and right-size, and the pool tier move; the monthly quota follows them.
+
 ## Decisions the operator must make
 
 1. **B1: the AI price — settled 2026-11-26.** AI moves down to Plus at 19.99; Pro and Max add
