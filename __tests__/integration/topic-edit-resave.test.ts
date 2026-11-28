@@ -18,7 +18,7 @@ import {
   requiredAt,
 } from '#test/integration/test-utils';
 import { GET as getTopic, PUT as updateTopic } from '@/app/(backend)/api/v1/topics/[id]/route';
-import { POST as createTopic } from '@/app/(backend)/api/v1/topics/route';
+import { GET as listTopics, POST as createTopic } from '@/app/(backend)/api/v1/topics/route';
 import { contentFormPayload } from '@/lib/share-fields';
 
 const suiteId = crypto.randomUUID().slice(0, 8);
@@ -26,7 +26,14 @@ const suiteId = crypto.randomUUID().slice(0, 8);
 /** Topic payload of `GET/PUT /api/v1/topics/:id` — the fields read below. */
 interface TopicBody {
   success: boolean;
+  error?: string;
   data: { id: string; name: string; visibility: 'personal' | 'group'; groupIds: string[] };
+}
+
+/** `GET /api/v1/topics` payload — the fields read below. */
+interface TopicListBody {
+  success: boolean;
+  data: { items: Array<{ id: string }> };
 }
 
 /**
@@ -39,21 +46,23 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
   const service = createServiceClient();
   let teacher!: BeforeResult;
   let orgAdmin!: TestUserFixture;
+  let member!: TestUserFixture;
   let orgId!: string;
   let groupA!: string;
   let groupB!: string;
   let topicId!: string;
+  let personalTopicId!: string;
 
-  async function topicGroupIds(): Promise<string[]> {
-    const { data } = await service.from('topic_groups').select('group_id').eq('topic_id', topicId);
+  async function topicGroupIds(id = topicId): Promise<string[]> {
+    const { data } = await service.from('topic_groups').select('group_id').eq('topic_id', id);
     return (data ?? []).map((row) => row.group_id).toSorted();
   }
 
-  async function getFor(user: TestUserFixture) {
+  async function getFor(user: TestUserFixture, id = topicId) {
     mockUser(user);
     const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/topics/${topicId}`,
-      { id: topicId },
+      `http://localhost/api/v1/topics/${id}`,
+      { id },
       { method: 'GET' },
       { active_org_id: orgId },
     );
@@ -61,11 +70,19 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
     return { res, body: await json<TopicBody>(res) };
   }
 
-  async function putFor(user: TestUserFixture, body: Record<string, unknown>) {
+  async function listFor(user: TestUserFixture) {
+    mockUser(user);
+    const res = await listTopics(
+      createNextRequest('http://localhost/api/v1/topics', undefined, { active_org_id: orgId }),
+    );
+    return { res, body: await json<TopicListBody>(res) };
+  }
+
+  async function putFor(user: TestUserFixture, body: Record<string, unknown>, id = topicId) {
     mockUser(user);
     const { request, params } = createNextRequestWithParams(
-      `http://localhost/api/v1/topics/${topicId}`,
-      { id: topicId },
+      `http://localhost/api/v1/topics/${id}`,
+      { id },
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -109,6 +126,28 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
       .insert({ organization_id: orgId, user_id: orgAdmin.id, org_role_id: adminRole.id });
     if (memberError) throw new Error(`[setup] org membership failed: ${memberError.message}`);
 
+    // A real learner in group A: the caller who must lose access when the share is revoked.
+    const { data: learnerRole } = await service
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'member')
+      .single();
+    if (!learnerRole) throw new Error('[setup] member org role not found');
+
+    member = await createTestUser({ role: 'student' });
+    const { error: learnerOrgError } = await service
+      .from('org_members')
+      .insert({ organization_id: orgId, user_id: member.id, org_role_id: learnerRole.id });
+    if (learnerOrgError)
+      throw new Error(`[setup] org membership failed: ${learnerOrgError.message}`);
+    const { error: learnerGroupError } = await service
+      .from('group_members')
+      .insert({ group_id: groupA, user_id: member.id, role: 'member' });
+    if (learnerGroupError) {
+      throw new Error(`[setup] group membership failed: ${learnerGroupError.message}`);
+    }
+
     mockUser(teacher.user);
     const topicRes = await createTopic(
       createNextRequest(
@@ -130,6 +169,23 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
       throw new Error(`[setup] topic creation failed: ${JSON.stringify(topicBody)}`);
     }
     topicId = topicBody.data.id;
+
+    const personalRes = await createTopic(
+      createNextRequest(
+        'http://localhost/api/v1/topics',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: `topic-personal-${suiteId}`, visibility: 'personal' }),
+        },
+        { active_org_id: orgId },
+      ),
+    );
+    const personalBody = await json<TopicBody>(personalRes);
+    if (!personalRes.ok || !personalBody.success) {
+      throw new Error(`[setup] personal topic creation failed: ${JSON.stringify(personalBody)}`);
+    }
+    personalTopicId = personalBody.data.id;
   });
 
   afterAll(async () => {
@@ -204,5 +260,58 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
     expect(res.status).toBe(200);
     expect(body.data.groupIds).toEqual([groupA]);
     expect(await topicGroupIds()).toEqual([groupA]);
+  });
+
+  it('lets a member of the shared group read the topic while it is group-visible', async () => {
+    const { res, body } = await getFor(member);
+
+    expect(res.status).toBe(200);
+    expect(body.data.groupIds).toEqual([groupA]);
+
+    const listed = await listFor(member);
+    expect(listed.res.status).toBe(200);
+    expect(listed.body.data.items.some((topic) => topic.id === topicId)).toBe(true);
+  });
+
+  it('clears the links on a partial `{visibility: personal}` and revokes the group member', async () => {
+    const { res, body } = await putFor(teacher.user, { visibility: 'personal' });
+
+    expect(res.status).toBe(200);
+    expect(body.data.visibility).toBe('personal');
+    expect(body.data.groupIds).toEqual([]);
+    expect(await topicGroupIds()).toEqual([]);
+
+    const read = await getFor(member);
+    expect(read.res.status).toBe(404);
+
+    const listed = await listFor(member);
+    expect(listed.res.status).toBe(200);
+    expect(listed.body.data.items.some((topic) => topic.id === topicId)).toBe(false);
+  });
+
+  it('rejects `{visibility: group}` alone on a personal topic', async () => {
+    const { res, body } = await putFor(teacher.user, { visibility: 'group' }, personalTopicId);
+
+    expect(res.status).toBe(422);
+    expect(res.headers.get('x-error-code')).toBe('UNPROCESSABLE_ENTITY');
+    expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+
+    const stored = await getFor(teacher.user, personalTopicId);
+    expect(stored.res.status).toBe(200);
+    expect(stored.body.data.visibility).toBe('personal');
+    expect(stored.body.data.groupIds).toEqual([]);
+  });
+
+  it('ignores a stale topic_groups row left on a personal topic (defense in depth)', async () => {
+    const { error } = await service
+      .from('topic_groups')
+      .insert({ topic_id: personalTopicId, group_id: groupA });
+    if (error) throw new Error(`[setup] stale link insert failed: ${error.message}`);
+
+    const read = await getFor(member, personalTopicId);
+    expect(read.res.status).toBe(404);
+
+    const listed = await listFor(member);
+    expect(listed.body.data.items.some((topic) => topic.id === personalTopicId)).toBe(false);
   });
 });

@@ -385,7 +385,17 @@ export async function resolveGroupResourceIds(
         .from('topic_groups')
         .select('topic_id')
         .in('group_id', groupIds);
-      return [...new Set((data ?? []).map((r) => r.topic_id))];
+      const topicIds = [...new Set((data ?? []).map((r) => r.topic_id))];
+      if (topicIds.length === 0) return [];
+      // A share link only grants access while the topic is actually group-visible; a stale
+      // `topic_groups` row left behind by an earlier partial `{ visibility: 'personal' }` PUT
+      // must not.
+      const { data: sharedTopics } = await supabase
+        .from('topics')
+        .select('id')
+        .in('id', topicIds)
+        .eq('visibility', 'group');
+      return [...new Set((sharedTopics ?? []).map((r) => r.id))];
     }
     default:
       return [];
