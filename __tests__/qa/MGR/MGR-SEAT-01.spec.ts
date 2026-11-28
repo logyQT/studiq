@@ -17,21 +17,22 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * test never touches another tenant's seats, a global plan, a feature flag or a
  * singleton row.
  *
- * Seats are frozen at the UI since #1493: the organization ladder is capacity
- * only, so a sold seat has no feature to add and organization licences arrive in
- * #1511. `/manage/seats` keeps the pools and assignments tables and every `GET`,
- * and hides the purchase, assign and release entries. The case's purchase is
- * therefore driven through the product API, the same request the retired dialog
- * sent: `POST /api/v1/organization/seats/pools` adds the quantity to the plan's
- * pool (or creates it) and the page re-reads the pools. A fresh org has no pools
- * — `plan_seat_allocations` and its trigger seeding were dropped in
+ * Seats are frozen at the UI since #1493, and since #1511 a pool is a licence:
+ * the plan must be `scope='personal'`, sold on the `seat_pool` channel and carry
+ * only `seatEligible` keys, so the three AI tiers are the only plans
+ * `addPool` accepts. `/manage/seats` keeps the pools and assignments tables and
+ * every `GET`, and hides the purchase, assign and release entries. The case's
+ * purchase is therefore driven through the product API: `POST
+ * /api/v1/organization/seats/pools` adds the quantity to the tier's pool (or
+ * creates it) and the page re-reads the pools. A fresh org has no pools —
+ * `plan_seat_allocations` and its trigger seeding were dropped in
  * `20260915000003_drop_plan_seat_allocations.sql` — so the pool the case reads
  * back is exactly the one this test bought.
  *
  * Asserted behaviour (the case's expected result):
  * - The page renders the „Pule miejsc” and „Przydziały” tables and no „Kup
  *   miejsca”, „Przydziel miejsce” or „Zwolnij miejsce” control.
- * - Buying 3 of a plan through the API returns 201 and the pool row reads
+ * - Buying 3 Lite seats through the API returns 201 and the pool row reads
  *   3 purchased / 0 assigned / 3 available, also after a reload.
  * - The API enforces the same floor: quantity 0 or -1 is a 422, not a pool.
  */
@@ -42,9 +43,12 @@ const SEATS_PATH = '/manage/seats';
 const POOLS_API = '/api/v1/organization/seats/pools';
 const ASSIGNMENTS_API = '/api/v1/organization/seats/assignments';
 
-/** Pool the test buys in; the label is the plan catalogue's own name. */
-const PLAN_KEY = 'pro';
-const PLAN_LABEL = 'StudiQ Pro';
+/**
+ * The licence tier the test buys. The pool row shows this key rather than the
+ * plan's name: the seats page labels a pool from the public catalogue, and
+ * #1511 keeps licence plans off the `individual` channel that read serves.
+ */
+const PLAN_KEY = 'ai_lite';
 const QUANTITY = 3;
 
 const COPY = {
@@ -143,7 +147,7 @@ test('the frozen seat page shows the pools table and the API still buys three se
   await page.reload();
   await expect(page.getByRole('heading', { name: COPY.heading, exact: true })).toBeVisible();
   await expect(poolRows(page)).toHaveCount(1);
-  await expect(poolRows(page).first().locator('td').nth(0)).toHaveText(PLAN_LABEL);
+  await expect(poolRows(page).first().locator('td').nth(0)).toHaveText(PLAN_KEY);
   await expectPoolRow(poolRows(page).first(), {
     total: QUANTITY,
     assigned: 0,

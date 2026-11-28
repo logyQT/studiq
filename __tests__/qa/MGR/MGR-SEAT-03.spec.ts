@@ -22,20 +22,25 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * tenant model it is this case's own `content` tenant: the manager (org `admin`)
  * plus two org members, `users.student` (the member under test) and
  * `users.student2` (the untouched control). A fresh organization has **no** seat
- * pools — `plan_seat_allocations` was dropped — so the spec buys one personal-plan
- * pool (`max`, 2 seats) and assigns both members through the product's own API.
- * That setup is idempotent, so a repeated run in the same tenant starts from the
- * case's prerequisite state again.
+ * pools — `plan_seat_allocations` was dropped — so the spec buys one licence
+ * pool (`ai_max`, 2 seats) and assigns both members through the product's own
+ * API. That setup is idempotent, so a repeated run in the same tenant starts from
+ * the case's prerequisite state again.
  *
  * Every id comes from the tenant fixture (`tenantKey`/`tenantId`); the spec reads
- * and writes only its own tenant's org, members and seat rows. The plan catalog is
- * read (never written) to resolve the plan label the page renders.
+ * and writes only its own tenant's org, members and seat rows. The pool and
+ * assignment tables label a row with the plan key: the seats page resolves the
+ * name from the public catalogue, and #1511 serves that read on the `individual`
+ * channel, which excludes a licence plan.
  */
 
 const CASE = 'MGR-SEAT-03';
 
-/** Purchasable personal-plan seat; both seated members hold the org `member` role. */
-const SEAT_PLAN_KEY = 'max';
+/**
+ * Licence tier the pool is bought on; both seated members hold the org `member`
+ * role.
+ */
+const SEAT_PLAN_KEY = 'ai_max';
 const POOL_SEATS = 2;
 
 /** Polish copy from `ManageSeatsPage` (`apps/web/src/i18n/messages/pl.json`). */
@@ -176,13 +181,6 @@ test('releasing a seat through the API frees the pool counter and returns the me
   await expect(page).toHaveURL(/\/manage$/, { timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-  // The plan label the Seat Pools table renders, from the same catalog endpoint.
-  const plans = await call<PlanInfo[]>(page, '/api/v1/subscription-plans');
-  const seatPlanName = plans.find((plan) => plan.key === SEAT_PLAN_KEY)?.name;
-  if (!seatPlanName) {
-    throw new Error(`the plan catalog does not list "${SEAT_PLAN_KEY}"`);
-  }
-
   // Both people are student-persona org members with the `member` role. Since
   // #1193 a personal plan carries no audience, so assignment accepts any member;
   // the persona is asserted here as the fixture's own shape.
@@ -253,7 +251,9 @@ test('releasing a seat through the API frees the pool counter and returns the me
     poolsCard.getByRole('columnheader', { name: COPY.availableColumn, exact: true }),
   ).toBeVisible();
 
-  const poolRow = poolsCard.locator('tbody tr').filter({ hasText: seatPlanName });
+  // Neither table shows the licence plan's name (the public catalogue does not
+  // serve it, #1511), so both rows carry the plan key they were bought on.
+  const poolRow = poolsCard.locator('tbody tr').filter({ hasText: SEAT_PLAN_KEY });
   await expect(poolRow, 'one row for the case pool').toHaveCount(1);
   await expect(poolRow.locator('td').nth(1), 'purchased seats').toHaveText(String(POOL_SEATS));
   await expect(poolRow.locator('td').nth(2), 'assigned seats before the release').toHaveText('2');
@@ -265,7 +265,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
   const targetRow = assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(target) });
   await expect(targetRow, 'the assignment under test').toHaveCount(1);
   await expect(targetRow.locator('td').nth(1), 'the assignment shows the seat plan').toHaveText(
-    seatPlanName,
+    SEAT_PLAN_KEY,
   );
 
   const controlRow = assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(untouched) });
@@ -300,7 +300,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
     .locator('[data-slot="card"]')
     .filter({ hasText: COPY.poolsTitle })
     .locator('tbody tr')
-    .filter({ hasText: seatPlanName });
+    .filter({ hasText: SEAT_PLAN_KEY });
   await expect(poolRowAfterReload.locator('td').nth(1), 'purchased seats are unchanged').toHaveText(
     String(POOL_SEATS),
   );
