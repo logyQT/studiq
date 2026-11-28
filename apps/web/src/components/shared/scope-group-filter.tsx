@@ -98,9 +98,11 @@ function SideItem({
  * plain label instead of a chip that stands for "no filter". The groups open in
  * a panel beside the list — revealing them never pushes the other rows down —
  * on hover, or with ArrowRight from the „Grupy” row; Escape and ArrowLeft bring
- * the focus back to the list. A typed query lists the matching groups as ordinary
- * rows instead of force-opening the panel: filtering the list can hide the row the
- * panel is anchored to, and a panel anchored to a hidden row is placed nowhere.
+ * the focus back to the list. Every dimension row stays mounted while a query is
+ * typed, so its own label still finds it (#1244). A query also lists the
+ * matching groups as ordinary rows instead of force-opening the panel: filtering
+ * can hide the row the panel is anchored to, and a panel anchored to a hidden row
+ * is placed nowhere.
  *
  * Filters are independent: `Moje` plus a group is the teacher case — my content
  * shared to those groups.
@@ -177,7 +179,7 @@ export function ScopeGroupFilter({
    * from there. cmdk leaves the horizontal arrows untouched.
    */
   const handleCommandKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowRight' || query) return;
+    if (event.key !== 'ArrowRight') return;
     const selected = containerRef.current?.querySelector('[cmdk-item][aria-selected="true"]');
     if (!selected || !groupRowRef.current?.contains(selected)) return;
     event.preventDefault();
@@ -264,7 +266,7 @@ export function ScopeGroupFilter({
                   onSelect={() => onOwnerChange(mineActive ? 'all' : 'mine')}
                 />
 
-                {options.length > 0 && !query && (
+                {options.length > 0 && (
                   <HoverCard
                     open={panelOpen}
                     onOpenChange={setPanelOpen}
@@ -321,8 +323,9 @@ export function ScopeGroupFilter({
                 )}
               </CommandGroup>
 
-              {/* A query lists the matches as ordinary rows: the „Grupy” row it would
-                  anchor a panel to is the first thing cmdk filters out. */}
+              {/* A query lists the matches as ordinary rows: the „Grupy” row a panel
+                  would be anchored to is filtered out as soon as the query matches
+                  only a group name. */}
               {query && matchingGroups.length > 0 && (
                 <CommandGroup heading={t('group_filter')} className="p-0">
                   {matchingGroups.map((group) => (
