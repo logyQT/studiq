@@ -11,6 +11,7 @@ import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-d
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { usePermission } from '@/hooks/use-permission';
+import type { ContentFormValues } from '@/lib/share-fields';
 
 export interface DialogsState {
   createCardOpen: boolean;
@@ -57,12 +58,7 @@ export interface DialogsHandlers {
   onDelete: () => void;
   onMove: () => void;
   onCopy: () => void;
-  onDeckUpdate: (data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) => void;
+  onDeckUpdate: (data: ContentFormValues) => void;
   onDeckDelete: () => void;
   onBulkDelete: () => void;
   onBulkTopics: () => void;
