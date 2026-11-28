@@ -32,6 +32,7 @@ import { useApiMutation } from '@/hooks/use-api';
 import { usePermission } from '@/hooks/use-permission';
 import { apiPost, apiPut, isNetworkError } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
+import type { ContentFormValues } from '@/lib/share-fields';
 
 const ImportDialog = dynamic(
   () =>
@@ -49,13 +50,6 @@ const DeckFormDialog = dynamic(() =>
 interface DeckManagementScreenProps {
   basePath: string;
   t: ReturnType<typeof useTranslations>;
-}
-
-interface DeckFormValues {
-  name: string;
-  description: string;
-  visibility?: 'personal' | 'group';
-  groupIds?: string[];
 }
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
@@ -89,17 +83,14 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     invalidateKeys: [...flashcardKeys.afterDeckSuspend],
   });
 
-  async function handleSubmit(data: DeckFormValues) {
+  async function handleSubmit(data: ContentFormValues) {
     if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
     }
-    const body = {
-      name: data.name,
-      description: data.description || undefined,
-      visibility: data.visibility,
-      groupIds: data.visibility === 'group' ? data.groupIds : [],
-    };
+    // The dialog drops an unchanged share set (#1555): sending `groupIds` again would run the
+    // group-teacher check and fail an org Admin's name edit.
+    const body = { ...data, description: data.description || undefined };
     try {
       if (screen.editing) {
         await update.mutateAsync({ id: screen.editing.id, ...body });

@@ -14,44 +14,22 @@ import {
 } from '@studiq/ui';
 import { useId, useState } from 'react';
 import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
+import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
+import { contentFormPayload } from '@/lib/share-fields';
 
-interface GroupOption {
-  id: string;
-  name: string;
-}
-
-interface DeckFormDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialValues?: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  } | null;
-  onSubmit: (data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) => void;
-  title: string;
-  description: string;
-  nameLabel: string;
-  namePlaceholder: string;
-  descriptionLabel: string;
-  descriptionPlaceholder: string;
-  cancelLabel: string;
-  submitLabel: string;
-  groups?: GroupOption[];
-  visibilityLabel?: string;
-  visibilityPersonalLabel?: string;
-  visibilityGroupLabel?: string;
-  groupsPlaceholder?: string;
-  groupsEmptyText?: string;
+interface DeckFormDialogProps extends ContentFormDialogProps {
   groupsRequiredText?: string;
 }
+
+type FormBodyProps = Omit<
+  ContentFormDialogProps,
+  'open' | 'onOpenChange' | 'title' | 'description'
+> & {
+  gradient: { from: string; to: string };
+  onCancel: () => void;
+  groupsRequiredText?: string;
+};
 
 function FormBody({
   gradient,
@@ -71,35 +49,7 @@ function FormBody({
   groupsPlaceholder,
   groupsEmptyText,
   groupsRequiredText,
-}: {
-  gradient: { from: string; to: string };
-  initialValues?: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  } | null;
-  nameLabel: string;
-  namePlaceholder: string;
-  descriptionLabel: string;
-  descriptionPlaceholder: string;
-  cancelLabel: string;
-  submitLabel: string;
-  onSubmit: (data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) => void;
-  onCancel: () => void;
-  groups?: GroupOption[];
-  visibilityLabel?: string;
-  visibilityPersonalLabel?: string;
-  visibilityGroupLabel?: string;
-  groupsPlaceholder?: string;
-  groupsEmptyText?: string;
-  groupsRequiredText?: string;
-}) {
+}: FormBodyProps) {
   const [formData, setFormData] = useState(
     initialValues ?? { name: '', description: '', visibility: 'personal' as const, groupIds: [] },
   );
@@ -185,7 +135,9 @@ function FormBody({
         </Button>
         <Button
           disabled={groupsMissing}
-          onClick={() => onSubmit({ ...formData, visibility, groupIds })}
+          onClick={() =>
+            onSubmit(contentFormPayload(initialValues, { ...formData, visibility, groupIds }))
+          }
         >
           {submitLabel}
         </Button>
