@@ -9,9 +9,10 @@
 
 ## Amendment (2026-11-26, B2 #1493)
 
-Seats are frozen at the UI: `/manage/seats` keeps the pools and assignments tables and every
-`GET`, and hides the purchase, assign and release entries. The purchase is driven through the
-product API, the same `POST` the retired dialog sent; a fresh organization still starts without
+Seats were frozen at the UI: `/manage/seats` kept the pools and assignments tables and every
+`GET`, and hid the purchase, assign and release entries. **#1511 restores the assign and release
+entries**; the purchase entry stays deferred to a later slice. The purchase is driven through the
+product API, the same `POST` the dialog will send; a fresh organization still starts without
 pools, so the pool the case reads back is the one it bought.
 
 ## Amendment (2026-11-28, #1511)
@@ -22,9 +23,10 @@ three AI tiers (`ai_lite` / `ai_pro` / `ai_max`) are the only plans it takes; an
 answers **422**. The case buys **`ai_lite`** ×3. A licence is AI only: `ai.chat` and a daily quota,
 with no content limit and no non-AI feature.
 
-The pools table shows the plan **key** (`ai_lite`) in its „Plan” cell: the page resolves a pool's
-label from the public plan catalogue, and a licence plan is sold on the `seat_pool` channel only, so
-that read does not list it.
+The page shows the three licence tier cards and resolves a pool's label from
+`GET /api/v1/organization/seats/licence-plans`, so the pools and assignments rows carry the
+friendly licence name (`StudiQ AI Lite`). The purchase control is not on the page yet; the case
+buys through the API.
 
 ## Prerequisite (verbatim)
 
@@ -63,34 +65,36 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 
 ## Steps
 
-1. Sprawdź, że strona pokazuje obie tabele i nie ma przycisków zakupu ani przydziału.
+1. Sprawdź, że strona pokazuje karty trzech licencji AI, obie tabele i przycisk
+   „Przydziel miejsce”; nie ma przycisku „Kup miejsca”. Akcja „Zwolnij miejsce” pojawia
+   się przy przydziale (MGR-SEAT-03).
 2. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
    `{"planKey":"ai_lite","quantity":3}`.
 3. Spróbuj ilości 0 oraz ujemnej tym samym żądaniem.
 
 ## Expected result
 
-- Strona renderuje „Pule miejsc” i „Przydziały”; przycisków „Kup miejsca”,
-  „Przydziel miejsce” i „Zwolnij miejsce” nie ma.
+- Strona renderuje karty „Licencje AI na miejsca” z ceną za miejsce i dziennym limitem
+  tokenów oraz tabele „Pule miejsc” i „Przydziały”; jest przycisk „Przydziel miejsce”,
+  a przycisku „Kup miejsca” nie ma (zakup w kolejnym kroku). Akcja „Zwolnij miejsce”
+  pojawia się przy przydziale (MGR-SEAT-03).
 - `POST` zwraca **201**, a pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne;
-  wiersz jest planu `ai_lite`.
+  wiersz nosi przyjazną nazwę licencji „StudiQ AI Lite”.
 - `POST` z ilością 0 lub ujemną zwraca **422** `UNPROCESSABLE_ENTITY` i nie tworzy puli.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
 
-- `/manage/seats` renderuje nagłówek „Licencje miejsc” i dwie karty: „Pule miejsc”
-  (kolumny Plan / Wykupione / Przydzielone / Dostępne) oraz „Przydziały”. Świeża
+- `/manage/seats` renderuje nagłówek „Licencje miejsc”, karty trzech licencji AI i dwie karty:
+  „Pule miejsc” (kolumny Plan / Wykupione / Przydzielone / Dostępne) oraz „Przydziały”. Świeża
   organizacja pokazuje „Brak skonfigurowanych pul miejsc” i „Nie przydzielono jeszcze
   żadnych miejsc”.
-- Od #1493 strona nie ma przycisków „Kup miejsca” ani „Przydziel miejsce”, a wiersze
-  „Przydziałów” nie mają akcji „Zwolnij miejsce”. Widoczna jest notka „Sprzedaż miejsc
-  jest wstrzymana do czasu wprowadzenia licencji organizacji.”. Obie tabele i wszystkie
-  `GET` działają.
+- #1511 przywrócił przycisk „Przydziel miejsce”; akcja „Zwolnij miejsce” pojawia się przy
+  przydziale (MGR-SEAT-03); przycisku „Kup miejsca” nie ma (zakup w kolejnym kroku). Obie
+  tabele i wszystkie `GET` działają.
 - Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"ai_lite","quantity":3}` →
-  **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz `ai_lite`
+  **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz „StudiQ AI Lite”
   z wartościami **3 / 0 / 3**. Wartości są liczone po stronie serwera (`total` /
-  `assigned`), a „Dostępne” to `total - assigned`. Wiersz pokazuje klucz planu, bo strona
-  bierze nazwę z publicznego katalogu, a katalog nie serwuje planów licencyjnych (#1511).
+  `assigned`), a „Dostępne” to `total - assigned`.
 - Krok 3 — `POST` z `quantity: 0` lub `quantity: -2` → **422**
   `{"success":false,"error":"UNPROCESSABLE_ENTITY"}` i pula pozostaje 3 / 0.
 - Po odświeżeniu strony pula nadal ma 3 / 0 / 3 — stan jest trzymany w bazie, nie tylko
