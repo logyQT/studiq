@@ -553,7 +553,7 @@ describe('org-control permission RLS', () => {
     it('lets the holder insert and delete a pool', async () => {
       const { data, error } = await holder
         .from('org_seat_pools')
-        .insert({ organization_id: orgId, plan_key: 'pro', total: 3 })
+        .insert({ organization_id: orgId, plan_key: 'ai_pro', total: 3 })
         .select('id')
         .single();
       expect(error).toBeNull();
@@ -568,17 +568,17 @@ describe('org-control permission RLS', () => {
     it('refuses INSERT for the Member role and the legacy manager marker (42501)', async () => {
       const memberInsert = await member
         .from('org_seat_pools')
-        .insert({ organization_id: orgId, plan_key: 'pro', total: 1 });
+        .insert({ organization_id: orgId, plan_key: 'ai_pro', total: 1 });
       const legacyInsert = await legacy
         .from('org_seat_pools')
-        .insert({ organization_id: orgId, plan_key: 'pro', total: 1 });
+        .insert({ organization_id: orgId, plan_key: 'ai_pro', total: 1 });
 
       expect(memberInsert.error?.code).toBe('42501');
       expect(legacyInsert.error?.code).toBe('42501');
     });
 
     it('refuses DELETE without the key and keeps the row', async () => {
-      const poolId = await insertPool(orgId, 'pro', 1);
+      const poolId = await insertPool(orgId, 'ai_pro', 1);
 
       const memberDelete = await member
         .from('org_seat_pools')
@@ -603,9 +603,9 @@ describe('org-control permission RLS', () => {
     // and then refuses the write with 42501, so this case pins the write itself
     // and the untouched row for everybody else.
     it('lets the holder UPDATE a pool and refuses everyone else without touching it', async () => {
-      // The pool's plan_key now FKs subscription_plans, so the fixture uses a
-      // real personal plan (`max`) instead of a synthetic key.
-      const poolId = await insertPool(orgId, 'max', 1);
+      // The pool's plan_key FKs subscription_plans, so the fixture uses a real
+      // licence plan (`ai_max`) instead of a synthetic key.
+      const poolId = await insertPool(orgId, 'ai_max', 1);
 
       const holderUpdate = await holder
         .from('org_seat_pools')
@@ -641,7 +641,7 @@ describe('org-control permission RLS', () => {
 
   describe('org_seat_assignments writes — org.seat.manage', () => {
     it('lets the holder assign and unassign a seat', async () => {
-      const poolId = await ensurePool(orgId, 'pro', 2);
+      const poolId = await ensurePool(orgId, 'ai_pro', 2);
 
       const { data, error } = await holder
         .from('org_seat_assignments')
@@ -658,7 +658,7 @@ describe('org-control permission RLS', () => {
     });
 
     it('refuses INSERT for the Member role and the legacy manager marker (42501)', async () => {
-      const poolId = await ensurePool(orgId, 'pro', 2);
+      const poolId = await ensurePool(orgId, 'ai_pro', 2);
 
       const memberInsert = await member
         .from('org_seat_assignments')
@@ -672,7 +672,7 @@ describe('org-control permission RLS', () => {
     });
 
     it('refuses DELETE without the key and keeps the row', async () => {
-      const poolId = await ensurePool(orgId, 'pro', 2);
+      const poolId = await ensurePool(orgId, 'ai_pro', 2);
       const assignmentId = await insertAssignment(orgId, poolId, memberId);
 
       const memberDelete = await member
@@ -697,8 +697,8 @@ describe('org-control permission RLS', () => {
     });
 
     it('lets the holder UPDATE an assignment and refuses everyone else without touching it', async () => {
-      const poolId = await ensurePool(orgId, 'plus', 2);
-      const otherPoolId = await ensurePool(orgId, 'pro', 2);
+      const poolId = await ensurePool(orgId, 'ai_lite', 2);
+      const otherPoolId = await ensurePool(orgId, 'ai_pro', 2);
       const assignmentId = await insertAssignment(orgId, poolId, legacyId);
 
       const holderUpdate = await holder
@@ -736,7 +736,7 @@ describe('org-control permission RLS', () => {
 
   describe('org_seat_assignments read — the manager branch moved with the list route', () => {
     it('lets the holder read an assignment it does not own', async () => {
-      const poolId = await ensurePool(orgId, 'max', 2);
+      const poolId = await ensurePool(orgId, 'ai_max', 2);
       const assignmentId = await insertAssignment(orgId, poolId, teacherId);
 
       const { data, error } = await holder
