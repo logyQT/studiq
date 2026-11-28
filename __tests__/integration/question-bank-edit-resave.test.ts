@@ -32,8 +32,11 @@ interface BankBody {
  * while the `bank_groups` rows stayed. The group lost access with no warning. The body here comes
  * from the dialog's own payload builder, because the omission it performs is exactly what this file
  * pins.
+ *
+ * #1566: the flip left the links behind, so a personal bank could be widened back to `group` with
+ * no teacher check. The bank now follows `planShareLinks`, like a deck and a topic.
  */
-describe(`Question bank edit keeps the share set (#1557)`, () => {
+describe(`Question bank edit keeps the share set (#1557, #1566)`, () => {
   const service = createServiceClient();
   let teacher!: BeforeResult;
   let orgAdmin!: TestUserFixture;
@@ -211,5 +214,48 @@ describe(`Question bank edit keeps the share set (#1557)`, () => {
       .single();
     expect(stored).toEqual({ visibility: 'group' });
     expect(await bankGroupIds()).toEqual([groupA]);
+  });
+
+  // #1566: the bank now follows `planShareLinks`, so a flip to personal clears the links,
+  // and a flip back to group without a list is the invalid "group with no links" state.
+  it('clears the links when the teacher unshares the bank to personal', async () => {
+    const { res, body } = await putFor(teacher.user, { visibility: 'personal' });
+
+    expect(res.status).toBe(200);
+    expect(body.data.visibility).toBe('personal');
+    expect(await bankGroupIds()).toEqual([]);
+  });
+
+  it('refuses widening a personal bank with stored links to group without a list', async () => {
+    // The pre-#1566 state: a personal row that still carries a link. The old inline rule
+    // reused it on the flip back to group, so the group regained access with no teacher.
+    const { error } = await service
+      .from('bank_groups')
+      .insert({ bank_id: bankId, group_id: groupA });
+    if (error) throw new Error(`[setup] stored link insert failed: ${error.message}`);
+
+    const { res, body } = await putFor(orgAdmin, { visibility: 'group' });
+
+    expect(res.status).toBe(422);
+    expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+
+    const { data: stored } = await service
+      .from('question_banks')
+      .select('visibility')
+      .eq('id', bankId)
+      .single();
+    expect(stored).toEqual({ visibility: 'personal' });
+    expect(await bankGroupIds()).toEqual([groupA]);
+  });
+
+  it('lets the teacher widen the bank back to group with an explicit list', async () => {
+    const { res, body } = await putFor(teacher.user, {
+      visibility: 'group',
+      groupIds: [groupA, groupB],
+    });
+
+    expect(res.status).toBe(200);
+    expect(body.data.visibility).toBe('group');
+    expect(await bankGroupIds()).toEqual([groupA, groupB].toSorted());
   });
 });

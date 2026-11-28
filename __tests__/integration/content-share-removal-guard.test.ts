@@ -251,18 +251,32 @@ describe(`Content share removal needs the group's teacher (#1562)`, () => {
     expect(await groupIdsOf('bank_groups', 'bank_id', bankId)).toEqual([groupA, groupB].toSorted());
   });
 
-  it('refuses the org Admin emptying a question bank share', async () => {
+  it('rejects an empty bank groupIds list before the guard runs', async () => {
+    // #1566: a `group` bank cannot drop its last link in place, the same rule a deck and a
+    // topic follow; the unshare is the visibility flip below, so this body answers 422.
     const { res, body } = await putFor(updateBank, bankId, orgAdmin, { groupIds: [] });
 
-    expect(res.status).toBe(403);
-    expect(body.error).toBe('FORBIDDEN');
+    expect(res.status).toBe(422);
+    expect(body.error).toBe('UNPROCESSABLE_ENTITY');
     expect(await groupIdsOf('bank_groups', 'bank_id', bankId)).toEqual([groupA, groupB].toSorted());
   });
 
-  it("lets the question bank's teacher empty the share", async () => {
-    const { res } = await putFor(updateBank, bankId, teacher.user, { groupIds: [] });
+  it('refuses the org Admin unsharing a question bank to personal', async () => {
+    const { res, body } = await putFor(updateBank, bankId, orgAdmin, { visibility: 'personal' });
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('FORBIDDEN');
+    expect(await storedVisibility('question_banks', bankId)).toBe('group');
+    expect(await groupIdsOf('bank_groups', 'bank_id', bankId)).toEqual([groupA, groupB].toSorted());
+  });
+
+  it("lets the question bank's teacher unshare it to personal", async () => {
+    const { res, body } = await putFor(updateBank, bankId, teacher.user, {
+      visibility: 'personal',
+    });
 
     expect(res.status).toBe(200);
+    expect(body.data.visibility).toBe('personal');
     expect(await groupIdsOf('bank_groups', 'bank_id', bankId)).toEqual([]);
   });
 });
