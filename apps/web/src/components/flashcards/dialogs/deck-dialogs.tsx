@@ -3,6 +3,7 @@
 import type { useTranslations } from 'next-intl';
 import { DeckFormDialog } from '@/components/flashcards/shared/deck-form-dialog';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import type { ContentFormValues } from '@/lib/share-fields';
 
 interface GroupOption {
   id: string;
@@ -15,19 +16,9 @@ interface DeckDialogsProps {
   deckDeleteOpen: boolean;
   onDeckEditOpenChange: (open: boolean) => void;
   onDeckDeleteOpenChange: (open: boolean) => void;
-  onDeckUpdate: (data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) => void;
+  onDeckUpdate: (data: ContentFormValues) => void;
   onDeckDelete: () => void;
-  initialValues?: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  } | null;
+  initialValues?: ContentFormValues | null;
   groups?: GroupOption[];
 }
 

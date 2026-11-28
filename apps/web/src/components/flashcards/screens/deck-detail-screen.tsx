@@ -41,6 +41,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
+import type { ContentFormValues } from '@/lib/share-fields';
 
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
@@ -378,12 +379,7 @@ export function DeckDetailScreen({
     }
   }
 
-  async function handleDeckUpdate(data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) {
+  async function handleDeckUpdate(data: ContentFormValues) {
     if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
@@ -392,10 +388,8 @@ export function DeckDetailScreen({
     try {
       await updateDeck.mutateAsync({
         id: deckId,
-        name: data.name,
+        ...data,
         description: data.description || undefined,
-        visibility: data.visibility,
-        groupIds: data.visibility === 'group' ? data.groupIds : [],
       });
       toast.success(t('deck_updated'));
     } catch {

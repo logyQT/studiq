@@ -16,42 +16,7 @@ import {
   Textarea,
 } from '@studiq/ui';
 import { useEffect, useState } from 'react';
-
-interface GroupOption {
-  id: string;
-  name: string;
-}
-
-interface QuestionBankFormDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialValues: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  } | null;
-  onSubmit: (data: {
-    name: string;
-    description: string;
-    visibility?: 'personal' | 'group';
-    groupIds?: string[];
-  }) => void;
-  title: string;
-  description: string;
-  nameLabel: string;
-  namePlaceholder: string;
-  descriptionLabel: string;
-  descriptionPlaceholder: string;
-  cancelLabel: string;
-  submitLabel: string;
-  groups?: GroupOption[];
-  visibilityLabel?: string;
-  visibilityPersonalLabel?: string;
-  visibilityGroupLabel?: string;
-  groupsPlaceholder?: string;
-  groupsEmptyText?: string;
-}
+import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
 
 export function QuestionBankFormDialog({
   open,
@@ -72,7 +37,7 @@ export function QuestionBankFormDialog({
   visibilityGroupLabel,
   groupsPlaceholder,
   groupsEmptyText,
-}: QuestionBankFormDialogProps) {
+}: ContentFormDialogProps) {
   const [name, setName] = useState('');
   const [bankDescription, setBankDescription] = useState('');
   const [visibility, setVisibility] = useState<'personal' | 'group'>('personal');
