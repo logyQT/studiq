@@ -2042,6 +2042,85 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
+    /**
+     * An open item answered with a photo only: the submission marks it skipped, so it has no
+     * answer row, and the photo is its own record (#1303).
+     */
+    const photoOnlyAttempt = (overrides: Record<string, unknown> = {}) => ({
+      id: 'attempt-1',
+      assignment_id: assignmentId,
+      user_id: 'student-1',
+      score: 0,
+      total_questions: 1,
+      total_points: 0,
+      completed_at: completedAt,
+      graded_at: null,
+      user: null,
+      quiz_attempt_questions: [{ question_id: 'q-open', order_index: 0 }],
+      quiz_answers: [],
+      assignment_answer_images: [{ question_id: 'q-open' }],
+      ...overrides,
+    });
+
+    it('waits for a grade on an open item answered with a photo only (#1303)', async () => {
+      stubSnapshots([['q-open', 'open']]);
+
+      expect(await resultsRow(photoOnlyAttempt())).toMatchObject({
+        graded: false,
+        pending_grades: 1,
+      });
+    });
+
+    it('stops waiting once the photo-only item has points, zero included (#1303)', async () => {
+      stubSnapshots([['q-open', 'open']]);
+
+      const row = await resultsRow(
+        photoOnlyAttempt({ quiz_answers: [{ question_id: 'q-open', teacher_points: 0 }] }),
+      );
+
+      expect(row).toMatchObject({ graded: true, pending_grades: 0 });
+    });
+
+    it('ignores a photo on an auto-graded item and a photo of a running attempt (#1303)', async () => {
+      stubSnapshots([['q-open', 'mcq']]);
+      expect(await resultsRow(photoOnlyAttempt())).toMatchObject({
+        graded: true,
+        pending_grades: 0,
+      });
+
+      stubSnapshots([['q-open', 'open']]);
+      expect(await resultsRow(photoOnlyAttempt({ completed_at: null }))).toMatchObject({
+        graded: false,
+        pending_grades: 0,
+      });
+    });
+
+    it('says the same on the grading header for a photo-only item (#1303)', async () => {
+      stubSnapshots([['q-open', 'open']]);
+      mock.from
+        .mockReturnValueOnce(ownedAssignment())
+        .mockReturnValueOnce(chain(photoOnlyAttempt()))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'attempt-1', ctx);
+
+      expect(result).toMatchObject({ success: true, data: { graded: false, pending_grades: 1 } });
+    });
+
+    it('exports a photo-only attempt as submitted, and reads the photos for that (#1303)', async () => {
+      stubSnapshots([['q-open', 'open']]);
+      const attempts = chain([photoOnlyAttempt()]);
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(attempts);
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result).toMatchObject({ success: true, data: [{ status: 'submitted' }] });
+      // The mock answers whatever is asked: the projection has to name the photos.
+      expect(attempts.select).toHaveBeenCalledWith(
+        expect.stringContaining('assignment_answer_images(question_id)'),
+      );
+    });
+
     it('exports the derived status, never `graded_at` (#1069)', async () => {
       stubSnapshots([
         ['q-mcq', 'mcq'],

@@ -31,3 +31,12 @@ export function parseGradePoints(raw: string): number | null {
 export function exceedsGradeMax(points: number | null, max: number | null | undefined): boolean {
   return points !== null && max != null && points > max;
 }
+
+/**
+ * Whether one question of a submitted attempt still waits for a teacher (#1303), the rule of the
+ * results list: its answer row has no points, or it has a photo and no row at all. A photo-only
+ * answer is submitted as skipped, so it has no row. A question with neither was skipped.
+ */
+export function awaitsGrade(saved: SavedGrade | undefined, hasPhoto: boolean): boolean {
+  return saved === undefined ? hasPhoto : saved.teacher_points === null;
+}

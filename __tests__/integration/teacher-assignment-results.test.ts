@@ -44,6 +44,8 @@ interface StartedAttempt {
 /** A row of `GET /api/v1/teacher/assignments/:id/results`. */
 interface ResultsRow {
   id: string;
+  graded: boolean;
+  pending_grades: number;
   user_id: string;
   score: number | null;
   quiz_answers: Array<{
@@ -388,5 +390,29 @@ describe('Teacher assignment results payload (#1230)', () => {
       ?.quiz_answers.find((a) => a.question_id === openQuestionId);
     expect(answer?.teacher_points, 'the stored grade is what the list returns').toBe(1);
     expect(answer?.teacher_feedback).toBe('trafne uzasadnienie');
+  });
+
+  it('waits for a grade on a photo-only answer until the teacher gives points (#1303)', async () => {
+    // The silent student submitted nothing, which is what a photo-only answer submits too. The
+    // photo is its own row, as the upload writes it.
+    const state = async () => {
+      const row = (await results()).find((r) => r.id === silentAttemptId);
+      return { graded: row?.graded, pending: row?.pending_grades };
+    };
+    expect(await state(), 'a skipped open item waits for nothing').toEqual({
+      graded: true,
+      pending: 0,
+    });
+
+    const { error } = await createServiceClient().from('assignment_answer_images').insert({
+      attempt_id: silentAttemptId,
+      question_id: openQuestionId,
+      image_url: 'https://example.test/photo.png',
+    });
+    if (error) throw new Error(error.message);
+    expect(await state()).toEqual({ graded: false, pending: 1 });
+
+    expect(await grade(silentAttemptId, openQuestionId, 0, 'nieczytelne')).toBe(200);
+    expect(await state(), 'zero points is a grade').toEqual({ graded: true, pending: 0 });
   });
 });

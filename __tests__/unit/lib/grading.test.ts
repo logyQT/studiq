@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exceedsGradeMax, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
+import { awaitsGrade, exceedsGradeMax, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 
 describe('resolveGradeDraft', () => {
   it('hydrates points and feedback from the persisted grade', () => {
@@ -108,5 +108,29 @@ describe('exceedsGradeMax', () => {
   it('never caps when the maximum is unknown', () => {
     expect(exceedsGradeMax(5, null)).toBe(false);
     expect(exceedsGradeMax(5, undefined)).toBe(false);
+  });
+});
+
+const saved = (teacher_points: number | null) => ({ teacher_points, teacher_feedback: null });
+
+describe('awaitsGrade (#1303)', () => {
+  it('waits for a saved answer that has no points yet', () => {
+    expect(awaitsGrade(saved(null), false)).toBe(true);
+  });
+
+  it('does not wait for a skipped question, which has no answer row and no photo', () => {
+    expect(awaitsGrade(undefined, false)).toBe(false);
+  });
+
+  it('waits for a question answered with a photo only, which has no answer row', () => {
+    expect(awaitsGrade(undefined, true)).toBe(true);
+  });
+
+  it('does not wait once points are given, zero included, photo or not', () => {
+    expect([
+      awaitsGrade(saved(0), false),
+      awaitsGrade(saved(2), false),
+      awaitsGrade(saved(0), true),
+    ]).toEqual([false, false, false]);
   });
 });
