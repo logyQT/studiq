@@ -86,6 +86,16 @@ export const CompleteSessionSchema = registry.register(
 export type PracticeMode = z.infer<typeof PracticeModeSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
+
+/** One card's outcome of a batch write; the client keys its leech dialog off these. */
+export interface BatchPracticeResultItem {
+  flashcardId: string;
+  isLeech: boolean;
+  /** The stage this write produced: 0–3 (3 = suspended). */
+  leechStage: number;
+  leechRestUntil: string | null;
+  suspended: boolean;
+}
 /**
  * Payload of `get_due_breakdown` (a `json` column from PostgREST's point of view).
  * `byTopic`/`byDeck` default to `[]` so a partial payload still parses.
@@ -124,6 +134,12 @@ export interface CardStatsItem {
   nextReviewAt: string | null;
   repetitions: number | null;
   isLeech: boolean;
+  /** Per-user suspension flag; independent of `state`, which stays `leech` for a leech. */
+  suspended: boolean;
+  /** 0 = never leeched, 1 = 7-day rest, 2 = 30-day rest, 3 = suspended. */
+  leechStage: number;
+  /** End of the active leech rest; NULL when no rest is active. */
+  leechRestUntil: string | null;
   learningStep: number | null;
   /** Every `was_correct = false` answer in the practice log („Pomyłki”). */
   mistakeCount: number;
@@ -166,6 +182,8 @@ export const StateBreakdownSchema = z.object({
   review: z.number(),
   relearning: z.number(),
   leeched: z.number(),
+  /** Suspended cards; counted here once and excluded from the four buckets above. */
+  suspended: z.number(),
   /** Cards with ≥1 practice attempt — whole accessible collection, never state-filtered. */
   practicedCards: z.number(),
   /** Mean of per-card correct rates, 0–100 (0 when nothing practiced). */
@@ -181,6 +199,8 @@ export interface StateBreakdown {
   review: number;
   relearning: number;
   leeched: number;
+  /** Suspended cards; counted here once and excluded from the four buckets above. */
+  suspended: number;
   /** Cards with ≥1 practice attempt — whole accessible collection, never state-filtered. */
   practicedCards: number;
   /** Mean of per-card correct rates, 0–100 (0 when nothing practiced). */

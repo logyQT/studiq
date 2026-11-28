@@ -568,12 +568,30 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('batch', () => {
-    it('returns results array with isLeech per card', async () => {
+    it('returns results array with the leech state per card', async () => {
       setupBatchMocks(
         [{ error: null }, { error: null }],
         [
-          { data: { is_leech: false, user_id: ctx.userId, flashcard_id: 'fc-1' }, error: null },
-          { data: { is_leech: true, user_id: ctx.userId, flashcard_id: 'fc-2' }, error: null },
+          {
+            data: {
+              is_leech: false,
+              user_id: ctx.userId,
+              flashcard_id: 'fc-1',
+              leech_stage: 0,
+              leech_rest_until: null,
+            },
+            error: null,
+          },
+          {
+            data: {
+              is_leech: true,
+              user_id: ctx.userId,
+              flashcard_id: 'fc-2',
+              leech_stage: 1,
+              leech_rest_until: '2026-12-05T00:00:00.000Z',
+            },
+            error: null,
+          },
         ],
       );
 
@@ -592,8 +610,20 @@ describe('FlashcardPracticeService', () => {
       const data = batchPayload(result);
       expect(data.success).toBe(true);
       expect(data.results).toHaveLength(2);
-      expect(data.results[0]).toEqual({ flashcardId: 'fc-1', isLeech: false });
-      expect(data.results[1]).toEqual({ flashcardId: 'fc-2', isLeech: true });
+      expect(data.results[0]).toEqual({
+        flashcardId: 'fc-1',
+        isLeech: false,
+        leechStage: 0,
+        leechRestUntil: null,
+        suspended: false,
+      });
+      expect(data.results[1]).toEqual({
+        flashcardId: 'fc-2',
+        isLeech: true,
+        leechStage: 1,
+        leechRestUntil: '2026-12-05T00:00:00.000Z',
+        suspended: false,
+      });
     });
 
     it('returns error on failed insert', async () => {
@@ -870,6 +900,7 @@ describe('FlashcardPracticeService', () => {
         review: 1,
         relearning: 0,
         leeched: 0,
+        suspended: 0,
         practicedCards: 8,
         averageAccuracy: 75,
         averageEasinessFactor: 2.5,
@@ -901,6 +932,7 @@ describe('FlashcardPracticeService', () => {
         review: 0,
         relearning: 0,
         leeched: 0,
+        suspended: 0,
         practicedCards: 0,
         averageAccuracy: 0,
         averageEasinessFactor: 0,
@@ -944,6 +976,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });
@@ -982,6 +1016,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx);
@@ -1033,6 +1069,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });
@@ -1114,6 +1152,8 @@ describe('FlashcardPracticeService', () => {
         .mockReturnValueOnce(suspended)
         .mockReturnValueOnce(cardQuery)
         .mockReturnValueOnce(states)
+        // The caller's own card suspensions (`suspended_cards`), one query per page.
+        .mockReturnValueOnce(chain({ data: [], error: null }))
         .mockReturnValueOnce(practice);
 
       const result = await service.getAllCardStats(ctx, { limit: 100 });
