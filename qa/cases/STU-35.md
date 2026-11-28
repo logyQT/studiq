@@ -72,6 +72,8 @@ case's own tenant and never the legacy accounts.
   the button label becomes **„Przesyłanie...”** while the upload request is in flight;
   on success the toast „Dodano zdjęcie: <nazwa>” appears and a 64×64 thumbnail with the
   file name is listed under `ul[aria-label="Dodane zdjęcia"]`.
+- A photo stays on the attempt after „Wyjdź” and „Kontynuuj”, listed as „Zapisane zdjęcie 1”, and
+  the confirmation does not list its question as unanswered, also with no text (#1544).
 - On the last question the button is **„Wyślij”** („Wysyłanie...” while submitting). It opens
   the confirmation „Wysłać odpowiedzi?”; **„Wyślij odpowiedzi”** (or „Wyślij mimo to” with
   unanswered questions) sends the attempt. The time limit sends it without asking.

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { seedQuizAnswers, toSaveAnswersPayload, unansweredIndexes } from '@/lib/quiz-draft';
+import {
+  seedQuizAnswers,
+  seedQuizPhotos,
+  toSaveAnswersPayload,
+  unansweredIndexes,
+} from '@/lib/quiz-draft';
 
 const questions = [
   { id: 'q-mcq', type: 'mcq' },
@@ -153,5 +158,38 @@ describe('unansweredIndexes (#1353)', () => {
 
     expect(unansweredIndexes(sheet, answers, { 'q-2': ['photo'] })).toEqual([]);
     expect(unansweredIndexes(sheet, answers, { 'q-2': [] })).toEqual([1]);
+  });
+});
+
+const nameOf = (position: number) => `photo ${position}`;
+
+describe('seedQuizPhotos (#1544)', () => {
+  const sheet = [
+    { id: 'q-1', type: 'mcq' },
+    { id: 'q-2', type: 'open' },
+    { id: 'q-3', type: 'open' },
+  ];
+
+  it('restores the photos of an open question, numbered from 1', () => {
+    expect(seedQuizPhotos(sheet, { 'q-2': ['u-1', 'u-2'] }, nameOf)).toEqual({
+      'q-2': [
+        { url: 'u-1', name: 'photo 1' },
+        { url: 'u-2', name: 'photo 2' },
+      ],
+    });
+  });
+
+  it('ignores a choice question, an unknown question and an empty list', () => {
+    const images = { 'q-1': ['u-1'], 'q-9': ['u-9'], 'q-3': [] };
+
+    expect(seedQuizPhotos(sheet, images, nameOf)).toEqual({});
+    expect(seedQuizPhotos(sheet, undefined, nameOf)).toEqual({});
+  });
+
+  it('makes a photo-only question count as answered after a resume', () => {
+    const photos = seedQuizPhotos(sheet, { 'q-2': ['u-1'] }, nameOf);
+
+    // The question with a saved photo is not listed; the one with nothing still is.
+    expect(unansweredIndexes(sheet, {}, photos)).toEqual([0, 2]);
   });
 });

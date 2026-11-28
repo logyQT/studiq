@@ -926,6 +926,7 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(qb(attempt));
       setAssignmentSnapshot({ id: 'q-1', options: ['ans-1', 'ans-2'] });
       mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([])); // saved photos
 
       const result = await service.getById('a-1', ctx);
 
@@ -934,6 +935,55 @@ describe('QuizAttemptService', () => {
         'q-1': { selected_answer_id: 'ans-1', text_answer: null },
       });
       expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
+    });
+
+    it('serves the saved photos of a running assignment attempt, per question (#1544)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: null,
+      };
+      const images = qb([
+        { question_id: 'q-1', image_url: 'https://x/1.png' },
+        { question_id: 'q-2', image_url: 'https://x/2.png' },
+        { question_id: 'q-1', image_url: 'https://x/3.png' },
+        { question_id: null, image_url: 'https://x/orphan.png' },
+      ]);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      setAssignmentSnapshot({ id: 'q-1', options: [] });
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(images);
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(expectSuccess(result).images).toEqual({
+        'q-1': ['https://x/1.png', 'https://x/3.png'],
+        'q-2': ['https://x/2.png'],
+      });
+      expect(mock.from).toHaveBeenCalledWith('assignment_answer_images');
+      // Only this attempt's rows: the attempt read before it proved whose it is.
+      expect(images.eq).toHaveBeenCalledWith('attempt_id', 'a-1');
+    });
+
+    it('reads no photos for a practice attempt (#1544)', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', user_id: ctx.userId, completed_at: null }));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            order_index: 0,
+            question_id: 'q-1',
+            questions: { id: 'q-1', question_answers: [] },
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(expectSuccess(result).images).toEqual({});
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_answer_images');
     });
   });
 

@@ -44,6 +44,27 @@ export function seedQuizAnswers(
 }
 
 /**
+ * The take page's photo list from the photos the attempt already has (#1544). Only an open
+ * question shows photos. The upload does not keep the file's name, so `nameOf` gives each one
+ * a name by its number within the question, from 1.
+ */
+export function seedQuizPhotos(
+  questions: DraftQuestion[],
+  images: Record<string, string[] | undefined> | undefined,
+  nameOf: (position: number) => string,
+): Record<string, Array<{ url: string; name: string }>> {
+  const seeded: Record<string, Array<{ url: string; name: string }>> = {};
+
+  for (const question of questions) {
+    const urls = question.type === 'open' ? (images?.[question.id] ?? []) : [];
+    if (urls.length === 0) continue;
+    seeded[question.id] = urls.map((url, index) => ({ url, name: nameOf(index + 1) }));
+  }
+
+  return seeded;
+}
+
+/**
  * Build the wire payload for both autosave and submit from the local state.
  * Iterates the questions so an unknown id can never be sent, and emits exactly
  * one entry per question: an explicit `skipped` replaces a dropped entry, which
