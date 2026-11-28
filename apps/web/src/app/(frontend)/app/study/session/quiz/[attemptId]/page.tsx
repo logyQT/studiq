@@ -3,11 +3,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { QuizQuestionView } from '@/components/quiz/quiz-question-view';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { useQuizDraftAutosave } from '@/hooks/use-quiz-draft-autosave';
+import { apiGet, apiPost } from '@/lib/api';
 import { quizAttemptKeys } from '@/lib/query-keys';
 import {
   type DraftQuestion,
@@ -29,8 +30,6 @@ interface AttemptDetails {
   questions: Question[];
   answers: Record<string, QuizDraftAnswer>;
 }
-
-const AUTOSAVE_DELAY_MS = 500;
 
 /** Question types the generator produces; anything else falls back to its raw value. */
 const QUESTION_TYPE_KEYS = {
@@ -58,12 +57,12 @@ export default function QuizTakingPage() {
   const [answers, setAnswers] = useState<Record<string, string | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Last payload body the server acknowledged (or that we seeded from).
-  const lastSavedRef = useRef<string>('');
-  // Payload body that has not been persisted yet — flushed when the page unmounts.
-  const pendingRef = useRef<string | null>(null);
-  // One toast per failure streak, so a dead endpoint cannot spam.
-  const saveFailedRef = useRef(false);
+  const draft = useQuizDraftAutosave({
+    attemptId,
+    questions: attempt?.questions,
+    answers,
+    failureMessage: t('save_failed'),
+  });
 
   useEffect(() => {
     apiGet<AttemptDetails>(`/api/v1/quiz/${attemptId}`)
@@ -74,11 +73,8 @@ export default function QuizTakingPage() {
         }
         const seeded = seedQuizAnswers(data.questions, data.answers);
         setAnswers(seeded);
-        // Pretend we already saved the seeded state: without this the autosave
-        // would immediately write the draft back after every load.
-        lastSavedRef.current = JSON.stringify({
-          answers: toSaveAnswersPayload(data.questions, seeded),
-        });
+        // The server has this state already: only a change from it is saved.
+        draft.markSaved(data.questions, seeded);
         setAttempt(data);
         setLoading(false);
         return undefined;
@@ -87,54 +83,7 @@ export default function QuizTakingPage() {
         toast.error(t('load_failed'));
         setLoading(false);
       });
-  }, [attemptId, router, t]);
-
-  // Autosave the full answer set while the attempt is running (#349).
-  useEffect(() => {
-    if (!attempt) return undefined;
-
-    const payload = toSaveAnswersPayload(attempt.questions, answers);
-    const body = JSON.stringify({ answers: payload });
-    if (body === lastSavedRef.current) return undefined;
-
-    pendingRef.current = body;
-    const timer = setTimeout(() => {
-      void saveAnswers();
-    }, AUTOSAVE_DELAY_MS);
-
-    async function saveAnswers() {
-      try {
-        await apiPut(`/api/v1/quiz/${attemptId}/answers`, { answers: payload });
-        lastSavedRef.current = body;
-        if (pendingRef.current === body) pendingRef.current = null;
-        saveFailedRef.current = false;
-      } catch {
-        // Keep the payload pending so the unmount flush can retry it, and tell
-        // the student instead of silently restoring the old bug.
-        if (!saveFailedRef.current) {
-          saveFailedRef.current = true;
-          toast.error(t('save_failed'));
-        }
-      }
-    }
-
-    return () => clearTimeout(timer);
-  }, [answers, attempt, attemptId, t]);
-
-  // Leaving through the sidebar unmounts the page instantly; flush what the
-  // debounce has not sent yet.
-  useEffect(() => {
-    return () => {
-      const body = pendingRef.current;
-      if (!body) return;
-      fetch(`/api/v1/quiz/${attemptId}/answers`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        keepalive: true,
-      }).catch(() => {});
-    };
-  }, [attemptId]);
+  }, [attemptId, router, t, draft]);
 
   async function submitQuiz() {
     if (!attempt || submitting) return;
@@ -144,7 +93,7 @@ export default function QuizTakingPage() {
     setSubmitting(true);
 
     // A queued autosave must not land (and 400/toast) after the redirect.
-    pendingRef.current = null;
+    draft.stop();
 
     // `open` questions carry free text; only mcq/true_false carry an option id.
     const quizAnswers = toSaveAnswersPayload(attempt.questions, answers);
@@ -156,6 +105,7 @@ export default function QuizTakingPage() {
     } catch {
       // Stay on the page so the student can retry, e.g. after a network failure.
       setSubmitting(false);
+      draft.resume();
       toast.error(t('submit_failed'));
     }
   }

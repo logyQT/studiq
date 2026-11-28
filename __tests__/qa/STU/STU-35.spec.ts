@@ -495,6 +495,15 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
       await page.getByRole('button', { name: COPY.previous, exact: true }).click();
     }
 
+    // Armed before the walk: the draft that carries the typed answer (#1547).
+    const textSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().endsWith(`/api/v1/quiz/${attemptId}/answers`) &&
+        (response.request().postData() ?? '').includes(OPEN_ANSWER),
+      { timeout: 60_000 },
+    );
+
     // --- Steps 2 + 4: answer each question, navigating back and forth -------
     const seen = new Set<string>();
     for (let index = 0; index < 3; index += 1) {
@@ -533,6 +542,15 @@ test.describe('@case:STU-35 @area:STU @prio:P1 solve a quiz end to end', () => {
       page.getByRole('button', { name: COPY.next, exact: true }),
       'the last question has no „Następne”',
     ).toHaveCount(0);
+
+    // --- A reload keeps every selection and the typed text (#1547) -----------
+    expect((await textSaved).status(), 'PUT the draft').toBe(200);
+    await page.reload();
+    for (let index = 0; index < 3; index += 1) {
+      await expect(page.getByText(`${index + 1} / 3`, { exact: true })).toBeVisible();
+      await expectAnswerKept(page, (await questionContent(page).innerText()).trim());
+      if (index < 2) await page.getByRole('button', { name: COPY.next, exact: true }).click();
+    }
 
     // The option ids the attempt exposes before submission, for the saved-answer checks.
     const before = await getAttempt(page, attemptId);
