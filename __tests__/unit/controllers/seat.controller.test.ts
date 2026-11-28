@@ -2,6 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { SeatController } from '@studiq/server/controllers/seat.controller';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { SeatService } from '@studiq/server/services/seat.service';
+import type { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asService } from '#test/helpers/service-double';
 
@@ -16,7 +17,14 @@ function createMockService() {
   };
 }
 
+function createMockPlanService() {
+  return {
+    listLicencePlans: vi.fn(),
+  };
+}
+
 let mockService: ReturnType<typeof createMockService>;
+let mockPlanService: ReturnType<typeof createMockPlanService>;
 let controller: SeatController;
 const mockCtx: RequestContext = {
   traceId: 'test',
@@ -43,7 +51,33 @@ describe('SeatController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockService = createMockService();
-    controller = new SeatController(asService<SeatService>(mockService));
+    mockPlanService = createMockPlanService();
+    controller = new SeatController(
+      asService<SeatService>(mockService),
+      asService<SubscriptionPlanService>(mockPlanService),
+    );
+  });
+
+  describe('listLicencePlans', () => {
+    it('returns the licence plans', async () => {
+      mockPlanService.listLicencePlans.mockResolvedValueOnce({
+        success: true,
+        data: [{ key: 'ai_lite', name: 'StudiQ AI Lite' }],
+      });
+      const response = await controller.listLicencePlans(mockCtx);
+      expect(response).toMatchObject({
+        success: true,
+        data: [{ key: 'ai_lite', name: 'StudiQ AI Lite' }],
+      });
+    });
+    it('returns error on failure', async () => {
+      mockPlanService.listLicencePlans.mockResolvedValueOnce({
+        success: false,
+        error: 'INTERNAL_SERVER',
+      });
+      const response = await controller.listLicencePlans(mockCtx);
+      expect(response.success).toBe(false);
+    });
   });
 
   describe('listPools', () => {
@@ -171,6 +205,7 @@ describe('SeatController', () => {
     // refused on each, and the service is never reached.
     const calls = {
       listPools: () => controller.listPools(memberCtx),
+      listLicencePlans: () => controller.listLicencePlans(memberCtx),
       createPool: () => controller.createPool(memberCtx, { planKey: 'pro', quantity: 1 }),
       updatePool: () => controller.updatePool(memberCtx, 'pool-1', { total: 1 }),
       listAssignments: () => controller.listAssignments(memberCtx),
@@ -187,6 +222,7 @@ describe('SeatController', () => {
       async (_method, call) => {
         await expect(call()).rejects.toMatchObject({ code: 'FORBIDDEN', statusCode: 403 });
         expect(mockService.listPools).not.toHaveBeenCalled();
+        expect(mockPlanService.listLicencePlans).not.toHaveBeenCalled();
         expect(mockService.addPool).not.toHaveBeenCalled();
         expect(mockService.updatePool).not.toHaveBeenCalled();
         expect(mockService.listAssignments).not.toHaveBeenCalled();

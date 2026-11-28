@@ -17,23 +17,24 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * test never touches another tenant's seats, a global plan, a feature flag or a
  * singleton row.
  *
- * Seats are frozen at the UI since #1493, and since #1511 a pool is a licence:
- * the plan must be `scope='personal'`, sold on the `seat_pool` channel and carry
- * only `seatEligible` keys, so the three AI tiers are the only plans
- * `addPool` accepts. `/manage/seats` keeps the pools and assignments tables and
- * every `GET`, and hides the purchase, assign and release entries. The case's
- * purchase is therefore driven through the product API: `POST
- * /api/v1/organization/seats/pools` adds the quantity to the tier's pool (or
- * creates it) and the page re-reads the pools. A fresh org has no pools —
- * `plan_seat_allocations` and its trigger seeding were dropped in
- * `20260915000003_drop_plan_seat_allocations.sql` — so the pool the case reads
- * back is exactly the one this test bought.
+ * Seats are organization-funded AI licences since #1511: a pool is a licence on
+ * one AI tier (`ai_lite`/`ai_pro`/`ai_max`), each plan `scope='personal'`, sold
+ * on the `seat_pool` channel and carrying only `seatEligible` keys. `/manage/seats`
+ * shows the three tiers so a manager can compare them, and assignment and
+ * release write through the product API. The purchase action is not on the page
+ * yet, so this case buys through `POST /api/v1/organization/seats/pools`, which
+ * adds the quantity to the tier's pool (or creates it), and the page re-reads
+ * the pools. A fresh org has no pools — `plan_seat_allocations` and its trigger
+ * seeding were dropped in `20260915000003_drop_plan_seat_allocations.sql` — so
+ * the pool the case reads back is exactly the one this test bought.
  *
  * Asserted behaviour (the case's expected result):
- * - The page renders the „Pule miejsc” and „Przydziały” tables and no „Kup
- *   miejsca”, „Przydziel miejsce” or „Zwolnij miejsce” control.
+ * - The page renders the three licence tiers with their prices, the „Pule
+ *   miejsc” and „Przydziały” tables, and the „Przydziel miejsce” control. There
+ *   is no „Kup miejsca” control.
  * - Buying 3 Lite seats through the API returns 201 and the pool row reads
- *   3 purchased / 0 assigned / 3 available, also after a reload.
+ *   3 purchased / 0 assigned / 3 available under the friendly licence name,
+ *   also after a reload.
  * - The API enforces the same floor: quantity 0 or -1 is a 422, not a pool.
  */
 
@@ -44,18 +45,19 @@ const POOLS_API = '/api/v1/organization/seats/pools';
 const ASSIGNMENTS_API = '/api/v1/organization/seats/assignments';
 
 /**
- * The licence tier the test buys. The pool row shows this key rather than the
- * plan's name: the seats page labels a pool from the public catalogue, and
- * #1511 keeps licence plans off the `individual` channel that read serves.
+ * The licence tier the test buys. The page resolves the tier's friendly name
+ * from `GET /api/v1/organization/seats/licence-plans`, so a pool row shows
+ * `StudiQ AI Lite`, not the key.
  */
 const PLAN_KEY = 'ai_lite';
+const PLAN_NAME = 'StudiQ AI Lite';
 const QUANTITY = 3;
 
 const COPY = {
   heading: 'Licencje miejsc',
+  tiersTitle: 'Licencje AI na miejsca',
   poolsTitle: 'Pule miejsc',
   assignmentsTitle: 'Przydziały',
-  frozenNote: 'Sprzedaż miejsc jest wstrzymana do czasu wprowadzenia licencji organizacji.',
 } as const;
 
 interface Pool {
@@ -92,7 +94,7 @@ async function expectPoolRow(
   await expect(row.locator('td').nth(3)).toHaveText(String(expected.available));
 }
 
-test('the frozen seat page shows the pools table and the API still buys three seats', async ({
+test('the seat page shows the licence tiers and the API still buys three seats', async ({
   page,
 }) => {
   const tenant: QaTenant = loadTenant(CASE);
@@ -114,17 +116,22 @@ test('the frozen seat page shows the pools table and the API still buys three se
   await expect(page).toHaveURL(new RegExp(`${SEATS_PATH}$`), { timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
   await expect(page.getByRole('heading', { name: COPY.heading, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: COPY.tiersTitle, exact: true })).toBeVisible();
   await expect(page.getByText(COPY.poolsTitle, { exact: true })).toBeVisible();
   await expect(page.getByText(COPY.assignmentsTitle, { exact: true })).toBeVisible();
-  await expect(page.getByText(COPY.frozenNote)).toBeVisible();
 
-  // The B2 freeze: the data is visible, the sale and assignment are not.
-  for (const control of ['Kup miejsca', 'Przydziel miejsce']) {
-    await expect(page.getByRole('button', { name: control }), `${control} is hidden`).toHaveCount(
-      0,
-    );
+  // The tier cards are the licence comparison; purchase is not on the page yet.
+  for (const [name, price] of [
+    ['StudiQ AI Lite', /19,99/],
+    ['StudiQ AI Pro', /39,99/],
+    ['StudiQ AI Max', /79,99/],
+  ] as const) {
+    const card = page.locator('section#licence-tiers li').filter({ hasText: name });
+    await expect(card, `the ${name} tier card`).toHaveCount(1);
+    await expect(card).toContainText(price);
   }
-  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Kup miejsca' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Przydziel miejsce' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // The read path the page renders answers, and a fresh org has no pool yet.
@@ -147,7 +154,7 @@ test('the frozen seat page shows the pools table and the API still buys three se
   await page.reload();
   await expect(page.getByRole('heading', { name: COPY.heading, exact: true })).toBeVisible();
   await expect(poolRows(page)).toHaveCount(1);
-  await expect(poolRows(page).first().locator('td').nth(0)).toHaveText(PLAN_KEY);
+  await expect(poolRows(page).first().locator('td').nth(0)).toHaveText(PLAN_NAME);
   await expectPoolRow(poolRows(page).first(), {
     total: QUANTITY,
     assigned: 0,
