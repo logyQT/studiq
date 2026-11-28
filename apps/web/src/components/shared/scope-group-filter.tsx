@@ -98,8 +98,8 @@ function SideItem({
  * plain label instead of a chip that stands for "no filter". The groups open in
  * a panel beside the list — revealing them never pushes the other rows down —
  * on hover, or with ArrowRight from the „Grupy” row; Escape and ArrowLeft bring
- * the focus back to the list. Every dimension row stays in the list while a query
- * is typed, so its own label still finds it (#1244). A query also lists the
+ * the focus back to the list. Every dimension row stays mounted while a query is
+ * typed, so its own label still finds it (#1244). A query also lists the
  * matching groups as ordinary rows instead of force-opening the panel: filtering
  * can hide the row the panel is anchored to, and a panel anchored to a hidden row
  * is placed nowhere.
