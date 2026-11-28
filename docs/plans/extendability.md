@@ -55,12 +55,12 @@ The migration applied to the live database with no restart; `/me/entitlements`
 gained the key after the app rebuild only, because the DB row alone is inert
 until the TS catalog knows the key (step 12 is not optional).
 
-The plan catalogue is migration-owned code (#1494): the seven plans, their
-entitlement sets, their limits and the flag rows live in two declarative
-matrices — `supabase/migrations/20261128090000_ai_seat_licences.sql` owns the
-eleven-plan matrix (the four personal plans, the four organization tiers and the
-three AI licences) — and `supabase/seeds/00_plans.sql` writes no plan data. A
-new key's plan rows go into the matrix that owns those plans;
+The plan catalogue is migration-owned code (#1494): the eleven plans (the four
+personal plans, the four organization tiers and the three AI licences) live in
+one declarative matrix owned by
+`supabase/migrations/20261128090000_ai_seat_licences.sql`, together with their
+entitlement sets and limits, and `supabase/seeds/00_plans.sql` writes no plan
+data. A new key's plan rows go into the matrix that owns those plans;
 `__tests__/integration/plan-catalog.test.ts` mirrors the matrix literally, so it
 fails until the test is updated in the same PR. An admin-panel price/key/entitlement edit is a dev-only experiment that the
 next migration re-asserts.

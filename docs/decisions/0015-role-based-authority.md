@@ -619,8 +619,7 @@ personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
 > **2026-11-28 (D38, #1511).** A seat licence grants **its own keys**; the org
 > ceiling no longer filters it. B2 removed `ai.chat` from all four organization
 > plans on purpose, so the old `profile + seat ∩ ceiling` arm could never grant
-> an AI seat: the ceiling was `{flashcards, quiz, quiz.templates,
-stats.insights, branding}`, and no seat key survived the intersection
+> an AI seat: the ceiling was `{flashcards, quiz, quiz.templates, stats.insights, branding}`, and no seat key survived the intersection
 > (`MGR-SEAT-02` records the workaround: the AI came from the member's personal
 > plan, not the Max seat). Adding `ai.chat` to the org plans is not the fix —
 > `applyProfile` grants the ceiling to every `all` role, so that row would fund

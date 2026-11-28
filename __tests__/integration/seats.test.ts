@@ -14,6 +14,7 @@ import {
   useRealSupabase,
   cleanupOrganizationDeep,
   mockUser,
+  seedOrganization,
   seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -289,6 +290,7 @@ describe(`Seats Integration`, () => {
           sort_order: 990,
           is_active: true,
           scope: 'personal',
+          visibility: 'unlisted',
           sales_channels: ['seat_pool'],
         });
         expect(planError).toBeNull();
@@ -628,6 +630,55 @@ describe(`Seats Integration`, () => {
       expect(written.data).toEqual([]);
     });
 
+    it('returns 404 for a member of another org that shares an org with the manager (#1146)', async () => {
+      // The target is a real member elsewhere, so a lookup without the
+      // active-org filter finds the row and writes the seat. The manager shares
+      // that org, so the same lookup's profile embed is readable under the
+      // `profiles` policy — the active-org filter is the only refusal left.
+      mockUser(fixture.user);
+      const supabase = createSeedDb();
+      const otherOrg = await seedOrganization(`Seat other org ${Date.now()}`);
+      const target = await createTestUser({ role: 'student' });
+
+      try {
+        await seedOrgMembership({
+          organizationId: otherOrg.org.id,
+          userId: target.id,
+          orgRoleId: otherOrg.memberRoleId,
+        });
+        await seedOrgMembership({
+          organizationId: otherOrg.org.id,
+          userId: fixture.user.id,
+          orgRoleId: otherOrg.memberRoleId,
+        });
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/assignments',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: target.id, poolId }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createAssignment(req);
+        const body = await json<SeatsErrorBody>(response);
+
+        expect(response.status).toBe(404);
+        expect(body.error).toBe('NOT_FOUND');
+
+        const written = await supabase
+          .from('org_seat_assignments')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('user_id', target.id);
+        expect(written.data).toEqual([]);
+      } finally {
+        await cleanupOrganizationDeep(otherOrg.org.id);
+      }
+    });
+
     it('succeeds and can be listed after creation', async () => {
       mockUser(fixture.user);
 
@@ -913,6 +964,7 @@ describe(`Seats Integration`, () => {
         sort_order: 991,
         is_active: true,
         scope: 'personal',
+        visibility: 'unlisted',
         sales_channels: ['seat_pool'],
       });
       expect(planError).toBeNull();

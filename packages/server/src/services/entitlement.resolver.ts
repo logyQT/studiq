@@ -285,9 +285,11 @@ export class EntitlementResolver {
 
       // A seat licence grants every key of the seat plan: the organization
       // bought those keys through the pool subscription, so the org ceiling
-      // does not filter them (D38, #1511). `addPool` and the
-      // `seatEligible ⇒ personal` invariant refuse a licence key the org plan
-      // could not have bought, so a seat still cannot widen the org's scope.
+      // does not filter them (D38, #1511). `addPool` refuses a plan that is not
+      // `scope='personal'` with every key `seatEligible`, and the catalog
+      // invariant `seatEligible ⇒ personal` keeps that boundary: an org-scope
+      // key — the only thing `seatEligible: false` marks — cannot ride a seat,
+      // so a seat still cannot widen the org's scope.
       if (seatPlanKey) {
         for (const key of entitlementsByPlan.get(seatPlanKey) ?? []) {
           enabled.add(key);

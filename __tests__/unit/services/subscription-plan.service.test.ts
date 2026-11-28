@@ -899,7 +899,13 @@ describe('SubscriptionPlanService', () => {
     });
 
     it('answers NOT_FOUND for a seat_pool-only licence (#1511)', async () => {
+      // The follow-on reads are mocked so the channel filter is the only thing
+      // that can answer NOT_FOUND: without it the plan composes and the
+      // assertion below fails on the result, not on a missing fixture.
       mock.from.mockReturnValueOnce(qb({ ...planRow('ai_lite'), sales_channels: ['seat_pool'] }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
 
       const result = await service.getByKey('ai_lite');
 
