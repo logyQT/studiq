@@ -12,10 +12,10 @@ import {
 } from '@studiq/ui';
 import { useState } from 'react';
 import {
-  ContentShareSection,
   type SharingFieldsCopy,
   sharingFieldsCopy,
 } from '@/components/flashcards/shared/sharing-fields';
+import { ContentShareSection } from '@/components/shared/content-share-section';
 import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
 import { ContentFormFooter } from '@/components/shared/content-form-footer';
 import { contentFormPayload } from '@/lib/share-fields';

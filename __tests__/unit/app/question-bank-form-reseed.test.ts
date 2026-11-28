@@ -45,7 +45,9 @@ describe('question bank dialog seeds its fields once per open (#1560)', () => {
   it('gives every open its own body, so a second open seeds from its own row', () => {
     expect(dialog).toContain('key={bodyKey}');
     expect(screen).toContain('bodyKey: screen.openNonce');
-    // Both entries into the dialog — create and edit — start a new open.
-    expect(screen.match(/setOpenNonce\(\(nonce\) => nonce \+ 1\)/g) ?? []).toHaveLength(2);
+    // Both entries into the dialog — create and edit — go through the action that bumps it.
+    expect(screen).toContain('const openCreate = () => openDialog(null);');
+    expect(screen).toContain('const openEdit = (item: T) => openDialog(item);');
+    expect(screen).toContain('setOpenNonce(nonce);');
   });
 });

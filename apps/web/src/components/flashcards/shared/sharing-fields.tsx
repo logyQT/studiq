@@ -1,6 +1,5 @@
 import { Label, MultiSelect, RadioGroup, RadioGroupItem } from '@studiq/ui';
 import { useId } from 'react';
-import { ContentFormError } from '@/components/shared/content-form-error';
 
 type Visibility = 'personal' | 'group';
 
@@ -26,7 +25,7 @@ interface SharingFieldsProps {
  * group takes its name from the visible label; the picker, which shows its selection as its
  * content, is named by the placeholder copy.
  */
-function SharingFields({
+export function SharingFields({
   idPrefix,
   visibility,
   onVisibilityChange,
@@ -110,45 +109,4 @@ export function sharingFieldsCopy(fields: {
     groupsEmptyText: fields.groupsEmptyText,
     groupsRequiredText: fields.groupsRequiredText,
   };
-}
-
-interface ContentShareSectionProps {
-  idPrefix: string;
-  value: {
-    visibility: Visibility;
-    onVisibilityChange: (visibility: Visibility) => void;
-    groupIds: string[];
-    onGroupIdsChange: (groupIds: string[]) => void;
-  };
-  /** Absent when the group feature is off; the refusal line still shows. */
-  groups?: Array<{ id: string; name: string }>;
-  copy: SharingFieldsCopy;
-  /** The refusal line of the last save, shown under the picker. */
-  error?: string;
-}
-
-/** The share fields and the save refusal, in the one order every content form shows them. */
-export function ContentShareSection({
-  idPrefix,
-  value,
-  groups,
-  copy,
-  error,
-}: ContentShareSectionProps) {
-  return (
-    <>
-      {groups && (
-        <SharingFields
-          idPrefix={idPrefix}
-          visibility={value.visibility}
-          onVisibilityChange={value.onVisibilityChange}
-          groups={groups}
-          groupIds={value.groupIds}
-          onGroupIdsChange={value.onGroupIdsChange}
-          {...copy}
-        />
-      )}
-      <ContentFormError message={error} />
-    </>
-  );
 }

@@ -158,7 +158,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       <TopicFormDialog
         open={screen.dialogOpen}
         onOpenChange={(open) => {
-          if (open) screen.setDialogOpen(true);
+          if (open) screen.openDialog(screen.editing);
           else resetForm();
         }}
         editing={screen.editing}
