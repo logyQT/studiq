@@ -71,10 +71,16 @@ function CommandInput({
   );
 }
 
-function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
+function CommandList({
+  className,
+  label,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.List>) {
+  const t = useTranslations('Common');
   return (
     <CommandPrimitive.List
       data-slot="command-list"
+      label={label ?? t('common_command_suggestions')}
       className={cn('max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto', className)}
       {...props}
     />

@@ -149,6 +149,7 @@ function Sidebar({
   collapsible?: 'offcanvas' | 'icon' | 'none';
 }) {
   const { isMobile, state, open, openMobile, setOpenMobile } = useSidebar();
+  const t = useTranslations('Common');
 
   if (collapsible === 'none') {
     return (
@@ -177,8 +178,8 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            <SheetTitle>{t('common_sidebar_title')}</SheetTitle>
+            <SheetDescription>{t('common_sidebar_description')}</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
