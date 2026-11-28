@@ -591,6 +591,11 @@ A seat is a per-member personal-plan grant within the org's license.
   purchase, so the org ceiling does not filter the seat (D38). A seat therefore
   never carries an org-scope key: `seatEligible ⇒ scope: 'personal'` is a
   catalog invariant, pinned by `catalog-invariants`.
+- A seat is per member, never per role (#1146). `assignSeat` requires an
+  `org_members` row in the active org, and the member's role is irrelevant: a
+  student, an educator and a manager hold the same licence. `assigned` is a
+  server-owned counter — a manager's client may write `total` only (column
+  privilege).
 - Seats never grant permissions and never raise `scope: 'org'` limits.
 - A seat may **raise** a user-scope limit, never lower it (`max(org, seat,
 personal)`; `-1` short-circuits). A seat is an upgrade, not a cap.
@@ -639,6 +644,9 @@ stats.insights, branding}`, and no seat key survived the intersection
 >   `individual` and `listLicencePlans` filters to `seat_pool`. `public` is an
 >   accepted price-list exposure for the anonymous key (the read is a price
 >   list; no anonymous surface sells a licence).
+>
+> Role independence (#1146) is recorded in the §5.4 bullets: a seat is
+> per member, not per role, and `assigned` is writable only by the server.
 
 ### 5.5 Personal plans
 

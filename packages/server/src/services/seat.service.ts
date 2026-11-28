@@ -263,17 +263,21 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
-    // A seat pool is offerable to any member of the org: the plan carries no
-    // persona dimension. The licence rules (scope, seat eligibility) already
-    // held when the pool was created.
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', input.userId)
+    // A seat is a per-member licence, independent of role (#1146). The pool is
+    // offerable to any member of the organization, and only to a member: the
+    // `org_members` row is the membership proof, and the profile embed supplies
+    // the email the response returns. A non-member is `NOT_FOUND`, never a
+    // write that an unrelated user's seat row would legitimise.
+    const { data: member, error: memberErr } = await supabase
+      .from('org_members')
+      .select('user_id, profiles(email)')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('user_id', input.userId)
       .maybeSingle();
 
-    if (profileErr) return toDbFailure(profileErr);
-    if (!profile) return failure('NOT_FOUND');
+    if (memberErr) return toDbFailure(memberErr);
+    const profile = dbNested(member?.profiles);
+    if (!member || !profile) return failure('NOT_FOUND');
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)
     const { data: existing } = await supabase

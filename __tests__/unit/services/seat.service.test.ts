@@ -595,7 +595,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
         .mockReturnValueOnce(chain(personalPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
+        .mockReturnValueOnce(chain({ user_id: input.userId, profiles: { email: 'user@test.com' } }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain(insertedRow));
 
@@ -624,9 +624,27 @@ describe('SeatService', () => {
       expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('returns NOT_FOUND when user does not exist', async () => {
+    it('returns NOT_FOUND for a target who is not a member of the active org (#1146)', async () => {
       mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(personalPool)).mockReturnValueOnce(chain(null));
+
+      const result = await service.assignSeat(ctx, input);
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toBe('NOT_FOUND');
+      // Membership is the licence precondition; a profile row alone is not.
+      expect(mock.from).toHaveBeenCalledWith('org_members');
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+    });
+
+    it('refuses a member whose profile embed is hidden by RLS as NOT_FOUND (#1146)', async () => {
+      // `profiles` is RLS-narrowed; a membership row with no readable profile
+      // must not produce an assignment the response cannot name.
+      mock.from.mockReturnValue(chain(null));
+      mock.from
+        .mockReturnValueOnce(chain(personalPool))
+        .mockReturnValueOnce(chain({ user_id: input.userId, profiles: null }));
 
       const result = await service.assignSeat(ctx, input);
 
@@ -639,7 +657,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
         .mockReturnValueOnce(chain(personalPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
+        .mockReturnValueOnce(chain({ user_id: input.userId, profiles: { email: 'user@test.com' } }))
         .mockReturnValueOnce(chain({ id: 'existing-assign' }));
 
       const result = await service.assignSeat(ctx, input);
@@ -653,7 +671,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
         .mockReturnValueOnce(chain(personalPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
+        .mockReturnValueOnce(chain({ user_id: input.userId, profiles: { email: 'user@test.com' } }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce({
           insert: vi.fn().mockReturnValue({
@@ -677,7 +695,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValue(chain(null));
       mock.from
         .mockReturnValueOnce(chain(personalPool))
-        .mockReturnValueOnce(chain({ email: 'user@test.com' }))
+        .mockReturnValueOnce(chain({ user_id: input.userId, profiles: { email: 'user@test.com' } }))
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce({
           insert: vi.fn().mockReturnValue({

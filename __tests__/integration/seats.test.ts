@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
+import type { Database } from '@studiq/server/types/database';
+import { createClient } from '@supabase/supabase-js';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
@@ -73,6 +75,23 @@ describe(`Seats Integration`, () => {
 
   const orgCookies = () => ({ active_org_id: orgId });
 
+  /** Adds the user to the org with the member role; a seat needs a membership (#1146). */
+  async function seedMember(userId: string) {
+    const supabase = createSeedDb();
+    const memberRole = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'member')
+      .single();
+    if (!memberRole.data) throw new Error('seed org is missing the member role');
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId,
+      orgRoleId: memberRole.data.id,
+    });
+  }
+
   beforeAll(async () => {
     // Manager creates the org via the API (launch plan by default).
     fixture = await before({ role: 'manager', org: true });
@@ -101,6 +120,11 @@ describe(`Seats Integration`, () => {
     assigneeB = await createTestUser({ role: 'educator' });
     assigneeC = await createTestUser({ role: 'educator' });
     student = await createTestUser({ role: 'student' });
+
+    // A seat is a per-member licence (#1146): every assignee is an org member.
+    for (const assignee of [assigneeA, assigneeB, assigneeC, student]) {
+      await seedMember(assignee.id);
+    }
   });
 
   beforeEach(() => {
@@ -573,6 +597,37 @@ describe(`Seats Integration`, () => {
       expect(body.data.poolId).toBe(poolId);
     });
 
+    it('returns 404 for a target who is not a member of the active org (#1146)', async () => {
+      // A seat is a per-member licence: a profile row alone is not a licence
+      // holder. The refusal is the same NOT_FOUND a missing user gets.
+      mockUser(fixture.user);
+      const outsider = await createTestUser({ role: 'student' });
+      const supabase = createSeedDb();
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: outsider.id, poolId }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createAssignment(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe('NOT_FOUND');
+
+      const written = await supabase
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('user_id', outsider.id);
+      expect(written.data).toEqual([]);
+    });
+
     it('succeeds and can be listed after creation', async () => {
       mockUser(fixture.user);
 
@@ -629,19 +684,8 @@ describe(`Seats Integration`, () => {
       // persona. A personal plan carries no audience now, so the student is
       // accepted when the pool has room.
       const supabase = createSeedDb();
-      const memberRole = await supabase
-        .from('org_roles')
-        .select('id')
-        .eq('organization_id', orgId)
-        .eq('name', 'member')
-        .single();
-      if (!memberRole.data) throw new Error('seed org is missing the member role');
       const studentMember = await createTestUser({ role: 'student' });
-      await seedOrgMembership({
-        organizationId: orgId,
-        userId: studentMember.id,
-        orgRoleId: memberRole.data.id,
-      });
+      await seedMember(studentMember.id);
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -686,6 +730,7 @@ describe(`Seats Integration`, () => {
       expect(poolRes.status).toBe(201);
 
       const educator = await createTestUser({ role: 'educator' });
+      await seedMember(educator.id);
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
         {
@@ -727,6 +772,7 @@ describe(`Seats Integration`, () => {
       expect(poolBody.data.planKey).toBe('ai_max');
 
       const manager = await createTestUser({ role: 'manager' });
+      await seedMember(manager.id);
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
         {
@@ -816,6 +862,7 @@ describe(`Seats Integration`, () => {
       expect(fillError).toBeNull();
 
       const newcomer = await createTestUser({ role: 'educator' });
+      await seedMember(newcomer.id);
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -837,6 +884,78 @@ describe(`Seats Integration`, () => {
       expect(response.status).toBe(429);
       expect(body.success).toBe(false);
       expect(body.error).toBe('USAGE_LIMIT_EXCEEDED');
+    });
+  });
+
+  describe('org_seat_pools.assigned is service-role only (#1146)', () => {
+    it('a manager can write total but not assigned; the service role writes assigned', async () => {
+      // A real signed-in manager, because this is a PostgREST column
+      // privilege: the RLS policy still allows the row, so the refusal must
+      // name the column and not the row.
+      const managerSession = createClient<Database>(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      const signIn = await managerSession.auth.signInWithPassword({
+        email: fixture.user.email,
+        password: fixture.user.password!,
+      });
+      expect(signIn.error).toBeNull();
+
+      const service = createSeedDb();
+      const planKey = `test-seat-privilege-${Date.now()}`;
+      const { error: planError } = await service.from('subscription_plans').insert({
+        key: planKey,
+        name: 'Test seat privilege',
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 991,
+        is_active: true,
+        scope: 'personal',
+        sales_channels: ['seat_pool'],
+      });
+      expect(planError).toBeNull();
+
+      const { data: pool, error: poolError } = await service
+        .from('org_seat_pools')
+        .insert({ organization_id: orgId, plan_key: planKey, total: 2 })
+        .select('id')
+        .single();
+      expect(poolError).toBeNull();
+      expect(pool).not.toBeNull();
+
+      try {
+        const denied = await managerSession
+          .from('org_seat_pools')
+          .update({ assigned: 1 })
+          .eq('id', pool!.id)
+          .select('id');
+        expect(denied.error?.code).toBe('42501');
+
+        const allowed = await service
+          .from('org_seat_pools')
+          .update({ assigned: 1 })
+          .eq('id', pool!.id)
+          .select('id, assigned')
+          .single();
+        expect(allowed.error).toBeNull();
+        expect(allowed.data?.assigned).toBe(1);
+
+        // The same manager still sets the paid count: the denial is the column,
+        // not the row.
+        const totalWrite = await managerSession
+          .from('org_seat_pools')
+          .update({ total: 3 })
+          .eq('id', pool!.id)
+          .select('id, total')
+          .single();
+        expect(totalWrite.error).toBeNull();
+        expect(totalWrite.data?.total).toBe(3);
+      } finally {
+        await service.from('org_seat_pools').delete().eq('id', pool!.id);
+        await service.from('subscription_plans').delete().eq('key', planKey);
+      }
     });
   });
 });
