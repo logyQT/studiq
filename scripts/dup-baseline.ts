@@ -306,7 +306,10 @@ function withWorktree<T>(root: string, ref: string, use: (dir: string) => T): T 
   try {
     return use(realpathSync(dir));
   } finally {
-    const removed = spawnSync('git', ['worktree', 'remove', '--force', dir], { cwd: root });
+    const removed = spawnSync('git', ['worktree', 'remove', '--force', dir], {
+      cwd: root,
+      env: gitEnv(),
+    });
     if (removed.status !== 0) rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -315,6 +318,7 @@ export function compare(ref: string, cwd: string = process.cwd()): DupBaselineRe
   const root = repoRoot(cwd);
   const probe = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
     cwd: root,
+    env: gitEnv(),
   });
   if (probe.status !== 0) {
     throw new GateError(`base ref '${ref}' not found; fetch it first (e.g. git fetch origin main)`);
