@@ -27,11 +27,15 @@ describe('topic card hides the actions the API refuses (#1567)', () => {
     expect(card.match(/\{canDelete && \(/g) ?? []).toHaveLength(2);
   });
 
-  it('asks the permission map for the topic permission against the topic row', () => {
-    expect(screen).toContain("permission('topic.update', {");
-    expect(screen).toContain("permission('topic.delete', {");
-    expect(screen.match(/createdBy: topic\.created_by/g) ?? []).toHaveLength(2);
-    expect(screen.match(/orgId: topic\.organization_id \?\? undefined/g) ?? []).toHaveLength(2);
+  it('binds each permission to the action it gates, against the topic row', () => {
+    // Paired on purpose: a swap of `topic.update`/`topic.delete` between the two actions
+    // must fail, not just a missing argument.
+    expect(screen).toMatch(
+      /canUpdate=\{permission\('topic\.update', \{[^}]*createdBy: topic\.created_by,[^}]*orgId: topic\.organization_id \?\? undefined,/,
+    );
+    expect(screen).toMatch(
+      /canDelete=\{permission\('topic\.delete', \{[^}]*createdBy: topic\.created_by,[^}]*orgId: topic\.organization_id \?\? undefined,/,
+    );
   });
 
   it('carries the topic organization on the payload the gate reads', () => {

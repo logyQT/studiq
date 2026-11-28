@@ -271,7 +271,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         description={screen.editing ? t('edit_desc') : t('new_deck_desc')}
         submitLabel={screen.editing ? t('common_update') : t('common_create')}
         groups={screen.groupsData}
-        groupsRequiredText={t('groups_required')}
         error={formError ?? undefined}
         {...contentFormDialogLabels(t)}
       />

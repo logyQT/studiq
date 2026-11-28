@@ -27,9 +27,6 @@ interface QuestionBankManagementScreenProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-/** One reference for a bank with no stored groups, so the dialog's `initialValues` cannot churn. */
-const NO_GROUPS: string[] = [];
-
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const permission = usePermission();
   const tErr = useTranslations('Errors');
@@ -137,7 +134,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
       <QuestionBankFormDialog
         {...contentFormDialogProps(screen, (bank) => ({
           visibility: bank.visibility,
-          groupIds: bank.groupIds ?? NO_GROUPS,
+          groupIds: bank.groupIds ?? [],
         }))}
         onSubmit={handleSubmit}
         title={screen.editing ? t('edit_bank') : t('new_bank')}

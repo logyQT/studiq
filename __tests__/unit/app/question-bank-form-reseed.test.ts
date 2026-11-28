@@ -9,6 +9,10 @@ import { describe, expect, it } from 'vitest';
  * disappeared behind the error. The form now seeds once per open, from state that reads the
  * `initialValues` it mounted with, so a re-render cannot discard the edit.
  *
+ * A close clears `editing` only after the exit animation, so a reopen inside that window keeps the
+ * body mounted. Each open therefore bumps a nonce the dialog uses as the body's key, and a second
+ * open always seeds from the row it opened with.
+ *
  * This is a source check because the reset only happens on a re-render, which the DOM-free unit
  * environment cannot trigger; the served case is the QA corpus's.
  */
@@ -16,21 +20,32 @@ const DIALOG = path.join(
   process.cwd(),
   'apps/web/src/components/questions/shared/question-bank-form-dialog.tsx',
 );
+const SCREEN = path.join(process.cwd(), 'apps/web/src/components/shared/collection-screen.tsx');
 
 describe('question bank dialog seeds its fields once per open (#1560)', () => {
-  const source = readFileSync(DIALOG, 'utf8');
+  const dialog = readFileSync(DIALOG, 'utf8');
+  const screen = readFileSync(SCREEN, 'utf8');
 
   it('keeps no effect that re-seeds the fields when the parent renders again', () => {
-    expect(source).not.toContain('useEffect');
+    expect(dialog).not.toContain('useEffect');
   });
 
   it('seeds the field state from the values it opened with', () => {
-    expect(source).toContain('initialValues ??');
-    expect(source).toContain('useState(initial.name)');
-    expect(source).toContain('useState<string[]>(initial.groupIds ?? [])');
+    expect(dialog).toContain('initialValues ??');
+    expect(dialog).toContain('useState(initial.name)');
+    expect(dialog).toContain('useState<string[]>(initial.groupIds ?? [])');
   });
 
-  it('mounts the form body only while the dialog is open', () => {
-    expect(source.indexOf('<FormBody')).toBeGreaterThan(source.indexOf('<DialogContent'));
+  it('mounts the form body inside the dialog content', () => {
+    const body = dialog.indexOf('<FormBody');
+    expect(body).toBeGreaterThan(-1);
+    expect(body).toBeLessThan(dialog.indexOf('</DialogContent>'));
+  });
+
+  it('gives every open its own body, so a second open seeds from its own row', () => {
+    expect(dialog).toContain('key={bodyKey}');
+    expect(screen).toContain('bodyKey: screen.openNonce');
+    // Both entries into the dialog — create and edit — start a new open.
+    expect(screen.match(/setOpenNonce\(\(nonce\) => nonce \+ 1\)/g) ?? []).toHaveLength(2);
   });
 });

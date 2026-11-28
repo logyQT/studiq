@@ -2,19 +2,21 @@
 
 import type { Topic } from '@studiq/server/models/topic.model';
 import {
-  Button,
   Card,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
 } from '@studiq/ui';
 import type { useTranslations } from 'next-intl';
 import { useId } from 'react';
-import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
+import {
+  ContentShareSection,
+  sharingFieldsCopy,
+} from '@/components/flashcards/shared/sharing-fields';
+import { ContentFormFooter } from '@/components/shared/content-form-footer';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 
 interface GroupOption {
@@ -103,36 +105,33 @@ export function TopicFormDialog({
               </div>
             </div>
           </Card>
-          {groups && (
-            <SharingFields
-              idPrefix="topic-visibility"
-              visibility={formData.visibility ?? 'personal'}
-              onVisibilityChange={(visibility) => onFormDataChange({ ...formData, visibility })}
-              groups={groups}
-              groupIds={formData.groupIds ?? []}
-              onGroupIdsChange={(groupIds) => onFormDataChange({ ...formData, groupIds })}
-              visibilityLabel={t('visibility_label')}
-              personalLabel={t('visibility_personal')}
-              groupLabel={t('visibility_group')}
-              groupsPlaceholder={t('groups_placeholder')}
-              groupsEmptyText={t('groups_empty')}
-              groupsRequiredText={groupsRequiredText}
-            />
-          )}
-          {error && (
-            <p role="alert" className="mt-3 text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          <ContentShareSection
+            idPrefix="topic-visibility"
+            value={{
+              visibility: formData.visibility ?? 'personal',
+              onVisibilityChange: (visibility) => onFormDataChange({ ...formData, visibility }),
+              groupIds: formData.groupIds ?? [],
+              onGroupIdsChange: (groupIds) => onFormDataChange({ ...formData, groupIds }),
+            }}
+            groups={groups}
+            copy={sharingFieldsCopy({
+              visibilityLabel: t('visibility_label'),
+              visibilityPersonalLabel: t('visibility_personal'),
+              visibilityGroupLabel: t('visibility_group'),
+              groupsPlaceholder: t('groups_placeholder'),
+              groupsEmptyText: t('groups_empty'),
+              groupsRequiredText,
+            })}
+            error={error}
+          />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
-            {t('common_cancel')}
-          </Button>
-          <Button disabled={groupsMissing} onClick={onSubmit}>
-            {editing ? t('common_update') : t('common_create')}
-          </Button>
-        </DialogFooter>
+        <ContentFormFooter
+          cancelLabel={t('common_cancel')}
+          submitLabel={editing ? t('common_update') : t('common_create')}
+          onCancel={onCancel}
+          submitDisabled={groupsMissing}
+          onSubmit={onSubmit}
+        />
       </DialogContent>
     </Dialog>
   );

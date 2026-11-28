@@ -103,6 +103,8 @@ export interface CollectionScreenState<T extends { id: string }> {
   dialogOpen: boolean;
   setDialogOpen: (open: boolean) => void;
   editing: T | null;
+  /** Bumped on every open, for the dialog body's `key`. */
+  openNonce: number;
   openCreate: () => void;
   openEdit: (item: T) => void;
   closeDialog: () => void;
@@ -236,6 +238,10 @@ export function useCollectionScreen<T extends { id: string }>({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<T | null>(null);
+  // A close clears `editing` after the exit animation; a reopen inside that window keeps
+  // the form mounted. Each open bumps this, and the dialog keys its body with it, so a
+  // second open always seeds from the row it opened with.
+  const [openNonce, setOpenNonce] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const create = useApiMutation<unknown, unknown>({
@@ -258,10 +264,12 @@ export function useCollectionScreen<T extends { id: string }>({
   const openCreate = () => {
     setEditing(null);
     setDialogOpen(true);
+    setOpenNonce((nonce) => nonce + 1);
   };
   const openEdit = (item: T) => {
     setEditing(item);
     setDialogOpen(true);
+    setOpenNonce((nonce) => nonce + 1);
   };
   // The dialog animates out; clear the edited row only once it has closed.
   const closeDialog = () => {
@@ -311,6 +319,7 @@ export function useCollectionScreen<T extends { id: string }>({
     dialogOpen,
     setDialogOpen,
     editing,
+    openNonce,
     openCreate,
     openEdit,
     closeDialog,
@@ -336,11 +345,13 @@ export function contentFormDialogProps<
     setDialogOpen: (open: boolean) => void;
     closeDialog: () => void;
     editing: T | null;
+    openNonce: number;
   },
   extra?: (editing: T) => Record<string, unknown>,
 ) {
   return {
     open: screen.dialogOpen,
+    bodyKey: screen.openNonce,
     onOpenChange: (open: boolean) => {
       if (open) screen.setDialogOpen(true);
       else screen.closeDialog();
@@ -371,6 +382,7 @@ export function contentFormDialogLabels(t: ReturnType<typeof useTranslations>) {
     visibilityGroupLabel: t('visibility_group'),
     groupsPlaceholder: t('groups_placeholder'),
     groupsEmptyText: t('groups_empty'),
+    groupsRequiredText: t('groups_required'),
   };
 }
 

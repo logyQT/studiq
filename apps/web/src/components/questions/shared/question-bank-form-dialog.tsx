@@ -1,29 +1,41 @@
 'use client';
 
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
   Label,
-  MultiSelect,
-  RadioGroup,
-  RadioGroupItem,
   Textarea,
 } from '@studiq/ui';
 import { useState } from 'react';
+import {
+  ContentShareSection,
+  type SharingFieldsCopy,
+  sharingFieldsCopy,
+} from '@/components/flashcards/shared/sharing-fields';
 import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
+import { ContentFormFooter } from '@/components/shared/content-form-footer';
 import { contentFormPayload } from '@/lib/share-fields';
 
 type FormBodyProps = Omit<
   ContentFormDialogProps,
-  'open' | 'onOpenChange' | 'title' | 'description'
+  | 'open'
+  | 'onOpenChange'
+  | 'title'
+  | 'description'
+  | 'bodyKey'
+  | 'visibilityLabel'
+  | 'visibilityPersonalLabel'
+  | 'visibilityGroupLabel'
+  | 'groupsPlaceholder'
+  | 'groupsEmptyText'
+  | 'groupsRequiredText'
 > & {
   onCancel: () => void;
+  shareCopy: SharingFieldsCopy;
 };
 
 function FormBody({
@@ -36,11 +48,7 @@ function FormBody({
   cancelLabel,
   submitLabel,
   groups,
-  visibilityLabel,
-  visibilityPersonalLabel,
-  visibilityGroupLabel,
-  groupsPlaceholder,
-  groupsEmptyText,
+  shareCopy,
   error,
   onCancel,
 }: FormBodyProps) {
@@ -59,6 +67,15 @@ function FormBody({
   const [bankDescription, setBankDescription] = useState(initial.description ?? '');
   const [visibility, setVisibility] = useState(initial.visibility ?? 'personal');
   const [groupIds, setGroupIds] = useState<string[]>(initial.groupIds ?? []);
+  // A group-visible bank must share to at least one group, the same rule the deck and the
+  // topic form enforce (#1561). The `groups` guard keeps the form usable without the feature.
+  const groupsMissing = !!groups && visibility === 'group' && groupIds.length === 0;
+  const share = {
+    visibility,
+    onVisibilityChange: setVisibility,
+    groupIds,
+    onGroupIdsChange: setGroupIds,
+  };
 
   function handleSubmit() {
     if (!name.trim()) return;
@@ -94,57 +111,31 @@ function FormBody({
             rows={3}
           />
         </div>
-        {groups && (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">{visibilityLabel}</Label>
-              <RadioGroup
-                value={visibility}
-                onValueChange={(v: 'personal' | 'group') => setVisibility(v)}
-                className="flex gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="personal" id="qb-visibility-personal" />
-                  <Label htmlFor="qb-visibility-personal" className="text-sm cursor-pointer">
-                    {visibilityPersonalLabel}
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="group" id="qb-visibility-group" />
-                  <Label htmlFor="qb-visibility-group" className="text-sm cursor-pointer">
-                    {visibilityGroupLabel}
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-            {visibility === 'group' && (
-              <MultiSelect
-                options={groups.map((g) => ({ label: g.name, value: g.id }))}
-                selected={groupIds}
-                onChange={setGroupIds}
-                placeholder={groupsPlaceholder}
-                emptyText={groupsEmptyText}
-              />
-            )}
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        <ContentShareSection
+          idPrefix="qb-visibility"
+          value={share}
+          groups={groups}
+          copy={shareCopy}
+          error={error}
+        />
       </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onCancel}>
-          {cancelLabel}
-        </Button>
-        <Button onClick={handleSubmit}>{submitLabel}</Button>
-      </DialogFooter>
+      <ContentFormFooter
+        cancelLabel={cancelLabel}
+        submitLabel={submitLabel}
+        onCancel={onCancel}
+        submitDisabled={groupsMissing}
+        onSubmit={handleSubmit}
+      />
     </>
   );
 }
 
-export function QuestionBankFormDialog({ open, onOpenChange, ...props }: ContentFormDialogProps) {
+export function QuestionBankFormDialog({
+  open,
+  onOpenChange,
+  bodyKey,
+  ...props
+}: ContentFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -152,7 +143,12 @@ export function QuestionBankFormDialog({ open, onOpenChange, ...props }: Content
           <DialogTitle>{props.title}</DialogTitle>
           <DialogDescription>{props.description}</DialogDescription>
         </DialogHeader>
-        <FormBody {...props} onCancel={() => onOpenChange(false)} />
+        <FormBody
+          key={bodyKey}
+          {...props}
+          shareCopy={sharingFieldsCopy(props)}
+          onCancel={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   );

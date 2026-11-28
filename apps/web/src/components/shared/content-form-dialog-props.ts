@@ -24,6 +24,10 @@ export interface ContentFormDialogProps {
   visibilityGroupLabel?: string;
   groupsPlaceholder?: string;
   groupsEmptyText?: string;
+  /** Shown under the picker while a group-visible item has no group. */
+  groupsRequiredText?: string;
+  /** Bumped on every open, so the form body remounts and seeds from the new row. */
+  bodyKey?: number;
   /** Why the last save was refused; the dialog stays open with the fields intact. */
   error?: string;
 }

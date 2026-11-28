@@ -277,6 +277,7 @@ export function DeckDetailScreen({
     copyTargetDeckId: null,
     deckEditOpen: false,
     deckEditError: null,
+    deckEditNonce: 0,
     deckDeleteOpen: false,
 
     viewTopicId: null,
@@ -607,6 +608,9 @@ export function DeckDetailScreen({
                       ...prev,
                       deckEditOpen: true,
                       deckEditError: null,
+                      // Reopening inside the exit animation keeps the body mounted; the new
+                      // key makes it seed from this open.
+                      deckEditNonce: prev.deckEditNonce + 1,
                     }))
                   }
                 >
