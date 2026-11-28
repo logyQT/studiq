@@ -774,6 +774,100 @@ describe('FlashcardDeckService', () => {
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
     });
 
+    // #1562 — removing the last group is a share change: the stored group must be taught.
+    it('guards the stored group when visibility goes personal', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+        deck_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb({ ...existing, visibility: 'personal' })); // update deck
+      mock.from.mockReturnValueOnce(qb([])); // assigned flashcards
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb({ ...existing, visibility: 'personal', groupIds: [] }));
+
+      const result = await service.update('d-1', { visibility: 'personal' }, orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
+      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('refuses removing a stored group the caller does not teach', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+        deck_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update('d-1', { visibility: 'personal' }, orgCtx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
+      // Only the existence read happened — no deck update, no group link writes.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('leaves the guard off a rename that sends no share fields', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+        deck_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // update deck
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('d-1', { name: 'Renamed' }, orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
+    it('treats a re-sent identical share as unchanged and does not guard it', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+        deck_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb(existing)); // getById
+
+      const result = await service.update('d-1', { groupIds: ['g-1'] }, orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+    });
+
     it('rejects switching a personal deck to group without a groupIds list', async () => {
       const existing = {
         id: 'd-1',

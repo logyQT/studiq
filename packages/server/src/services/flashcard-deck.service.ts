@@ -5,6 +5,7 @@ import {
   check,
   Permission,
   resolveGroupResourceIds,
+  shareAudienceToAuthorize,
 } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import type {
@@ -251,7 +252,7 @@ export class FlashcardDeckService {
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
-      .select('*')
+      .select('*, deck_groups(group_id)')
       .eq('id', id)
       .single();
 
@@ -286,13 +287,20 @@ export class FlashcardDeckService {
     if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
     const requestedGroupIds = share.groupIds;
 
-    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
+    // A share change is a teacher decision, on every audience change: an added,
+    // removed or replaced group all need the caller to teach the groups involved.
+    const storedGroupIds = dbRows(existing.deck_groups).map((row) => row.group_id);
+    const audienceToAuthorize = shareAudienceToAuthorize(
+      storedGroupIds,
+      requestedGroupIds ?? storedGroupIds,
+    );
+    if (audienceToAuthorize) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.
       // NULL-org content (legacy personal rows) falls back to the active org.
       const contentOrgId = existing.organization_id ?? ctx.activeOrgId ?? null;
       const shareCheck = await groupService.canShareContentToGroups(
         ctx,
-        requestedGroupIds,
+        audienceToAuthorize,
         contentOrgId,
       );
       if (isFailure(shareCheck)) return failure(shareCheck.error);

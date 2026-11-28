@@ -192,22 +192,24 @@ describe(`Question bank edit keeps the share set (#1557)`, () => {
     expect(await bankGroupIds()).toEqual([groupA]);
   });
 
-  it('records the old personal-only body: visibility flips and the links stay', async () => {
-    // The body the buggy dialog sent: no `groupIds`, so the service touches no links.
-    const { res } = await putFor(orgAdmin, {
+  it('refuses the old personal-only body from the Admin, who does not teach the group', async () => {
+    // The body the buggy dialog sent: no `groupIds`, so the service would touch no links.
+    // #1562 makes that a share change: the groups it would drop must be taught.
+    const { res, body } = await putFor(orgAdmin, {
       name: `bank-resave-${suiteId}-renamed`,
       description: 'edited',
       visibility: 'personal',
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('FORBIDDEN');
 
     const { data: stored } = await service
       .from('question_banks')
       .select('visibility')
       .eq('id', bankId)
       .single();
-    expect(stored).toEqual({ visibility: 'personal' });
+    expect(stored).toEqual({ visibility: 'group' });
     expect(await bankGroupIds()).toEqual([groupA]);
   });
 });

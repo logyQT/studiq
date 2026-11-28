@@ -273,6 +273,19 @@ describe(`Flashcard topic edit resaves the share set (#1556)`, () => {
     expect(listed.body.data.items.some((topic) => topic.id === topicId)).toBe(true);
   });
 
+  it('refuses the partial `{visibility: personal}` from the org Admin, who does not teach the group', async () => {
+    // #1562: the flip removes the stored group, so its teacher has to approve the removal.
+    const { res, body } = await putFor(orgAdmin, { visibility: 'personal' });
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('FORBIDDEN');
+    expect(await topicGroupIds()).toEqual([groupA]);
+
+    // The share stands, so the member still reads the topic.
+    const read = await getFor(member);
+    expect(read.res.status).toBe(200);
+  });
+
   it('clears the links on a partial `{visibility: personal}` and revokes the group member', async () => {
     const { res, body } = await putFor(teacher.user, { visibility: 'personal' });
 
