@@ -534,6 +534,59 @@ describe('FlashcardDeckService', () => {
     });
   });
 
+  describe('share payload (#1557)', () => {
+    it('returns the linked group ids from a single read, in sorted order', async () => {
+      const deck = {
+        id: 'd-1',
+        name: 'Deck',
+        visibility: 'group',
+        // PostgREST returns an embed in whatever order it likes.
+        deck_groups: [{ group_id: 'g-b' }, { group_id: 'g-a' }],
+      };
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(qb(deck));
+
+      const result = await service.getById('d-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ groupIds: ['g-a', 'g-b'] }));
+    });
+
+    it('returns an empty group id list for a personal deck', async () => {
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(
+        qb({ id: 'd-1', name: 'Deck', visibility: 'personal', deck_groups: [] }),
+      );
+
+      const result = await service.getById('d-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ groupIds: [] }));
+    });
+
+    it('returns the linked group ids on each list row, in sorted order', async () => {
+      const page = qb([
+        {
+          id: 'd-1',
+          name: 'Deck',
+          visibility: 'group',
+          deck_groups: [{ group_id: 'g-b' }, { group_id: 'g-a' }],
+        },
+        { id: 'd-2', name: 'Personal', visibility: 'personal', deck_groups: [] },
+      ]);
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(page);
+      mock.from.mockReturnValueOnce(qb(null, null, 2));
+
+      const result = await service.list(ctx);
+
+      expect(pageData(result).items).toEqual([
+        expect.objectContaining({ id: 'd-1', groupIds: ['g-a', 'g-b'] }),
+        expect.objectContaining({ id: 'd-2', groupIds: [] }),
+      ]);
+    });
+  });
+
   describe('update', () => {
     it('updates deck and returns it', async () => {
       const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId };

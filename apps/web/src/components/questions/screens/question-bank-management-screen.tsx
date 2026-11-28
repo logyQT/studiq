@@ -18,18 +18,15 @@ import { CollectionCardSkeleton } from '@/components/shared/page-grid';
 import { usePermission } from '@/hooks/use-permission';
 import { ApiError } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
+import { type ContentFormValues } from '@/lib/share-fields';
 
 interface QuestionBankManagementScreenProps {
   basePath: string;
   t: ReturnType<typeof useTranslations>;
 }
 
-interface QuestionBankFormValues {
-  name: string;
-  description: string;
-  visibility?: 'personal' | 'group';
-  groupIds?: string[];
-}
+/** One reference for a bank with no stored groups, so the dialog's `initialValues` cannot churn. */
+const NO_GROUPS: string[] = [];
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const permission = usePermission();
@@ -50,16 +47,16 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
       ? t('bank_delete_blocked')
       : t('common_error');
 
-  async function handleSubmit(data: QuestionBankFormValues) {
+  async function handleSubmit(data: ContentFormValues) {
     if (!data.name.trim()) {
       toast.error(t('common_error'));
       return;
     }
+    // The dialog omits an unchanged share set (#1557). An empty description stays omitted, so the
+    // server keeps the stored one.
     const body = {
-      name: data.name,
+      ...data,
       description: data.description || undefined,
-      visibility: data.visibility,
-      groupIds: data.visibility === 'group' ? data.groupIds : undefined,
     };
     try {
       if (screen.editing) {
@@ -133,7 +130,10 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
       )}
     >
       <QuestionBankFormDialog
-        {...contentFormDialogProps(screen)}
+        {...contentFormDialogProps(screen, (bank) => ({
+          visibility: bank.visibility,
+          groupIds: bank.groupIds ?? NO_GROUPS,
+        }))}
         onSubmit={handleSubmit}
         title={screen.editing ? t('edit_bank') : t('new_bank')}
         description={screen.editing ? t('common_edit') : t('common_create')}
