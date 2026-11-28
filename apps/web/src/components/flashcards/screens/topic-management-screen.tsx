@@ -16,6 +16,7 @@ import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
 import { apiGet } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
+import { contentFormPayload } from '@/lib/share-fields';
 
 interface TopicManagementScreenProps {
   t: ReturnType<typeof useTranslations>;
@@ -69,7 +70,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     setFormData({
       name: topic.name,
       visibility: topic.visibility ?? 'personal',
-      groupIds: [],
+      groupIds: topic.groupIds ?? [],
     });
     screen.openEdit(topic);
   }
@@ -79,11 +80,10 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       toast.error(t('name_required'));
       return;
     }
-    const body = {
-      name: formData.name,
-      visibility: formData.visibility,
-      groupIds: formData.visibility === 'group' ? formData.groupIds : undefined,
-    };
+    const stored = screen.editing
+      ? { visibility: screen.editing.visibility, groupIds: screen.editing.groupIds }
+      : null;
+    const body = contentFormPayload(stored, formData);
     try {
       if (screen.editing) await update.mutateAsync({ id: screen.editing.id, ...body });
       else await create.mutateAsync(body);

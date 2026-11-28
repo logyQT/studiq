@@ -26,6 +26,7 @@ import {
 import type { FilterableBuilder } from '@studiq/server/lib/postgrest';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { planShareLinks } from '@studiq/server/lib/share-links';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import { groupService } from '@studiq/server/services/group.service';
@@ -274,30 +275,16 @@ export class FlashcardDeckService {
       await check(ctx, Permission.DECK_READ, existing);
     }
 
-    // Share links only exist while the deck is group-visible. Deriving the target list from the
-    // RESULTING visibility keeps `visibility` and `deck_groups` consistent for partial bodies:
-    // a `{ visibility: 'personal' }` PUT must clear the links even though it omits `groupIds`.
-    const effectiveVisibility = data.visibility ?? existing.visibility;
-    const linksTouched = data.visibility !== undefined || data.groupIds !== undefined;
-    const requestedGroupIds = !linksTouched
-      ? null
-      : effectiveVisibility !== 'group'
-        ? [] // resulting visibility is personal → never keep links
-        : data.groupIds !== undefined
-          ? [...new Set(data.groupIds)]
-          : null; // visibility stayed 'group' and no list was sent → keep existing links
-
-    // The resulting state must never be "group" with zero links (#139):
-    //  - an explicit empty list is always invalid;
-    //  - "no list sent" is only valid when the deck already was group-visible
-    //    (it inherits the links; this also blocks activating stale links on a personal deck).
-    // Unsharing a group deck has to go through `{ visibility: 'personal' }`.
-    const groupWithoutLinks =
-      effectiveVisibility === 'group' &&
-      (requestedGroupIds !== null
-        ? requestedGroupIds.length === 0
-        : existing.visibility !== 'group');
-    if (groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+    // Share links only exist while the deck is group-visible; the link set follows the
+    // RESULTING visibility, so a partial body cannot desynchronise the two (#139). The rules
+    // and the "group with zero links" answer live in `planShareLinks`, shared with topics.
+    const share = planShareLinks({
+      sentVisibility: data.visibility,
+      sentGroupIds: data.groupIds,
+      storedVisibility: existing.visibility,
+    });
+    if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+    const requestedGroupIds = share.groupIds;
 
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.

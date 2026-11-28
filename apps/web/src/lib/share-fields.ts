@@ -7,7 +7,8 @@ export interface ShareFields {
 /** What a content form dialog hands to its screen to save. */
 export interface ContentFormValues extends ShareFields {
   name: string;
-  description: string;
+  /** Absent for a form without a description field (a topic). */
+  description?: string;
 }
 
 function normalised(fields: ShareFields): Required<ShareFields> {
@@ -33,7 +34,8 @@ export function contentFormPayload(
   next: ContentFormValues,
 ): ContentFormValues {
   const { name, description, visibility, groupIds } = next;
-  if (!stored) return { name, description, ...normalised({ visibility, groupIds }) };
+  const named: ContentFormValues = description === undefined ? { name } : { name, description };
+  if (!stored) return { ...named, ...normalised({ visibility, groupIds }) };
 
   const before = normalised(stored);
   const after = normalised({ visibility, groupIds });
@@ -42,5 +44,5 @@ export function contentFormPayload(
     after.groupIds.length === before.groupIds.length &&
     after.groupIds.every((id, index) => id === before.groupIds[index]);
 
-  return unchanged ? { name, description } : { name, description, ...after };
+  return unchanged ? named : { ...named, ...after };
 }

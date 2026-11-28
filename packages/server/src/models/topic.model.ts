@@ -77,4 +77,5 @@ export interface Topic {
   created_by: string;
   created_at?: string;
   visibility?: 'personal' | 'group';
+  groupIds?: string[];
 }

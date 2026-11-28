@@ -424,27 +424,179 @@ describe('TopicService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('clears group links for an empty groupIds list without calling the guard', async () => {
+    it('rejects an empty groupIds list on a group topic and keeps the link', async () => {
       const existing = { id: 't-1', name: 'Topic', created_by: ctx.userId, visibility: 'group' };
-      const cleared = { id: 't-1', name: 'Topic', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
-      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
-      mock.from.mockReturnValueOnce(qb(cleared)); // getById
 
       const result = await service.update('t-1', { groupIds: [] }, ctx);
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
-      expect(mock.from).toHaveBeenCalledWith('topic_groups');
+      expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+    });
+
+    it('clears the links when a partial update switches the topic to personal', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+      };
+      const cleared = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        visibility: 'personal',
+        topic_groups: [],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      const updateQuery = qb(existing);
+      mock.from.mockReturnValueOnce(updateQuery); // topics update
+      const deleteLinks = qb(undefined); // delete links
+      mock.from.mockReturnValueOnce(deleteLinks);
+      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+
+      const result = await service.update('t-1', { visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(updateQuery.update).toHaveBeenCalledWith({ visibility: 'personal' });
+      expect(deleteLinks.delete).toHaveBeenCalled();
+      expect(deleteLinks.eq).toHaveBeenCalledWith('topic_id', 't-1');
+      // Unsharing must not depend on the caller teaching the groups it removes.
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'personal', groupIds: [] }),
+      );
+    });
+
+    it('rejects switching a personal topic to group without a list', async () => {
+      const existing = { id: 't-1', name: 'Topic', created_by: ctx.userId, visibility: 'personal' };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('t-1', { visibility: 'group' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('switches a personal topic to group and writes the sent links', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'personal',
+      };
+      const shared = { ...existing, visibility: 'group', topic_groups: [{ group_id: 'g-1' }] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // topics update
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      const insertLinks = qb(undefined); // insert links
+      mock.from.mockReturnValueOnce(insertLinks);
+      mock.from.mockReturnValueOnce(qb(shared)); // getById
+
+      const result = await service.update('t-1', { visibility: 'group', groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      expect(insertLinks.insert).toHaveBeenCalledWith([{ topic_id: 't-1', group_id: 'g-1' }]);
+      expect(result.data).toEqual(
+        expect.objectContaining({ visibility: 'group', groupIds: ['g-1'] }),
+      );
+    });
+
+    it('keeps the stored links when the body omits the share fields', async () => {
+      const existing = {
+        id: 't-1',
+        name: 'Topic',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+      };
+      const read = {
+        id: 't-1',
+        name: 'Renamed',
+        visibility: 'group',
+        topic_groups: [{ group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // topics update
+      mock.from.mockReturnValueOnce(qb(read)); // getById
+
+      const result = await service.update('t-1', { name: 'Renamed' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ name: 'Renamed', groupIds: ['g-1'] }));
+      expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+    });
+  });
+
+  describe('share payload (#1556)', () => {
+    it('returns the linked group ids from a single read, in sorted order', async () => {
+      const row = {
+        id: 't-1',
+        name: 'Topic',
+        visibility: 'group',
+        // PostgREST returns an embed in whatever order it likes.
+        topic_groups: [{ group_id: 'g-2' }, { group_id: 'g-1' }],
+      };
+      mock.from.mockReturnValueOnce(qb(row));
+
+      const result = await service.getById('t-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ groupIds: ['g-1', 'g-2'] }));
+    });
+
+    it('returns an empty group id list for a personal topic', async () => {
+      mock.from.mockReturnValueOnce(
+        qb({ id: 't-1', name: 'Topic', visibility: 'personal', topic_groups: [] }),
+      );
+
+      const result = await service.getById('t-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({ groupIds: [] }));
+    });
+
+    it('returns the linked group ids on each list row', async () => {
+      const page = qb([
+        {
+          id: 't-1',
+          name: 'Topic',
+          visibility: 'group',
+          topic_groups: [{ group_id: 'g-2' }, { group_id: 'g-1' }],
+        },
+        { id: 't-2', name: 'Personal', visibility: 'personal', topic_groups: [] },
+      ]);
+      mock.from.mockReturnValueOnce(page);
+      mock.from.mockReturnValueOnce(qb(null, null, 2));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({ id: 't-1', groupIds: ['g-1', 'g-2'] }),
+            expect.objectContaining({ id: 't-2', groupIds: [] }),
+          ],
+        }),
+      );
     });
   });
 
   describe('list filters (#595)', () => {
     it('resolves group ids through topic_groups and narrows the page and its count', async () => {
       const groupQb = qb([{ topic_id: 't-1' }]);
+      const sharedQb = qb([{ id: 't-1' }]); // group-visible topics among the linked ones
       const pageQb = qb([{ id: 't-1', name: 'Topic' }]);
       const countQb = qb(null, null, 1);
       mock.from.mockReturnValueOnce(groupQb); // topic_groups
+      mock.from.mockReturnValueOnce(sharedQb); // topics visibility
       mock.from.mockReturnValueOnce(pageQb); // list page
       mock.from.mockReturnValueOnce(countQb); // total count
 
@@ -452,6 +604,8 @@ describe('TopicService', () => {
 
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
+      // A stale link row on a personal topic must not widen the group filter.
+      expect(sharedQb.eq).toHaveBeenCalledWith('visibility', 'group');
       // Both queries carry the group filter, so `total` matches the visible set.
       expect(pageQb.in).toHaveBeenCalledWith('id', ['t-1']);
       expect(countQb.in).toHaveBeenCalledWith('id', ['t-1']);

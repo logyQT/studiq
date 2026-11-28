@@ -24,6 +24,7 @@ import {
   pickDefined,
   readPageWithTotal,
 } from '@studiq/server/lib/query-list';
+import { planShareLinks } from '@studiq/server/lib/share-links';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
@@ -111,7 +112,11 @@ export class TopicService {
     return readPageWithTotal(
       pageQuery(
         applyFilters(
-          supabase.from('topics').select('*, flashcard_count:flashcard_topic_assignments(count)'),
+          supabase
+            .from('topics')
+            .select(
+              '*, flashcard_count:flashcard_topic_assignments(count), topic_groups(group_id)',
+            ),
         ),
         paging,
       ),
@@ -121,6 +126,11 @@ export class TopicService {
         map: (item) => ({
           ...item,
           flashcard_count: dbCount(item.flashcard_count),
+          // PostgREST does not order an embed, so sort here: the same share set must
+          // come back in the same order on every read (#1556).
+          groupIds: dbRows(item.topic_groups)
+            .map((group) => group.group_id)
+            .toSorted(),
         }),
       },
     );
@@ -132,11 +142,16 @@ export class TopicService {
 
     const supabase = await this.clientFactory();
     const { data, error } = await applyAccessFilter(
-      supabase.from('topics').select('*').eq('id', id),
+      supabase.from('topics').select('*, topic_groups(group_id)').eq('id', id),
       filter,
     ).maybeSingle();
     if (error || !data) return failure('NOT_FOUND');
-    return success(data);
+    return success({
+      ...data,
+      groupIds: dbRows(data.topic_groups)
+        .map((group) => group.group_id)
+        .toSorted(),
+    });
   }
 
   async update(
@@ -150,7 +165,17 @@ export class TopicService {
     if (isFailure(loaded)) return loaded;
     const topic = loaded.data;
 
-    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    // Share links only exist while the topic is group-visible. Deriving the target list from the
+    // RESULTING visibility keeps `visibility` and `topic_groups` consistent for partial bodies:
+    // a `{ visibility: 'personal' }` PUT must clear the links even though it omits `groupIds`.
+    const share = planShareLinks({
+      sentVisibility: data.visibility,
+      sentGroupIds: data.groupIds,
+      storedVisibility: topic.visibility,
+    });
+    if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+    const requestedGroupIds = share.groupIds;
+
     // Share links belong to the CONTENT's org, not the caller's current UI org;
     // legacy NULL-org content falls back to the active org.
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
