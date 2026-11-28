@@ -743,6 +743,15 @@ export class FlashcardPracticeService {
       query = query.eq('created_by', cardFilter.created_by);
     }
 
+    // A learner with more than a page of cards can have a suspended card past
+    // the 100-row slice, so this filter has to reach the query, not the page.
+    if (filters?.state === 'suspended') {
+      const cardSuspensionIds = await this.getCardSuspensionIds(ctx);
+      if (cardSuspensionIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false });
+      query = query.in('id', cardSuspensionIds);
+    }
+
     if (suspendedCardIds.length > 0) {
       query = query.filter('id', 'not.in', `(${suspendedCardIds.join(',')})`);
     }
@@ -843,9 +852,9 @@ export class FlashcardPracticeService {
       };
     });
 
-    if (filters?.state === 'suspended') {
-      items = items.filter((i) => i.suspended);
-    } else if (filters?.state) {
+    // `suspended` is resolved by the query above (before the page slice); the
+    // other states are derived from the row, so they filter after the map.
+    if (filters?.state && filters.state !== 'suspended') {
       items = items.filter((i) => i.state === filters.state);
     }
 
@@ -904,6 +913,7 @@ export class FlashcardPracticeService {
     return dbRows(data).map((r) => r.id);
   }
 
+  /** Cards that belong to a deck the caller suspended (deck-level exclusion). */
   private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
     const supabase = await this.clientFactory();
 
@@ -921,6 +931,18 @@ export class FlashcardPracticeService {
       .in('deck_id', deckIds);
 
     return [...new Set((flashcards ?? []).map((f) => f.id))];
+  }
+
+  /** The caller's own card suspensions (`suspended_cards`), the ids the session action writes. */
+  private async getCardSuspensionIds(ctx: RequestContext): Promise<string[]> {
+    const supabase = await this.clientFactory();
+
+    const { data } = await supabase
+      .from('suspended_cards')
+      .select('flashcard_id')
+      .eq('user_id', ctx.userId);
+
+    return [...new Set((data ?? []).map((s) => s.flashcard_id))];
   }
 
   async completeSession(

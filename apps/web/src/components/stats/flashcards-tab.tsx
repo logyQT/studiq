@@ -75,7 +75,7 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
     item.leechRestUntil && new Date(item.leechRestUntil).getTime() > Date.now()
       ? item.leechRestUntil
       : null;
-  const canRestore = item.suspended || item.leechRestUntil !== null;
+  const canRestore = item.suspended || restsUntil !== null;
 
   return (
     <>

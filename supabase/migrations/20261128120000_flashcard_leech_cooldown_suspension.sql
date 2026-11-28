@@ -323,9 +323,9 @@ $$;
 -- `get_practice_state_breakdown` (latest body: 20261025075744)
 --
 -- A suspended card counts once under `suspended` and leaves `learning`,
--- `review`, `relearning` and `leeched`, so the chart's segments still sum to
--- `totalCards`. `totalCards`, `practicedCards` and the two averages do not
--- change: suspension is a per-card flag, not an accessibility rule.
+-- `review`, `relearning`, `leeched` and `neverPracticed`, so the chart's
+-- segments still sum to `totalCards`. `totalCards`, `practicedCards` and the two
+-- averages do not change: suspension is a per-card flag, not an accessibility rule.
 -- ==========================================
 
 create or replace function public.get_practice_state_breakdown(
@@ -379,7 +379,7 @@ AS $$
   )
   SELECT json_build_object(
     'totalCards', (SELECT COUNT(*) FROM scoped)::int,
-    'neverPracticed', COUNT(*) FILTER (WHERE cs.flashcard_id IS NULL)::int,
+    'neverPracticed', COUNT(*) FILTER (WHERE cs.flashcard_id IS NULL AND NOT cs.is_suspended)::int,
     'learning', COUNT(*) FILTER (WHERE cs.learning_state = 'learning' AND NOT cs.is_leech AND NOT cs.is_suspended)::int,
     'review', COUNT(*) FILTER (WHERE cs.learning_state = 'review' AND NOT cs.is_leech AND NOT cs.is_suspended)::int,
     'relearning', COUNT(*) FILTER (WHERE cs.learning_state = 'relearning' AND NOT cs.is_leech AND NOT cs.is_suspended)::int,

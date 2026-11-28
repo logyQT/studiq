@@ -40,7 +40,9 @@ function requireLocalDatabaseUrl(): string {
  */
 const SHIPPED_FUNCTIONS = [
   latestShippedFunction('get_due_flashcards'),
+  latestShippedFunction('get_due_breakdown'),
   latestShippedFunction('get_practice_state_breakdown'),
+  latestShippedFunction('count_new_cards'),
 ];
 
 interface DueCard {
@@ -48,8 +50,14 @@ interface DueCard {
   reviewState?: { leechStage?: number; leechRestUntil?: string | null } | null;
 }
 
+interface DueBreakdown {
+  total: number;
+  nextReviewAt: string | null;
+}
+
 interface StateBreakdown {
   totalCards: number;
+  neverPracticed: number;
   review: number;
   relearning: number;
   leeched: number;
@@ -108,6 +116,22 @@ describe('Leech cooldown and suspension (#1063)', () => {
     if (error) throw new Error(`seed review state: ${error.message}`);
   }
 
+  async function updateReviewState(patch: Record<string, unknown>) {
+    const { error } = await db
+      .from('flashcard_review_state')
+      .update(patch)
+      .eq('user_id', student.user.id)
+      .eq('flashcard_id', cardId);
+    if (error) throw new Error(`update review state: ${error.message}`);
+  }
+
+  async function suspendCard(reason: 'manual' | 'leech' = 'manual', target = cardId) {
+    const { error } = await db
+      .from('suspended_cards')
+      .insert({ user_id: student.user.id, flashcard_id: target, reason });
+    if (error) throw new Error(`seed suspension: ${error.message}`);
+  }
+
   async function dueCards(): Promise<DueCard[]> {
     const { data, error } = await db.rpc('get_due_flashcards', {
       p_user_id: student.user.id,
@@ -117,6 +141,24 @@ describe('Leech cooldown and suspension (#1063)', () => {
     });
     if (error) throw new Error(error.message);
     return asJson<DueCard[]>(data);
+  }
+
+  async function dueBreakdown(): Promise<DueBreakdown> {
+    const { data, error } = await db.rpc('get_due_breakdown', {
+      p_user_id: student.user.id,
+      p_created_by: student.user.id,
+    });
+    if (error) throw new Error(error.message);
+    return asJson<DueBreakdown>(data);
+  }
+
+  async function newCardCount(): Promise<number> {
+    const { data, error } = await db.rpc('count_new_cards', {
+      p_user_id: student.user.id,
+      p_filter_type: 'own',
+    });
+    if (error) throw new Error(error.message);
+    return data;
   }
 
   async function breakdown(): Promise<StateBreakdown> {
@@ -146,12 +188,7 @@ describe('Leech cooldown and suspension (#1063)', () => {
 
     expect(await dueCards()).toEqual([]);
 
-    const { error } = await db
-      .from('flashcard_review_state')
-      .update({ leech_rest_until: new Date(Date.now() - 60_000).toISOString() })
-      .eq('user_id', student.user.id)
-      .eq('flashcard_id', cardId);
-    if (error) throw new Error(error.message);
+    await updateReviewState({ leech_rest_until: new Date(Date.now() - 60_000).toISOString() });
 
     const due = await dueCards();
     expect(due.map((card) => card.id)).toEqual([cardId]);
@@ -177,12 +214,7 @@ describe('Leech cooldown and suspension (#1063)', () => {
 
   it('restores a suspended card and resets its leech state', async () => {
     await seedLeech(daysFromNow(7), 3);
-    const { error: seedError } = await db.from('suspended_cards').insert({
-      user_id: student.user.id,
-      flashcard_id: cardId,
-      reason: 'leech',
-    });
-    if (seedError) throw new Error(`seed suspension: ${seedError.message}`);
+    await suspendCard('leech');
     mockUser(student.user);
 
     const response = await update({ suspended: false });
@@ -219,12 +251,7 @@ describe('Leech cooldown and suspension (#1063)', () => {
     expect(initial.leeched).toBe(1);
     expect(initial.suspended).toBe(0);
 
-    const { error } = await db.from('suspended_cards').insert({
-      user_id: student.user.id,
-      flashcard_id: cardId,
-      reason: 'manual',
-    });
-    if (error) throw new Error(`seed suspension: ${error.message}`);
+    await suspendCard();
 
     const after = await breakdown();
     expect(after.totalCards).toBe(initial.totalCards);
@@ -232,5 +259,55 @@ describe('Leech cooldown and suspension (#1063)', () => {
     expect(after.leeched).toBe(0);
     expect(after.review).toBe(0);
     expect(after.relearning).toBe(0);
+  });
+
+  it('leaves neverPracticed when a card with no review state is suspended', async () => {
+    const initial = await breakdown();
+    expect(initial.totalCards).toBe(1);
+    expect(initial.neverPracticed).toBe(1);
+    expect(initial.suspended).toBe(0);
+
+    await suspendCard();
+
+    const after = await breakdown();
+    expect(after.totalCards).toBe(initial.totalCards);
+    expect(after.neverPracticed).toBe(0);
+    expect(after.suspended).toBe(1);
+  });
+
+  it('excludes a resting and a suspended card from the due breakdown', async () => {
+    // Due now, but resting: neither the due count nor the next review may include it.
+    await seedLeech(daysFromNow(7));
+    const resting = await dueBreakdown();
+    expect(resting.total).toBe(0);
+    expect(resting.nextReviewAt).toBeNull();
+
+    // A future review date under an active rest must not become the next review.
+    const nextReviewAt = daysFromNow(3);
+    await updateReviewState({ next_review_at: nextReviewAt });
+    expect((await dueBreakdown()).nextReviewAt).toBeNull();
+
+    // Lift the rest: the same future date now counts.
+    await updateReviewState({ leech_rest_until: null });
+    const resumed = await dueBreakdown();
+    expect(resumed.nextReviewAt).not.toBeNull();
+    expect(
+      Math.abs(new Date(resumed.nextReviewAt!).getTime() - new Date(nextReviewAt).getTime()),
+    ).toBeLessThan(1000);
+
+    // Make it due, then suspend it: the count drops to zero regardless of the date.
+    await updateReviewState({ next_review_at: new Date(Date.now() - 60_000).toISOString() });
+    expect((await dueBreakdown()).total).toBe(1);
+
+    await suspendCard();
+    expect((await dueBreakdown()).total).toBe(0);
+  });
+
+  it('does not count a suspended card with no review state as a new card', async () => {
+    expect(await newCardCount()).toBe(1);
+
+    await suspendCard();
+
+    expect(await newCardCount()).toBe(0);
   });
 });
