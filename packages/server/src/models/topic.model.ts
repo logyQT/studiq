@@ -75,6 +75,7 @@ export interface Topic {
   name: string;
   flashcard_count: number;
   created_by: string;
+  organization_id?: string | null;
   created_at?: string;
   visibility?: 'personal' | 'group';
   groupIds?: string[];

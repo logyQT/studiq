@@ -26,6 +26,7 @@ import {
   pickDefined,
   readPageWithTotal,
 } from '@studiq/server/lib/query-list';
+import { planShareLinks } from '@studiq/server/lib/share-links';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { isImpossibleFilter } from '@studiq/server/lib/rbac-filter';
 import { heldNotice, sealFor } from '@studiq/server/lib/question-seal';
@@ -222,19 +223,25 @@ export class QuestionBankService {
     if (isFailure(loaded)) return loaded;
     const bank = loaded.data;
 
-    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    // Share links only exist while the bank is group-visible; the link set follows the
+    // RESULTING visibility, so a partial body cannot desynchronise the two. The rules
+    // and the "group with zero links" answer live in `planShareLinks`, shared with
+    // decks and topics.
+    const share = planShareLinks({
+      sentVisibility: data.visibility,
+      sentGroupIds: data.groupIds,
+      storedVisibility: bank.visibility,
+    });
+    if (share.groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+    const requestedGroupIds = share.groupIds;
+
     // A share change is a teacher decision, on every audience change: an added,
     // removed or replaced group all need the caller to teach the groups involved.
     const storedGroupIds = dbRows(bank.bank_groups).map((row) => row.group_id);
-    const visibilityLeavesGroup =
-      data.visibility !== undefined && data.visibility !== bank.visibility;
-    // Inline instead of `planShareLinks` on purpose: a bank keeps its stored links
-    // on a flip to personal, unlike a deck or a topic, so a flip back to group with
-    // no sent list reuses them with no teacher check. #1566 covers that guard.
-    const plannedGroupIds =
-      requestedGroupIds ??
-      (visibilityLeavesGroup && data.visibility !== 'group' ? [] : storedGroupIds);
-    const audienceToAuthorize = shareAudienceToAuthorize(storedGroupIds, plannedGroupIds);
+    const audienceToAuthorize = shareAudienceToAuthorize(
+      storedGroupIds,
+      requestedGroupIds ?? storedGroupIds,
+    );
     // The link must belong to the CONTENT's org, not the caller's current UI org.
     // NULL-org content (legacy personal rows) falls back to the active org.
     if (audienceToAuthorize) {

@@ -101,8 +101,11 @@ export interface CollectionScreenState<T extends { id: string }> {
   emptyView: ListEmptyView;
   selection: ReturnType<typeof useSelection<string>>;
   dialogOpen: boolean;
-  setDialogOpen: (open: boolean) => void;
   editing: T | null;
+  /** Bumped on every open, for the dialog body's `key`. */
+  openNonce: number;
+  /** Open the form for `item`, or for a create when `item` is null. */
+  openDialog: (item: T | null) => void;
   openCreate: () => void;
   openEdit: (item: T) => void;
   closeDialog: () => void;
@@ -236,7 +239,21 @@ export function useCollectionScreen<T extends { id: string }>({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<T | null>(null);
+  // A close clears `editing` after the exit animation, and a reopen inside that window keeps
+  // the form mounted. Each open cancels the pending clear and bumps this nonce, which keys the
+  // dialog body, so a second open seeds from its own row and no stale clear can blank it.
+  const [openNonce, setOpenNonce] = useState(0);
+  const openNonceRef = useRef(0);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const cancelPendingClear = useCallback(() => {
+    if (closeTimer.current === null) return;
+    clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  }, []);
+
+  useEffect(() => cancelPendingClear, [cancelPendingClear]);
 
   const create = useApiMutation<unknown, unknown>({
     mutationFn: (body) => apiPost<unknown>(url, body),
@@ -255,18 +272,31 @@ export function useCollectionScreen<T extends { id: string }>({
     invalidateKeys,
   });
 
-  const openCreate = () => {
-    setEditing(null);
-    setDialogOpen(true);
-  };
-  const openEdit = (item: T) => {
-    setEditing(item);
-    setDialogOpen(true);
-  };
+  const openDialog = useCallback(
+    (item: T | null) => {
+      cancelPendingClear();
+      const nonce = openNonceRef.current + 1;
+      openNonceRef.current = nonce;
+      setOpenNonce(nonce);
+      setEditing(item);
+      setDialogOpen(true);
+    },
+    [cancelPendingClear],
+  );
+
+  const openCreate = () => openDialog(null);
+  const openEdit = (item: T) => openDialog(item);
+
   // The dialog animates out; clear the edited row only once it has closed.
   const closeDialog = () => {
+    cancelPendingClear();
     setDialogOpen(false);
-    setTimeout(() => setEditing(null), 200);
+    const closedAt = openNonceRef.current;
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      // Only the latest close clears: an open since then owns `editing` now.
+      if (openNonceRef.current === closedAt) setEditing(null);
+    }, 200);
   };
 
   const clearFilters = () => {
@@ -309,8 +339,9 @@ export function useCollectionScreen<T extends { id: string }>({
     }),
     selection,
     dialogOpen,
-    setDialogOpen,
     editing,
+    openNonce,
+    openDialog,
     openCreate,
     openEdit,
     closeDialog,
@@ -333,16 +364,18 @@ export function contentFormDialogProps<
 >(
   screen: {
     dialogOpen: boolean;
-    setDialogOpen: (open: boolean) => void;
+    openDialog: (item: T | null) => void;
     closeDialog: () => void;
     editing: T | null;
+    openNonce: number;
   },
   extra?: (editing: T) => Record<string, unknown>,
 ) {
   return {
     open: screen.dialogOpen,
+    bodyKey: screen.openNonce,
     onOpenChange: (open: boolean) => {
-      if (open) screen.setDialogOpen(true);
+      if (open) screen.openDialog(screen.editing);
       else screen.closeDialog();
     },
     initialValues: screen.editing
@@ -371,6 +404,7 @@ export function contentFormDialogLabels(t: ReturnType<typeof useTranslations>) {
     visibilityGroupLabel: t('visibility_group'),
     groupsPlaceholder: t('groups_placeholder'),
     groupsEmptyText: t('groups_empty'),
+    groupsRequiredText: t('groups_required'),
   };
 }
 

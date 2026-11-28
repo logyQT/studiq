@@ -2,19 +2,19 @@
 
 import type { Topic } from '@studiq/server/models/topic.model';
 import {
-  Button,
   Card,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
 } from '@studiq/ui';
 import type { useTranslations } from 'next-intl';
 import { useId } from 'react';
-import { SharingFields } from '@/components/flashcards/shared/sharing-fields';
+import { sharingFieldsCopy } from '@/components/flashcards/shared/sharing-fields';
+import { ContentShareSection } from '@/components/shared/content-share-section';
+import { ContentFormFooter } from '@/components/shared/content-form-footer';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 
 interface GroupOption {
@@ -36,6 +36,9 @@ interface TopicFormDialogProps {
   onCancel: () => void;
   t: ReturnType<typeof useTranslations>;
   groups?: GroupOption[];
+  groupsRequiredText?: string;
+  /** Why the last save was refused; the dialog stays open with the fields intact. */
+  error?: string;
 }
 
 export function TopicFormDialog({
@@ -48,9 +51,15 @@ export function TopicFormDialog({
   onCancel,
   t,
   groups,
+  groupsRequiredText,
+  error,
 }: TopicFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
   const id = useId();
+  // A group-visible topic must share to at least one group, the same rule the deck form
+  // enforces (#1561). The server answers 422; the dialog must not offer the state.
+  const groupsMissing =
+    !!groups && formData.visibility === 'group' && (formData.groupIds ?? []).length === 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,28 +103,33 @@ export function TopicFormDialog({
               </div>
             </div>
           </Card>
-          {groups && (
-            <SharingFields
-              idPrefix="topic-visibility"
-              visibility={formData.visibility ?? 'personal'}
-              onVisibilityChange={(visibility) => onFormDataChange({ ...formData, visibility })}
-              groups={groups}
-              groupIds={formData.groupIds ?? []}
-              onGroupIdsChange={(groupIds) => onFormDataChange({ ...formData, groupIds })}
-              visibilityLabel={t('visibility_label')}
-              personalLabel={t('visibility_personal')}
-              groupLabel={t('visibility_group')}
-              groupsPlaceholder={t('groups_placeholder')}
-              groupsEmptyText={t('groups_empty')}
-            />
-          )}
+          <ContentShareSection
+            idPrefix="topic-visibility"
+            value={{
+              visibility: formData.visibility ?? 'personal',
+              onVisibilityChange: (visibility) => onFormDataChange({ ...formData, visibility }),
+              groupIds: formData.groupIds ?? [],
+              onGroupIdsChange: (groupIds) => onFormDataChange({ ...formData, groupIds }),
+            }}
+            groups={groups}
+            copy={sharingFieldsCopy({
+              visibilityLabel: t('visibility_label'),
+              visibilityPersonalLabel: t('visibility_personal'),
+              visibilityGroupLabel: t('visibility_group'),
+              groupsPlaceholder: t('groups_placeholder'),
+              groupsEmptyText: t('groups_empty'),
+              groupsRequiredText,
+            })}
+            error={error}
+          />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
-            {t('common_cancel')}
-          </Button>
-          <Button onClick={onSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
-        </DialogFooter>
+        <ContentFormFooter
+          cancelLabel={t('common_cancel')}
+          submitLabel={editing ? t('common_update') : t('common_create')}
+          onCancel={onCancel}
+          submitDisabled={groupsMissing}
+          onSubmit={onSubmit}
+        />
       </DialogContent>
     </Dialog>
   );

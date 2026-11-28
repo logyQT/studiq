@@ -15,7 +15,7 @@ import {
   Upload,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import type { useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -29,8 +29,10 @@ import {
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 import { CollectionCardSkeleton } from '@/components/shared/page-grid';
 import { useApiMutation } from '@/hooks/use-api';
+import { useContentFormError } from '@/hooks/use-content-form-error';
 import { usePermission } from '@/hooks/use-permission';
 import { apiPost, apiPut, isNetworkError } from '@/lib/api';
+import { saveFailureMessage } from '@/lib/error-messages';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { ContentFormValues } from '@/lib/share-fields';
 
@@ -54,6 +56,7 @@ interface DeckManagementScreenProps {
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const permission = usePermission();
+  const tErr = useTranslations('Errors');
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // Students get the suspend filter inside the filter list; teachers keep the
@@ -76,6 +79,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     extraActiveFilters: includeSuspended ? 1 : 0,
   });
   const { create, update, batchDelete, selection } = screen;
+  const [formError, setFormError] = useContentFormError(screen.dialogOpen);
 
   const batchToggleSuspend = useApiMutation({
     mutationFn: (data: { deckIds: string[]; suspended: boolean }) =>
@@ -88,6 +92,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       toast.error(t('name_required'));
       return;
     }
+    setFormError(null);
     // The dialog drops an unchanged share set (#1555): sending `groupIds` again would run the
     // group-teacher check and fail an org Admin's name edit.
     const body = { ...data, description: data.description || undefined };
@@ -101,7 +106,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       screen.closeDialog();
       toast.success(screen.editing ? t('deck_updated') : t('deck_created'));
     } catch (error) {
-      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
+      setFormError(
+        isNetworkError(error)
+          ? t('save_failed_offline')
+          : saveFailureMessage(error, t('save_failed'), tErr),
+      );
     }
   }
 
@@ -262,7 +271,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         description={screen.editing ? t('edit_desc') : t('new_deck_desc')}
         submitLabel={screen.editing ? t('common_update') : t('common_create')}
         groups={screen.groupsData}
-        groupsRequiredText={t('groups_required')}
+        error={formError ?? undefined}
         {...contentFormDialogLabels(t)}
       />
 

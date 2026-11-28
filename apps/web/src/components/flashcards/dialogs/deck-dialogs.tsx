@@ -20,6 +20,8 @@ interface DeckDialogsProps {
   onDeckDelete: () => void;
   initialValues?: ContentFormValues | null;
   groups?: GroupOption[];
+  error?: string;
+  bodyKey?: number;
 }
 
 export function DeckDialogs({
@@ -32,6 +34,8 @@ export function DeckDialogs({
   onDeckDelete,
   initialValues,
   groups,
+  error,
+  bodyKey,
 }: DeckDialogsProps) {
   return (
     <>
@@ -55,6 +59,8 @@ export function DeckDialogs({
         groupsPlaceholder={t('groups_placeholder')}
         groupsEmptyText={t('groups_empty')}
         groupsRequiredText={t('groups_required')}
+        error={error}
+        bodyKey={bodyKey}
       />
 
       <DeleteConfirmDialog
