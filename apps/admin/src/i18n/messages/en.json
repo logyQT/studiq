@@ -10,6 +10,7 @@
     "back": "Back",
     "common_loading": "Loading...",
     "common_close": "Close",
+    "common_close_window": "Close",
     "common_toggle_sidebar": "Toggle sidebar",
     "common_sidebar_title": "Sidebar",
     "common_sidebar_description": "Displays the mobile sidebar.",
