@@ -62,20 +62,52 @@ describe('EntitlementResolver', () => {
       ]);
     });
 
-    it('intersects the seat plan with the org ceiling (seat adds only ceiling keys)', async () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
+    it('grants a seat plan its own keys: the org ceiling does not filter a licence (D38)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
       mockTables({
-        roleProfile: 'all',
+        roleProfile: 'learner',
         orgPlan: 'launch',
-        seatPlanKey: 'seat',
-        // `seat` carries ai.chat/stats.insights/quiz.templates; the launch
-        // ceiling only carries flashcards/quiz, so the seat adds nothing.
+        seatPlanKey: 'ai_pro',
         personalPlanKey: null,
+        // `ai_pro` carries `ai.chat`, which the launch ceiling does not. The
+        // pool subscription is the purchase, so the seat grants it anyway.
+        planEntitlements: {
+          launch: ['flashcards', 'quiz'],
+          ai_pro: ['ai.chat'],
+        },
+        planLimits: {
+          launch: { max_flashcards: 100, max_quiz_attempts_per_day: 10, max_ai_tokens_per_day: 0 },
+          ai_pro: { max_ai_tokens_per_day: 300000 },
+        },
       });
 
-      const { entitlements, sources } = await resolver.resolveEntitlements(ctx);
+      const { entitlements, limits, sources } = await resolver.resolveEntitlements(ctx);
+      expect(entitlements).toContain('ai.chat');
+      expect(limits.max_ai_tokens_per_day).toBe(300000);
+      expect(sources.seat).toEqual({ planKey: 'ai_pro', origin: 'seat' });
+    });
+
+    it('grants no AI to the same org without a seat assignment (#1511)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
+      mockTables({
+        roleProfile: 'learner',
+        orgPlan: 'launch',
+        seatPlanKey: null,
+        personalPlanKey: null,
+        planEntitlements: {
+          launch: ['flashcards', 'quiz'],
+          ai_pro: ['ai.chat'],
+        },
+        planLimits: {
+          launch: { max_flashcards: 100, max_quiz_attempts_per_day: 10, max_ai_tokens_per_day: 0 },
+          ai_pro: { max_ai_tokens_per_day: 300000 },
+        },
+      });
+
+      const { entitlements, limits, sources } = await resolver.resolveEntitlements(ctx);
       expect(entitlements).toEqual(['flashcards', 'quiz']);
-      expect(sources.seat).toEqual({ planKey: 'seat', origin: 'seat' });
+      expect(limits.max_ai_tokens_per_day).toBe(0);
+      expect(sources.seat).toBeNull();
     });
 
     it('fails when the seat read fails instead of resolving as "not seated" (#1373)', async () => {

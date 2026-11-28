@@ -336,7 +336,7 @@ describe(`Members Integration`, () => {
 
       const { data: pool, error: poolError } = await supabase
         .from('org_seat_pools')
-        .insert({ organization_id: orgId, plan_key: 'max', total: 1, assigned: 0 })
+        .insert({ organization_id: orgId, plan_key: 'ai_max', total: 1, assigned: 0 })
         .select('id')
         .single()
         .overrideTypes<{ id: string }, { merge: false }>();

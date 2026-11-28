@@ -10,6 +10,19 @@
 export const PLAN_SCOPES = ['personal', 'organization'] as const;
 export type PlanScope = (typeof PLAN_SCOPES)[number];
 
+/**
+ * Where a plan is sold (#1511). `individual` is the existing plan and
+ * organization checkout; `seat_pool` is an organization seat licence. A plan
+ * can be sold through both. These values and the CHECK constraint on
+ * `subscription_plans.sales_channels` are the same closed set, pinned by
+ * `catalog-invariants`.
+ */
+export const SALES_CHANNELS = ['individual', 'seat_pool'] as const;
+export type SalesChannel = (typeof SALES_CHANNELS)[number];
+/** The two values, named once so a filter cannot spell one of them wrong. */
+export const SALES_CHANNEL_INDIVIDUAL: SalesChannel = 'individual';
+export const SALES_CHANNEL_SEAT_POOL: SalesChannel = 'seat_pool';
+
 /** `unlisted` is a sales-led contract plan: never in a public read (B3, #1495). */
 export const PLAN_VISIBILITIES = ['public', 'unlisted'] as const;
 export type PlanVisibility = (typeof PLAN_VISIBILITIES)[number];

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
+import type { Database } from '@studiq/server/types/database';
+import { createClient } from '@supabase/supabase-js';
 import { json } from '#test/helpers/json';
 import { createSeedDb } from '#test/helpers/tenant-seed';
 import {
@@ -12,6 +14,7 @@ import {
   useRealSupabase,
   cleanupOrganizationDeep,
   mockUser,
+  seedOrganization,
   seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -73,6 +76,23 @@ describe(`Seats Integration`, () => {
 
   const orgCookies = () => ({ active_org_id: orgId });
 
+  /** Adds the user to the org with the member role; a seat needs a membership (#1146). */
+  async function seedMember(userId: string) {
+    const supabase = createSeedDb();
+    const memberRole = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'member')
+      .single();
+    if (!memberRole.data) throw new Error('seed org is missing the member role');
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId,
+      orgRoleId: memberRole.data.id,
+    });
+  }
+
   beforeAll(async () => {
     // Manager creates the org via the API (launch plan by default).
     fixture = await before({ role: 'manager', org: true });
@@ -87,7 +107,7 @@ describe(`Seats Integration`, () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: 'free', quantity: 10 }),
+        body: JSON.stringify({ planKey: 'ai_lite', quantity: 10 }),
       },
       orgCookies(),
     );
@@ -101,6 +121,11 @@ describe(`Seats Integration`, () => {
     assigneeB = await createTestUser({ role: 'educator' });
     assigneeC = await createTestUser({ role: 'educator' });
     student = await createTestUser({ role: 'student' });
+
+    // A seat is a per-member licence (#1146): every assignee is an org member.
+    for (const assignee of [assigneeA, assigneeB, assigneeC, student]) {
+      await seedMember(assignee.id);
+    }
   });
 
   beforeEach(() => {
@@ -132,7 +157,7 @@ describe(`Seats Integration`, () => {
       expect(body.data).toBeInstanceOf(Array);
       expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-      const pool = body.data.find((p) => p.planKey === 'free');
+      const pool = body.data.find((p) => p.planKey === 'ai_lite');
       expect(pool).toBeDefined();
       expect(pool!.total).toBe(10);
       expect(pool!.assigned).toBe(0);
@@ -165,7 +190,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 5 }),
+          body: JSON.stringify({ planKey: 'ai_pro', quantity: 5 }),
         },
         orgCookies(),
       );
@@ -175,7 +200,7 @@ describe(`Seats Integration`, () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.planKey).toBe('pro');
+      expect(body.data.planKey).toBe('ai_pro');
       expect(body.data.total).toBe(5);
     });
 
@@ -188,7 +213,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 3 }),
+          body: JSON.stringify({ planKey: 'ai_pro', quantity: 3 }),
         },
         orgCookies(),
       );
@@ -265,6 +290,8 @@ describe(`Seats Integration`, () => {
           sort_order: 990,
           is_active: true,
           scope: 'personal',
+          visibility: 'unlisted',
+          sales_channels: ['seat_pool'],
         });
         expect(planError).toBeNull();
         const { error: entError } = await supabase
@@ -309,7 +336,7 @@ describe(`Seats Integration`, () => {
       }
     });
 
-    it('accepts a personal plan whose keys are all seat-eligible (pro)', async () => {
+    it('accepts a licence plan whose keys are all seat-eligible (ai_pro)', async () => {
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -317,7 +344,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'pro', quantity: 1 }),
+          body: JSON.stringify({ planKey: 'ai_pro', quantity: 1 }),
         },
         orgCookies(),
       );
@@ -326,7 +353,7 @@ describe(`Seats Integration`, () => {
       const body = await json<PoolBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.planKey).toBe('pro');
+      expect(body.data.planKey).toBe('ai_pro');
     });
   });
 
@@ -430,12 +457,14 @@ describe(`Seats Integration`, () => {
     it('returns 422 (not 500) for a quantity above the int4 range and writes nothing', async () => {
       mockUser(fixture.user);
 
+      const totalBefore = (await readPools()).find((p) => p.planKey === 'ai_pro')?.total;
+
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/pools',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'plus', quantity: 99_999_999_999 }),
+          body: JSON.stringify({ planKey: 'ai_pro', quantity: 99_999_999_999 }),
         },
         orgCookies(),
       );
@@ -449,7 +478,7 @@ describe(`Seats Integration`, () => {
       expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
-      expect(pools.find((p) => p.planKey === 'plus')).toBeUndefined();
+      expect(pools.find((p) => p.planKey === 'ai_pro')?.total).toBe(totalBefore);
     });
 
     it('rejects an increment that would overflow int4 and leaves the pool unchanged', async () => {
@@ -461,7 +490,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'max', quantity: 8 }),
+          body: JSON.stringify({ planKey: 'ai_max', quantity: 8 }),
         },
         orgCookies(),
       );
@@ -473,7 +502,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'max', quantity: INT4_MAX }),
+          body: JSON.stringify({ planKey: 'ai_max', quantity: INT4_MAX }),
         },
         orgCookies(),
       );
@@ -487,7 +516,7 @@ describe(`Seats Integration`, () => {
       expect(body.issues!.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
 
       const pools = await readPools();
-      expect(pools.find((p) => p.planKey === 'max')?.total).toBe(8);
+      expect(pools.find((p) => p.planKey === 'ai_max')?.total).toBe(8);
     });
 
     it('returns 422 for a PUT above the int4 range and leaves the pool unchanged', async () => {
@@ -570,6 +599,86 @@ describe(`Seats Integration`, () => {
       expect(body.data.poolId).toBe(poolId);
     });
 
+    it('returns 404 for a target who is not a member of the active org (#1146)', async () => {
+      // A seat is a per-member licence: a profile row alone is not a licence
+      // holder. The refusal is the same NOT_FOUND a missing user gets.
+      mockUser(fixture.user);
+      const outsider = await createTestUser({ role: 'student' });
+      const supabase = createSeedDb();
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/seats/assignments',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: outsider.id, poolId }),
+        },
+        orgCookies(),
+      );
+
+      const response = await createAssignment(req);
+      const body = await json<SeatsErrorBody>(response);
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe('NOT_FOUND');
+
+      const written = await supabase
+        .from('org_seat_assignments')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('user_id', outsider.id);
+      expect(written.data).toEqual([]);
+    });
+
+    it('returns 404 for a member of another org that shares an org with the manager (#1146)', async () => {
+      // The target is a real member elsewhere, so a lookup without the
+      // active-org filter finds the row and writes the seat. The manager shares
+      // that org, so the same lookup's profile embed is readable under the
+      // `profiles` policy — the active-org filter is the only refusal left.
+      mockUser(fixture.user);
+      const supabase = createSeedDb();
+      const otherOrg = await seedOrganization(`Seat other org ${Date.now()}`);
+      const target = await createTestUser({ role: 'student' });
+
+      try {
+        await seedOrgMembership({
+          organizationId: otherOrg.org.id,
+          userId: target.id,
+          orgRoleId: otherOrg.memberRoleId,
+        });
+        await seedOrgMembership({
+          organizationId: otherOrg.org.id,
+          userId: fixture.user.id,
+          orgRoleId: otherOrg.memberRoleId,
+        });
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/assignments',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: target.id, poolId }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createAssignment(req);
+        const body = await json<SeatsErrorBody>(response);
+
+        expect(response.status).toBe(404);
+        expect(body.error).toBe('NOT_FOUND');
+
+        const written = await supabase
+          .from('org_seat_assignments')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('user_id', target.id);
+        expect(written.data).toEqual([]);
+      } finally {
+        await cleanupOrganizationDeep(otherOrg.org.id);
+      }
+    });
+
     it('succeeds and can be listed after creation', async () => {
       mockUser(fixture.user);
 
@@ -626,19 +735,8 @@ describe(`Seats Integration`, () => {
       // persona. A personal plan carries no audience now, so the student is
       // accepted when the pool has room.
       const supabase = createSeedDb();
-      const memberRole = await supabase
-        .from('org_roles')
-        .select('id')
-        .eq('organization_id', orgId)
-        .eq('name', 'member')
-        .single();
-      if (!memberRole.data) throw new Error('seed org is missing the member role');
       const studentMember = await createTestUser({ role: 'student' });
-      await seedOrgMembership({
-        organizationId: orgId,
-        userId: studentMember.id,
-        orgRoleId: memberRole.data.id,
-      });
+      await seedMember(studentMember.id);
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -674,7 +772,7 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'max', quantity: 2 }),
+          body: JSON.stringify({ planKey: 'ai_max', quantity: 2 }),
         },
         orgCookies(),
       );
@@ -683,6 +781,7 @@ describe(`Seats Integration`, () => {
       expect(poolRes.status).toBe(201);
 
       const educator = await createTestUser({ role: 'educator' });
+      await seedMember(educator.id);
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
         {
@@ -714,16 +813,17 @@ describe(`Seats Integration`, () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planKey: 'max', quantity: 1 }),
+          body: JSON.stringify({ planKey: 'ai_max', quantity: 1 }),
         },
         orgCookies(),
       );
       const poolRes = await createPool(poolReq);
       const poolBody = await json<PoolBody>(poolRes);
       expect(poolRes.status).toBe(201);
-      expect(poolBody.data.planKey).toBe('max');
+      expect(poolBody.data.planKey).toBe('ai_max');
 
       const manager = await createTestUser({ role: 'manager' });
+      await seedMember(manager.id);
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
         {
@@ -738,7 +838,7 @@ describe(`Seats Integration`, () => {
       const body = await json<AssignmentBody>(response);
 
       expect(response.status).toBe(201);
-      expect(body.data.planKey).toBe('max');
+      expect(body.data.planKey).toBe('ai_max');
       expect(body.data.userId).toBe(manager.id);
     });
   });
@@ -813,6 +913,7 @@ describe(`Seats Integration`, () => {
       expect(fillError).toBeNull();
 
       const newcomer = await createTestUser({ role: 'educator' });
+      await seedMember(newcomer.id);
       mockUser(fixture.user);
 
       const req = createNextRequest(
@@ -834,6 +935,79 @@ describe(`Seats Integration`, () => {
       expect(response.status).toBe(429);
       expect(body.success).toBe(false);
       expect(body.error).toBe('USAGE_LIMIT_EXCEEDED');
+    });
+  });
+
+  describe('org_seat_pools.assigned is service-role only (#1146)', () => {
+    it('a manager can write total but not assigned; the service role writes assigned', async () => {
+      // A real signed-in manager, because this is a PostgREST column
+      // privilege: the RLS policy still allows the row, so the refusal must
+      // name the column and not the row.
+      const managerSession = createClient<Database>(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      const signIn = await managerSession.auth.signInWithPassword({
+        email: fixture.user.email,
+        password: fixture.user.password!,
+      });
+      expect(signIn.error).toBeNull();
+
+      const service = createSeedDb();
+      const planKey = `test-seat-privilege-${Date.now()}`;
+      const { error: planError } = await service.from('subscription_plans').insert({
+        key: planKey,
+        name: 'Test seat privilege',
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 991,
+        is_active: true,
+        scope: 'personal',
+        visibility: 'unlisted',
+        sales_channels: ['seat_pool'],
+      });
+      expect(planError).toBeNull();
+
+      const { data: pool, error: poolError } = await service
+        .from('org_seat_pools')
+        .insert({ organization_id: orgId, plan_key: planKey, total: 2 })
+        .select('id')
+        .single();
+      expect(poolError).toBeNull();
+      expect(pool).not.toBeNull();
+
+      try {
+        const denied = await managerSession
+          .from('org_seat_pools')
+          .update({ assigned: 1 })
+          .eq('id', pool!.id)
+          .select('id');
+        expect(denied.error?.code).toBe('42501');
+
+        const allowed = await service
+          .from('org_seat_pools')
+          .update({ assigned: 1 })
+          .eq('id', pool!.id)
+          .select('id, assigned')
+          .single();
+        expect(allowed.error).toBeNull();
+        expect(allowed.data?.assigned).toBe(1);
+
+        // The same manager still sets the paid count: the denial is the column,
+        // not the row.
+        const totalWrite = await managerSession
+          .from('org_seat_pools')
+          .update({ total: 3 })
+          .eq('id', pool!.id)
+          .select('id, total')
+          .single();
+        expect(totalWrite.error).toBeNull();
+        expect(totalWrite.data?.total).toBe(3);
+      } finally {
+        await service.from('org_seat_pools').delete().eq('id', pool!.id);
+        await service.from('subscription_plans').delete().eq('key', planKey);
+      }
     });
   });
 });

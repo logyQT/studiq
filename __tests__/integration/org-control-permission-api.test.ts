@@ -635,7 +635,7 @@ describe('org-control routes authorize on org permissions', () => {
         holderSession,
         postPool,
         '/api/v1/organization/seats/pools',
-        jsonInit('POST', { planKey: 'pro', quantity: 2 }),
+        jsonInit('POST', { planKey: 'ai_lite', quantity: 2 }),
         orgId,
       );
       expect(created.status).toBe(201);

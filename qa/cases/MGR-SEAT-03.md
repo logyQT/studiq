@@ -15,6 +15,14 @@ through the product API (`DELETE /api/v1/organization/seats/assignments/<id>`), 
 reloaded to read the persisted counters. The case's subject — the member falls back to their
 personal plan and the pool's available counter grows — is unchanged.
 
+## Amendment (2026-11-28, #1511)
+
+A seat pool is a licence (`ai_lite` / `ai_pro` / `ai_max`); the case buys **`ai_max`**. A licence
+seat grants `ai.chat` and its tier quota, and the organization ceiling does not intersect it
+(D38), so releasing the seat removes the AI budget and leaves the org/role content alone. The pool
+and assignment tables show the plan **key** (`ai_max`) rather than the tier's name: the page takes
+its labels from the public catalogue, which does not serve a licence plan (#1511).
+
 ## Prerequisite (verbatim)
 
 Istniejący przydział.
@@ -51,21 +59,21 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
 - Świeża organizacja nie ma **żadnych puli miejsc** (`plan_seat_allocations` zostało
   usunięte migracją `20260915000003`), więc warunek „istniejący przydział” spec buduje
   przez API produktu — te same żądania, które wysyła okno „Przydziel miejsce”:
-  `POST /api/v1/organization/seats/pools` (`max`, 2 miejsca — plan osobisty bez
-  `audience` od #1193) i dwa `POST /api/v1/organization/seats/assignments`. Setup jest
-  idempotentny: powtórzony przebieg w tym samym tenancie czyści własne przydziały i
+  `POST /api/v1/organization/seats/pools` (`ai_max`, 2 miejsca — licencja AI, plan
+  osobisty bez `audience` od #1193) i dwa `POST /api/v1/organization/seats/assignments`.
+  Setup jest idempotentny: powtórzony przebieg w tym samym tenancie czyści własne przydziały i
   ustawia pulę z powrotem na 2 miejsca.
 - Kroki 1–2 wykonuje API: `DELETE /api/v1/organization/seats/assignments/<id>` usuwa przydział,
   a odświeżona strona `/manage/seats` (locale `pl`) pokazuje nowe liczniki.
 - Weryfikacja „członek wraca do planu bazowego”: `GET /api/v1/me/plan` członka przed
-  zwolnieniem zwraca plan miejsca (`max`), a po zwolnieniu jego plan osobisty (`free`) —
+  zwolnieniem zwraca plan miejsca (`ai_max`), a po zwolnieniu jego plan osobisty (`free`) —
   ten sam, który zwraca `GET /api/v1/me/personal-plan`.
 - Spec: `__tests__/qa/MGR/MGR-SEAT-03.spec.ts`, projekt `__tests__/qa/playwright.qa.config.ts`, baseURL
   `http://localhost:3010`, `NEXT_LOCALE=pl`.
 - Izolacja: test czyta i zapisuje wyłącznie wiersze swojego tenanta (organizacja,
-  członkowie, pule i przydziały miejsc). Katalog planów jest tylko czytany (nazwa planu do
-  etykiety wiersza); test nie dotyka flag funkcji, ustawień admina, statystyk platformy ani
-  wierszy singletonowych.
+  członkowie, pule i przydziały miejsc). Katalog planów nie jest czytany przez ten przypadek;
+  etykieta wiersza to klucz planu, bo publiczny katalog nie serwuje licencji (#1511). Test nie
+  dotyka flag funkcji, ustawień admina, statystyk platformy ani wierszy singletonowych.
 
 ## Walk observations (qa-env-1, shared app :3010 / DB :54421, pl)
 
@@ -84,7 +92,9 @@ bun scripts/qa-tenant.ts MGR-SEAT-03 --fresh
   tej samej puli zostaje.
 - Po zwolnieniu `GET /api/v1/me/plan` zwalnianego członka zwraca `free` (jego plan
   osobisty), a limity wracają do wartości planu bazowego; wcześniej (z przydziałem `max`)
-  zwracał `max` z limitami Max (np. `max_flashcards: 25000`).
+  zwracał `max` z limitami Max (np. `max_flashcards: 25000`). Od #1511 miejsce nie jest
+  przecinane z pułapem organizacji (D38): przydział `ai_max` podnosi wyłącznie
+  `max_ai_tokens_per_day` (1 000 000), a po zwolnieniu budżet AI wraca do planu osobistego.
 
 ## Observed 2026-11-20 (2b-3) — the roster is now declared
 

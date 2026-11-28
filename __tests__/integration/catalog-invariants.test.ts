@@ -4,6 +4,7 @@ import {
   LIMITS,
   PERMISSIONS,
   Permission,
+  SALES_CHANNELS,
   SURFACE_ENTITLEMENT_KEYS,
 } from '@studiq/authz';
 import { dbRows } from '@studiq/server/lib/supabase/rows';
@@ -237,5 +238,41 @@ describe('catalog invariants', () => {
     const missing = SURFACE_ENTITLEMENT_KEYS.filter((key) => !flags.has(key));
 
     expect(missing).toEqual([]);
+  });
+
+  it('every seat-eligible entitlement is personal scope (D38)', () => {
+    // A seat grants its own keys, so the ceiling no longer filters it. A seat
+    // must therefore never carry an org-scope key: the catalog is the boundary.
+    for (const [key, definition] of Object.entries(ENTITLEMENTS)) {
+      if (!definition.seatEligible) continue;
+      expect(definition.scope, key).toBe('personal');
+    }
+  });
+
+  it('the TypeScript sales channels are the CHECK constraint values (#1511)', async () => {
+    const raw = process.env.SUPABASE_DB_URL;
+    if (!raw) {
+      throw new Error(
+        'catalog-invariants needs SUPABASE_DB_URL to read the channel CHECK; run the ' +
+          'suite through `bun run env:run -- bun run test:integration`.',
+      );
+    }
+    const sql = postgres(raw, { max: 1, onnotice: () => {} });
+    try {
+      const [row] = await sql<Array<{ def: string }>>`
+        select pg_get_constraintdef(oid) as def
+        from pg_constraint
+        where conrelid = 'public.subscription_plans'::regclass
+          and conname = 'subscription_plans_sales_channels_check'`;
+      if (!row) throw new Error('subscription_plans has no sales_channels CHECK');
+
+      // The definition names each closed value once, as a string literal.
+      const literals = [...row.def.matchAll(/'([^']+)'/g)]
+        .map((match) => match[1])
+        .filter((value): value is string => value !== undefined);
+      expect([...new Set(literals)].toSorted()).toEqual([...SALES_CHANNELS].toSorted());
+    } finally {
+      await sql.end();
+    }
   });
 });

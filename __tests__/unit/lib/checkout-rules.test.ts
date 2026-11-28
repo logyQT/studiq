@@ -20,6 +20,7 @@ const personalPlan: CatalogPlan = {
   sortOrder: 2,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 const orgPlan: CatalogPlan = {
   key: 'hub',
@@ -31,6 +32,15 @@ const orgPlan: CatalogPlan = {
   sortOrder: 7,
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
+};
+/** The three AI licences: personal scope, sold only as a seat pool (#1511). */
+const seatPoolPlan: CatalogPlan = {
+  ...personalPlan,
+  key: 'ai_lite',
+  name: 'StudiQ AI Lite',
+  sortOrder: 9,
+  salesChannels: ['seat_pool'],
 };
 const freePersonalPlan: CatalogPlan = {
   ...personalPlan,
@@ -77,6 +87,21 @@ describe('resolveApplicablePlan', () => {
     await expect(resolveApplicablePlan(planPort(orgPlan), 'hub', manager)).resolves.toEqual(
       success({ plan: orgPlan, isOrgPlan: true }),
     );
+  });
+
+  it('refuses a seat_pool-only licence on the individual checkout (#1511)', async () => {
+    for (const caller of [student, { userId: 'u-educator', accountType: AccountType.EDUCATOR }]) {
+      await expect(
+        resolveApplicablePlan(planPort(seatPoolPlan), seatPoolPlan.key, caller),
+      ).resolves.toEqual(failure('BAD_REQUEST'));
+    }
+  });
+
+  it('accepts a plan sold on both channels through the individual checkout (#1511)', async () => {
+    const bothChannels = { ...personalPlan, salesChannels: ['individual', 'seat_pool'] };
+    await expect(
+      resolveApplicablePlan(planPort(bothChannels), bothChannels.key, student),
+    ).resolves.toEqual(success({ plan: bothChannels, isOrgPlan: false }));
   });
 
   it.each([

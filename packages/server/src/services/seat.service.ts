@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { type RequestContext, SALES_CHANNEL_SEAT_POOL } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { dbNested, dbRows } from '@studiq/server/lib/supabase/rows';
@@ -69,10 +69,11 @@ export class SeatService {
 
   async addPool(ctx: RequestContext, input: CreatePoolInput): Promise<PoolResult> {
     // The licence check is catalog truth in one query (D15/D33): the plan must
-    // exist, be active, be `scope='personal'`, and every entitlement key it
-    // carries must be `seatEligible` in the live `entitlement_catalog` — a plan
-    // with no entitlements is not a licence. Refuse before writing anything,
-    // with the same field-error shape as the old tier-map refusal.
+    // exist, be active, be `scope='personal'`, be sold on the `seat_pool`
+    // channel (#1511), and every entitlement key it carries must be
+    // `seatEligible` in the live `entitlement_catalog` — a plan with no
+    // entitlements is not a licence. Refuse before writing anything, with the
+    // same field-error shape as the old tier-map refusal.
     if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
     const supabase = await this.clientFactory();
@@ -80,7 +81,7 @@ export class SeatService {
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select(
-        'key, is_active, scope, plan_entitlements(entitlement_key, entitlement_catalog(seat_eligible))',
+        'key, is_active, scope, sales_channels, plan_entitlements(entitlement_key, entitlement_catalog(seat_eligible))',
       )
       .eq('key', input.planKey)
       .maybeSingle();
@@ -92,6 +93,7 @@ export class SeatService {
       !!plan &&
       !!plan.is_active &&
       plan.scope === 'personal' &&
+      plan.sales_channels.includes(SALES_CHANNEL_SEAT_POOL) &&
       entitlements.length > 0 &&
       entitlements.every((row) => !!dbNested(row.entitlement_catalog)?.seat_eligible);
     if (!isLicence) {
@@ -261,17 +263,21 @@ export class SeatService {
     if (poolErr) return toDbFailure(poolErr);
     if (!pool) return failure('NOT_FOUND');
 
-    // A seat pool is offerable to any member of the org: the plan carries no
-    // persona dimension. The licence rules (scope, seat eligibility) already
-    // held when the pool was created.
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', input.userId)
+    // A seat is a per-member licence, independent of role (#1146). The pool is
+    // offerable to any member of the organization, and only to a member: the
+    // `org_members` row is the membership proof, and the profile embed supplies
+    // the email the response returns. A non-member is `NOT_FOUND`, never a
+    // write that an unrelated user's seat row would legitimise.
+    const { data: member, error: memberErr } = await supabase
+      .from('org_members')
+      .select('user_id, profiles(email)')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('user_id', input.userId)
       .maybeSingle();
 
-    if (profileErr) return toDbFailure(profileErr);
-    if (!profile) return failure('NOT_FOUND');
+    if (memberErr) return toDbFailure(memberErr);
+    const profile = dbNested(member?.profiles);
+    if (!member || !profile) return failure('NOT_FOUND');
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)
     const { data: existing } = await supabase

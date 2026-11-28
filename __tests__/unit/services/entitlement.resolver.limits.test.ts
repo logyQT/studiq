@@ -1,4 +1,5 @@
 import { AccountType, LIMIT_KEYS, type LimitKey, type RequestContext } from '@studiq/authz';
+import { warn } from '@studiq/server/lib/log';
 import { EntitlementResolver } from '@studiq/server/services/entitlement.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -7,6 +8,10 @@ import {
   mockResolverTables,
 } from '#test/helpers/entitlement-resolver-mock';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+// The resolver warns through the one logger module; capture it so a partial
+// licence plan can be asserted silent (F6).
+vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
 /**
  * ADR-0015 §6.2 truth table, pinned against the in-resolver composition
@@ -239,6 +244,34 @@ describe('EntitlementResolver limits composition (ADR-0015 §6.2)', () => {
     const { limits } = await resolver.resolveEntitlements(baseCtx);
 
     expect(Object.keys(limits).toSorted()).toEqual([...LIMIT_KEYS].toSorted());
+  });
+
+  it('composes a partial licence plan without the missing-limit warning (F6)', async () => {
+    mockResolverTables(mock, {
+      orgPlan: 'launch',
+      roleProfile: 'learner',
+      seatPlanKey: 'ai_lite',
+      personalPlanKey: 'free',
+      planLimits: {
+        launch: { ...ORG_LIMITS, max_flashcards: 100, max_ai_tokens_per_day: 0 },
+        ai_lite: { max_ai_tokens_per_day: 100000 },
+        free: PERSONAL_LIMITS,
+      },
+    });
+
+    const { limits } = await resolver.resolveEntitlements(memberCtx());
+
+    expect(limits.max_ai_tokens_per_day).toBe(100000);
+    // A licence plan carries one quota row by design; its other keys are a
+    // silent 0. The warning keeps its meaning for the org and personal layers.
+    const seatWarnings = vi
+      .mocked(warn)
+      .mock.calls.filter(
+        ([message, attributes]) =>
+          message === 'entitlement.resolver: plan is missing a limit' &&
+          attributes?.planKey === 'ai_lite',
+      );
+    expect(seatWarnings).toEqual([]);
   });
 
   it('unlimited -1 short-circuits the max and wins over every finite layer', async () => {

@@ -178,12 +178,13 @@ describe(`org entitlement resolution under RLS`, () => {
   });
 
   it('the resolver reads a seated member plan through the embed under RLS', async () => {
-    // An `pro` seat on the `launch` org: 5000 is the only max_flashcards
-    // above launch's 100, so the value proves the member's own session could
-    // read the assignment -> pool(plan_key) embed (and not just the org plan).
+    // An AI Pro licence on the `launch` org: 300000 is the only
+    // max_ai_tokens_per_day above launch's 0, so the value proves the member's
+    // own session could read the assignment -> pool(plan_key) embed (and not
+    // just the org plan).
     const { data: pool, error: poolError } = await service
       .from('org_seat_pools')
-      .insert({ organization_id: org1, plan_key: 'pro', total: 1 })
+      .insert({ organization_id: org1, plan_key: 'ai_pro', total: 1 })
       .select('id')
       .single();
     if (poolError) throw new Error(`seat pool create failed: ${poolError.message}`);
@@ -207,8 +208,8 @@ describe(`org entitlement resolution under RLS`, () => {
 
     const { limits, sources } = await resolver.resolveEntitlements(ctx);
 
-    expect(sources.seat).toEqual({ planKey: 'pro', origin: 'seat' });
-    expect(limits.max_flashcards).toBe(5000);
+    expect(sources.seat).toEqual({ planKey: 'ai_pro', origin: 'seat' });
+    expect(limits.max_ai_tokens_per_day).toBe(300_000);
   });
 
   it('the resolver cannot read a foreign org plan through RLS', async () => {

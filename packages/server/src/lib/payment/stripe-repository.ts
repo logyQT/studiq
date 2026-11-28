@@ -26,6 +26,8 @@ export interface CatalogPlan {
   visibility: string;
   /** `stripe`, `invoice` or `none` (B3); only `stripe` is self-serve. */
   billingMode: string;
+  /** Where the plan is sold (#1511): `individual`, `seat_pool`, or both. */
+  salesChannels: string[];
 }
 
 export interface CustomerMapping {
@@ -167,6 +169,7 @@ type CatalogPlanRow = Pick<
   | 'sort_order'
   | 'visibility'
   | 'billing_mode'
+  | 'sales_channels'
 >;
 
 function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
@@ -180,6 +183,7 @@ function mapCatalogPlan(row: CatalogPlanRow): CatalogPlan {
     sortOrder: row.sort_order ?? 0,
     visibility: row.visibility,
     billingMode: row.billing_mode,
+    salesChannels: row.sales_channels,
   };
 }
 
@@ -195,7 +199,7 @@ export async function readCatalogPlan(
   const { data, error } = await supabase
     .from('subscription_plans')
     .select(
-      'key, name, price_monthly, currency, is_active, scope, sort_order, visibility, billing_mode',
+      'key, name, price_monthly, currency, is_active, scope, sort_order, visibility, billing_mode, sales_channels',
     )
     .eq('key', planKey)
     .maybeSingle();

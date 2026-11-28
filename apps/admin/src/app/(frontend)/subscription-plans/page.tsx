@@ -1,12 +1,13 @@
 'use client';
 
-import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES } from '@studiq/authz';
+import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES, SALES_CHANNELS } from '@studiq/authz';
 import {
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -46,6 +47,7 @@ type SubscriptionPlan = {
   scope: string;
   visibility: string;
   billingMode: string;
+  salesChannels: string[];
 };
 
 type FormData = {
@@ -58,6 +60,7 @@ type FormData = {
   scope: string;
   visibility: string;
   billingMode: string;
+  salesChannels: string[];
 };
 
 const EMPTY_FORM: FormData = {
@@ -70,6 +73,7 @@ const EMPTY_FORM: FormData = {
   scope: 'personal',
   visibility: 'public',
   billingMode: 'stripe',
+  salesChannels: ['individual'],
 };
 
 function formatPrice(cents: number | null) {
@@ -88,6 +92,7 @@ function buildPayload(data: FormData) {
     scope: data.scope,
     visibility: data.visibility,
     billingMode: data.billingMode,
+    salesChannels: data.salesChannels,
   };
 }
 
@@ -173,6 +178,7 @@ export default function SubscriptionPlansPage() {
       scope: plan.scope,
       visibility: plan.visibility,
       billingMode: plan.billingMode,
+      salesChannels: plan.salesChannels,
     });
     setFormError(null);
     setDeleteError(null);
@@ -222,6 +228,7 @@ export default function SubscriptionPlansPage() {
                   <TableHead>{t('col_scope')}</TableHead>
                   <TableHead>{t('col_visibility')}</TableHead>
                   <TableHead>{t('col_billing_mode')}</TableHead>
+                  <TableHead>{t('col_sales_channels')}</TableHead>
                   <TableHead>{t('col_monthly')}</TableHead>
                   <TableHead>{t('col_yearly')}</TableHead>
                   <TableHead>{t('col_active')}</TableHead>
@@ -257,6 +264,9 @@ export default function SubscriptionPlansPage() {
                       <TableCell className="text-muted-foreground">
                         {t(`billing_mode_${plan.billingMode}`)}
                       </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {plan.salesChannels.map((channel) => t(`channel_${channel}`)).join(', ')}
+                      </TableCell>
                       <TableCell>{formatPrice(plan.priceMonthly)}</TableCell>
                       <TableCell>{formatPrice(plan.priceYearly)}</TableCell>
                       <TableCell>
@@ -279,7 +289,7 @@ export default function SubscriptionPlansPage() {
                     </TableRow>
                     {expandedKey === plan.key && (
                       <TableRow key={`${plan.id}-detail`}>
-                        <TableCell colSpan={10} className="bg-muted/30 px-12 py-3">
+                        <TableCell colSpan={11} className="bg-muted/30 px-12 py-3">
                           <PlanDetails planKey={plan.key} />
                         </TableCell>
                       </TableRow>
@@ -288,7 +298,7 @@ export default function SubscriptionPlansPage() {
                 ))}
                 {plans.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>
@@ -379,6 +389,29 @@ export default function SubscriptionPlansPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t('col_sales_channels')}</Label>
+              <div className="flex gap-6">
+                {SALES_CHANNELS.map((channel) => (
+                  <label key={channel} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={form.salesChannels.includes(channel)}
+                      onCheckedChange={(checked) =>
+                        setForm({
+                          ...form,
+                          salesChannels:
+                            checked === true
+                              ? [...form.salesChannels, channel]
+                              : form.salesChannels.filter((value) => value !== channel),
+                        })
+                      }
+                    />
+                    {t(`channel_${channel}`)}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{t('sales_channels_hint')}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

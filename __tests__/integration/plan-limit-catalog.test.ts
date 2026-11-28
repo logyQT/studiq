@@ -16,6 +16,7 @@ import { createServiceClient } from '#test/integration/helpers';
 interface PlanRow {
   key: string;
   scope: string;
+  sales_channels: string[];
 }
 
 interface PlanLimitRow {
@@ -33,7 +34,7 @@ describe('plan limit catalog (#233)', () => {
 
     const { data: plans, error: plansError } = await service
       .from('subscription_plans')
-      .select('key, scope')
+      .select('key, scope, sales_channels')
       .eq('is_active', true);
     if (plansError) throw new Error(`[catalog] plan lookup failed: ${plansError.message}`);
     activePlans = dbRows(plans);
@@ -51,16 +52,59 @@ describe('plan limit catalog (#233)', () => {
     );
   }
 
+  /**
+   * A licence plan is a **partial** plan (D38, #1511): it sells `ai.chat` with
+   * one quota row, and a missing row for any other key is a silent `0`, not a
+   * gap in a full plan. Only a plan sold **exclusively** as a seat licence is
+   * exempt: a `{individual, seat_pool}` plan is still sold individually, so it
+   * must define every key it sells.
+   */
+  function isLicencePlan(plan: PlanRow): boolean {
+    return (
+      plan.scope === 'personal' &&
+      plan.sales_channels.length > 0 &&
+      plan.sales_channels.every((channel) => channel === 'seat_pool')
+    );
+  }
+
+  /** The per-member limit keys `plan` is missing, licence exemption applied. */
+  function missingLimitKeys(plan: PlanRow, keys: Set<string>): string[] {
+    if (isLicencePlan(plan)) return [];
+    const required = USER_LIMIT_KEYS.filter(
+      (key) => !(plan.scope === 'organization' && key === 'max_ai_tokens_per_day'),
+    );
+    return required.filter((key) => !keys.has(key)).map((key) => `${plan.key}.${key}`);
+  }
+
   it('every active plan defines every per-member limit key it sells', () => {
-    const missing = activePlans.flatMap((plan) => {
-      const keys = keysFor(plan.key);
-      const required = USER_LIMIT_KEYS.filter(
-        (key) => !(plan.scope === 'organization' && key === 'max_ai_tokens_per_day'),
-      );
-      return required.filter((key) => !keys.has(key)).map((key) => `${plan.key}.${key}`);
-    });
+    const missing = activePlans.flatMap((plan) => missingLimitKeys(plan, keysFor(plan.key)));
 
     expect(missing).toEqual([]);
+  });
+
+  it('a both-channel plan is a full plan, not a licence (#233, #1511)', () => {
+    const bothChannels: PlanRow = {
+      key: 'both-channels',
+      scope: 'personal',
+      sales_channels: ['individual', 'seat_pool'],
+    };
+    const keys = new Set(['max_ai_tokens_per_day']);
+
+    // Sold individually as well, so the missing keys are real gaps.
+    expect(missingLimitKeys(bothChannels, keys)).toContain('both-channels.max_flashcards');
+
+    // The seat_pool-only licence stays exempt: its one quota row is the sale.
+    expect(missingLimitKeys({ ...bothChannels, sales_channels: ['seat_pool'] }, keys)).toEqual([]);
+  });
+
+  it('every licence plan defines the AI quota it sells (#1511)', () => {
+    const licences = activePlans.filter(isLicencePlan);
+    expect(licences.length).toBeGreaterThan(0);
+    expect(
+      licences
+        .filter((plan) => !keysFor(plan.key).has('max_ai_tokens_per_day'))
+        .map((plan) => plan.key),
+    ).toEqual([]);
   });
 
   it('no active organization plan carries an AI quota (#1493 → #1511)', () => {

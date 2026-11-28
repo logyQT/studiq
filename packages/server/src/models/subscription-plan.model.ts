@@ -1,4 +1,4 @@
-import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES } from '@studiq/authz';
+import { PLAN_BILLING_MODES, PLAN_SCOPES, PLAN_VISIBILITIES, SALES_CHANNELS } from '@studiq/authz';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
@@ -24,6 +24,13 @@ const PLAN_VISIBILITY_FIELD = z.enum(PLAN_VISIBILITIES, {
 const PLAN_BILLING_MODE_FIELD = z.enum(PLAN_BILLING_MODES, {
   error: ValidationErrorCode.INVALID_INPUT,
 });
+
+/** At least one channel, from the closed set (#1511). */
+const SALES_CHANNELS_FIELD = z
+  .array(z.enum(SALES_CHANNELS, { error: ValidationErrorCode.INVALID_INPUT }), {
+    error: ValidationErrorCode.INVALID_INPUT,
+  })
+  .min(1, { error: ValidationErrorCode.TOO_SHORT });
 
 export const CreateSubscriptionPlanSchema = registry.register(
   'CreateSubscriptionPlanRequest',
@@ -63,6 +70,7 @@ export const CreateSubscriptionPlanSchema = registry.register(
     scope: PLAN_SCOPE_FIELD.optional().default('personal'),
     visibility: PLAN_VISIBILITY_FIELD.optional().default('public'),
     billingMode: PLAN_BILLING_MODE_FIELD.optional().default('stripe'),
+    salesChannels: SALES_CHANNELS_FIELD.optional().default(['individual']),
   }),
 );
 
@@ -99,6 +107,7 @@ export const UpdateSubscriptionPlanSchema = registry.register(
     scope: PLAN_SCOPE_FIELD.optional(),
     visibility: PLAN_VISIBILITY_FIELD.optional(),
     billingMode: PLAN_BILLING_MODE_FIELD.optional(),
+    salesChannels: SALES_CHANNELS_FIELD.optional(),
   }),
 );
 

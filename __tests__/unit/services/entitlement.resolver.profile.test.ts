@@ -9,7 +9,7 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 // revoke store:
 //
 //   verified membership → profile (all | learner | none) ∩ plan ceiling
-//     → seat plan ∩ ceiling
+//     → seat plan (its own keys, D38)
 //     → personal plan (personalPortable whitelist inside an org)
 //     → overrides → flags (fail closed) → quota-0 exclusion
 //
@@ -119,15 +119,15 @@ const CASES: Scenario[] = [
     expected: ['ai.chat', 'flashcards', 'quiz', 'quiz.templates', 'stats.insights', 'branding'],
   },
   {
-    name: 'seated learner on launch: the seat plan is intersected with the ceiling (adds nothing beyond it)',
+    name: 'seated learner on launch: the seat grants its own keys (D38)',
     orgRoleId: 'role-member',
     profile: 'learner',
     plan: 'launch',
     seatPlanKey: 'seat',
-    expected: ['flashcards', 'quiz'],
+    expected: ['ai.chat', 'flashcards', 'quiz', 'stats.insights'],
   },
   {
-    name: 'seated learner on hub: the seat ∩ ceiling adds the seat-only ceiling key',
+    name: 'seated learner on hub: the seat adds its own keys beyond the learner set',
     orgRoleId: 'role-member',
     profile: 'learner',
     plan: 'hub',

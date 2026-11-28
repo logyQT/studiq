@@ -11,12 +11,16 @@ import {
 /**
  * MGR-SEAT-02 — assigning a seat to a member.
  *
- * The organization ladder is cumulative and seats are frozen at the UI:
- * `/manage/seats` keeps the pools and assignments tables and every `GET`,
- * but hides the purchase, assign and release entries. The API routes stay — they
- * are the data path #1511 builds on — so this case drives the assignment through
- * the API and checks what a seat still changes: the member's effective plan and
- * user-scope limits.
+ * A pool is a licence since #1511: one licence plan (`ai_lite`/`ai_pro`/
+ * `ai_max`), `ai.chat` only, one daily quota row, sold on the `seat_pool`
+ * channel. A licence seat grants its own keys and the organization ceiling no
+ * longer intersects it (D38), so a seat adds AI and the tier quota and nothing
+ * else — no content limit, no non-AI feature.
+ *
+ * `/manage/seats` keeps the pools and assignments tables and every `GET`, and
+ * hides the purchase, assign and release entries (the #1493 freeze), so this
+ * case drives the assignment through the API and checks what a seat changes:
+ * the member's effective plan and user-scope limits.
  *
  * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
  * on the `hub` plan with an explicit roster (manager `admin`, teacher, `student`
@@ -27,36 +31,44 @@ import {
  *
  *   bun scripts/qa-tenant.ts MGR-SEAT-02 --fresh
  *
- * The spec provisions the pools through the product API — Free ×1, Plus ×3, Pro
- * ×3, Max ×2 — clears any assignment a previous run left behind, and assigns the
- * **`max`** seat to `student` through the same API. Nothing global is written.
+ * The spec provisions one pool per licence tier — Lite ×1, Pro ×3, Max ×2 —
+ * clears any assignment a previous run left behind, and assigns the **`ai_pro`**
+ * seat to `student` through the API. The Pro tier is the one that shows a seat
+ * at work: its 300 000/day differs from the member's 100 000 Plus quota, so the
+ * assertion reads the licence, not the personal plan. Nothing global is written.
  *
  * Acceptance points:
  * 1. `/manage/seats` renders both tables and no purchase, assign or release
- *    control (the B2 freeze).
- * 2. The assignment appears in „Przydziały”, the Max pool (`max`, 2 seats) moves
- *    from 2/0/2 to 2/1/1, and the other pools keep their counters.
- * 3. The seated member's `/me/plan` is the seat plan `max`; the user-scope
- *    limits resolve `max(org, seat, personal)`, so `max_flashcards` is 25000 and
- *    `max_ai_tokens_per_day` is 500000. The Max seat intersects the Hub ceiling, so
- *    it adds `stats.insights` to the learner profile's two baseline keys; the
- *    portable `ai.chat` and `quiz.templates` come from the personal Plus plan.
- * 4. The unseated control member (`student2`) keeps their personal plan and the
- *    hub floor (`max_flashcards` 5000, AI 100000): the seat is per-member.
+ *    control (the #1493 freeze).
+ * 2. The assignment appears in „Przydziały”, the Pro pool (3 seats) moves from
+ *    3/0/3 to 3/1/2, and the other pools keep their counters.
+ * 3. The seated member's `/me/plan` is the licence `ai_pro`; the user-scope
+ *    limits resolve `max(org, seat, personal)`: `max_ai_tokens_per_day` is
+ *    300 000 (the tier quota, over Plus 100 000 and Hub's absent AI row) and
+ *    `max_flashcards` stays 5 000 (Hub; the licence carries no content limit).
+ *    The keys are the learner profile's two on Hub plus the personal Plus
+ *    portables — no `stats.insights`, because a seat is not intersected with the
+ *    ceiling (D38).
+ * 4. The unseated control (`student2`) keeps Plus: AI 100 000, `max_flashcards`
+ *    5 000 — the seat is per-member.
  * 5. The server-side guards still hold: a second seat for the same member is
- *    429 `USAGE_LIMIT_EXCEEDED`, and another member accepts any pool (201).
+ *    429 `USAGE_LIMIT_EXCEEDED`, and another member accepts a pool (201).
+ *
+ * Mutation (proves this spec can fail): `subscription-plan.service.ts#getMyPlan`,
+ * `planKey = sources.seat.planKey` → `planKey = null`, rebuilt and served. The
+ * spec failed on `the seat is the effective plan`: Expected "ai_pro", Received
+ * "plus". Result: KILLED. Reverted, rebuilt, green again.
  */
 
 const CASE = 'MGR-SEAT-02';
 
 const POOLS = [
-  { planKey: 'free', quantity: 1 },
-  { planKey: 'plus', quantity: 3 },
-  { planKey: 'pro', quantity: 3 },
-  { planKey: 'max', quantity: 2 },
+  { planKey: 'ai_lite', quantity: 1 },
+  { planKey: 'ai_pro', quantity: 3 },
+  { planKey: 'ai_max', quantity: 2 },
 ] as const;
 
-const SEAT_PLAN_KEY = 'max';
+const SEAT_PLAN_KEY = 'ai_pro';
 
 interface Pool {
   id: string;
@@ -125,7 +137,7 @@ async function resetSeats(page: Page): Promise<void> {
   }
 }
 
-/** One pool per individual plan, at exactly the case's quantity and unassigned. */
+/** One pool per licence tier, at exactly the case's quantity and unassigned. */
 async function ensurePool(page: Page, entry: (typeof POOLS)[number]): Promise<Pool> {
   const existing = (
     await readEnvelope<Pool[]>(await page.request.get('/api/v1/organization/seats/pools'))
@@ -186,7 +198,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       expect(tenant.users[role], `${CASE} needs the seeded ${role}`).toBeTruthy();
     }
 
-    // The seat plans are shared catalog data: read them, never write them.
+    // The org and personal plans are on the public catalogue the numbers below
+    // are derived from. The licence tiers are not: #1511 serves that read on the
+    // `individual` channel, which is also why the seats page labels a pool with
+    // its plan key.
     const catalog = (
       await readEnvelope<PlanInfo[]>(await request.get('/api/v1/subscription-plans'))
     ).data;
@@ -197,11 +212,10 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     };
     const hub = plan('hub');
     const plus = plan('plus');
-    const max = plan(SEAT_PLAN_KEY);
 
-    // Catalog facts the story leans on: the Hub ceiling carries the saved quiz
-    // library and insights, and the personal Plus plan carries the portable AI
-    // key the ceiling does not.
+    // Catalog facts the expectations below rest on: the Hub ceiling carries the
+    // saved quiz library and insights but no AI row, and Plus carries the
+    // portable AI key and a 100 000/day quota.
     expect(hub.features.toSorted(), 'catalog: Hub carries the cumulative set').toEqual([
       'flashcards',
       'quiz',
@@ -211,8 +225,6 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(hub.limits.max_ai_tokens_per_day, 'catalog: Hub carries no AI quota').toBeUndefined();
     expect(plus.features, 'catalog: Plus carries ai.chat').toContain('ai.chat');
     expect(plus.features, 'catalog: Plus carries quiz.templates').toContain('quiz.templates');
-    expect(max.features, 'catalog: Max raises the AI budget').toContain('stats.insights');
-    expect(max.limits.max_ai_tokens_per_day, 'catalog: Max AI budget').toBe(500_000);
     expect(plus.limits.max_ai_tokens_per_day, 'catalog: Plus AI budget').toBe(100_000);
 
     // ── The read-only surface ────────────────────────────────────────────────
@@ -261,10 +273,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     ).data;
     expect(poolsAfter.map((pool) => [pool.planKey, pool.assigned]).toSorted()).toEqual(
       [
-        ['free', 0],
-        ['plus', 0],
-        ['pro', 0],
-        ['max', 1],
+        ['ai_lite', 0],
+        ['ai_max', 0],
+        ['ai_pro', 1],
       ].toSorted(),
     );
 
@@ -276,7 +287,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(assignmentTable.locator('tbody tr').first()).toContainText(
       assignments[0]?.userFullName || tenantUser(tenant, 'student').email,
     );
-    await expect(assignmentTable.locator('tbody tr').first()).toContainText(max.name);
+    // The plan cell falls back to the key: the public catalogue the page labels
+    // from does not serve licence plans (#1511).
+    await expect(assignmentTable.locator('tbody tr').first()).toContainText(SEAT_PLAN_KEY);
     await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
 
     // 5. Server-side guards behind the removed UI: one seat per member, and a
@@ -291,32 +304,36 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     });
 
     const crossPersona = await page.request.post('/api/v1/organization/seats/assignments', {
-      data: { userId: userId(tenant, 'teacher'), poolId: pools.get('free')!.id },
+      data: { userId: userId(tenant, 'teacher'), poolId: pools.get('ai_max')!.id },
     });
-    expect(crossPersona.status(), 'an educator accepts a personal-plan pool').toBe(201);
+    expect(crossPersona.status(), 'an educator accepts a licence pool').toBe(201);
 
     // ── Step 2: the seated member's effective plan and limits ────────────────
     await signOut(page);
     await signIn(page, tenant, 'student', /\/app$/);
 
-    const controlKeys = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
-    // A seated member also gets the ceiling's `stats.insights`: the Max seat is
-    // the layer that carries it, and the learner profile does not.
-    const seatedKeys = [...controlKeys, 'stats.insights'];
+    // The learner profile grants `flashcards`/`quiz` from the Hub ceiling; Plus
+    // adds its portable `ai.chat`/`quiz.templates`; the seat adds `ai.chat`,
+    // which Plus already carries. A seat is not intersected with the ceiling and
+    // carries no content or insight key, so `stats.insights` stays absent (D38).
+    const memberKeys = ['ai.chat', 'flashcards', 'quiz', 'quiz.templates'];
     expect(
       (await entitlements(page)).toSorted(),
-      'the seat adds the ceiling key the personal plan lacks',
-    ).toEqual(seatedKeys.toSorted());
+      'the licence adds no key beyond the profile and the personal plan',
+    ).toEqual(memberKeys.toSorted());
 
     const memberPlan = await planOf(page);
     expect(memberPlan.key, 'the seat is the effective plan').toBe(SEAT_PLAN_KEY);
-    expect(memberPlan.limits.max_flashcards, 'max(hub 5000, seat 25000, plus 1000)').toBe(25_000);
-    expect(memberPlan.limits.max_ai_tokens_per_day, 'max(0, seat 500000, plus 100000)').toBe(
-      500_000,
+    expect(memberPlan.limits.max_flashcards, 'the licence carries no content limit: Hub wins').toBe(
+      5_000,
     );
+    expect(
+      memberPlan.limits.max_ai_tokens_per_day,
+      'max(Hub 0, Pro seat 300000, Plus 100000)',
+    ).toBe(300_000);
 
     const afterUsage = await usage(page);
-    expect(afterUsage.limit, 'the seat raises the AI limit').toBe(500_000);
+    expect(afterUsage.limit, 'the seat sets the AI budget').toBe(300_000);
     expect(afterUsage.plan, 'the effective primary stays the org plan').toBe('hub');
 
     // ── The control member: the seat is per-member, not org-wide ─────────────
@@ -326,7 +343,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(
       (await entitlements(page)).toSorted(),
       'the unseated control keeps its personal keys',
-    ).toEqual(controlKeys.toSorted());
+    ).toEqual(memberKeys.toSorted());
     const controlPlan = await planOf(page);
     expect(controlPlan.key, 'the unseated member resolves their personal plan').toBe('plus');
     expect(controlPlan.limits.max_flashcards, 'the hub floor stays above Plus').toBe(5_000);

@@ -10,10 +10,21 @@
 ## Amendment (2026-11-26, B2 #1493)
 
 Seats are frozen at the UI: `/manage/seats` keeps the pools and assignments tables and every
-`GET`, and hides the purchase, assign and release entries. The organization ladder is capacity
-only, so a sold seat has no feature to add and organization licences arrive in #1511. The
-purchase is driven through the product API, the same `POST` the retired dialog sent; a fresh
-organization still starts without pools, so the pool the case reads back is the one it bought.
+`GET`, and hides the purchase, assign and release entries. The purchase is driven through the
+product API, the same `POST` the retired dialog sent; a fresh organization still starts without
+pools, so the pool the case reads back is the one it bought.
+
+## Amendment (2026-11-28, #1511)
+
+A seat pool is a licence now. `POST /api/v1/organization/seats/pools` accepts a plan that is
+`scope='personal'`, sold on the `seat_pool` channel and carries only `seatEligible` keys, so the
+three AI tiers (`ai_lite` / `ai_pro` / `ai_max`) are the only plans it takes; any individual plan
+answers **422**. The case buys **`ai_lite`** ×3. A licence is AI only: `ai.chat` and a daily quota,
+with no content limit and no non-AI feature.
+
+The pools table shows the plan **key** (`ai_lite`) in its „Plan” cell: the page resolves a pool's
+label from the public plan catalogue, and a licence plan is sold on the `seat_pool` channel only, so
+that read does not list it.
 
 ## Prerequisite (verbatim)
 
@@ -54,14 +65,15 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
 
 1. Sprawdź, że strona pokazuje obie tabele i nie ma przycisków zakupu ani przydziału.
 2. Wykonaj zakup przez API produktu: `POST /api/v1/organization/seats/pools`
-   `{"planKey":"pro","quantity":3}`.
+   `{"planKey":"ai_lite","quantity":3}`.
 3. Spróbuj ilości 0 oraz ujemnej tym samym żądaniem.
 
 ## Expected result
 
 - Strona renderuje „Pule miejsc” i „Przydziały”; przycisków „Kup miejsca”,
   „Przydziel miejsce” i „Zwolnij miejsce” nie ma.
-- `POST` zwraca **201**, a pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne.
+- `POST` zwraca **201**, a pula na liście ma 3 wykupione, 0 przydzielonych, 3 dostępne;
+  wiersz jest planu `ai_lite`.
 - `POST` z ilością 0 lub ujemną zwraca **422** `UNPROCESSABLE_ENTITY` i nie tworzy puli.
 
 ## Observed during the suite walk (qa-env-8, shared app 3010 / DB 54421)
@@ -74,10 +86,11 @@ bun scripts/qa-tenant.ts MGR-SEAT-01 --fresh
   „Przydziałów” nie mają akcji „Zwolnij miejsce”. Widoczna jest notka „Sprzedaż miejsc
   jest wstrzymana do czasu wprowadzenia licencji organizacji.”. Obie tabele i wszystkie
   `GET` działają.
-- Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"pro","quantity":3}` →
-  **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz „StudiQ Pro”
+- Krok 2 — `POST /api/v1/organization/seats/pools` `{"planKey":"ai_lite","quantity":3}` →
+  **201** `{"success":true,...}`. Po odświeżeniu w tabeli jest wiersz `ai_lite`
   z wartościami **3 / 0 / 3**. Wartości są liczone po stronie serwera (`total` /
-  `assigned`), a „Dostępne” to `total - assigned`.
+  `assigned`), a „Dostępne” to `total - assigned`. Wiersz pokazuje klucz planu, bo strona
+  bierze nazwę z publicznego katalogu, a katalog nie serwuje planów licencyjnych (#1511).
 - Krok 3 — `POST` z `quantity: 0` lub `quantity: -2` → **422**
   `{"success":false,"error":"UNPROCESSABLE_ENTITY"}` i pula pozostaje 3 / 0.
 - Po odświeżeniu strony pula nadal ma 3 / 0 / 3 — stan jest trzymany w bazie, nie tylko
