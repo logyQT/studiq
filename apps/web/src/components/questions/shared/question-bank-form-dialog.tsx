@@ -17,6 +17,7 @@ import {
 } from '@studiq/ui';
 import { useEffect, useState } from 'react';
 import type { ContentFormDialogProps } from '@/components/shared/content-form-dialog-props';
+import { contentFormPayload } from '@/lib/share-fields';
 
 export function QuestionBankFormDialog({
   open,
@@ -54,7 +55,14 @@ export function QuestionBankFormDialog({
 
   function handleSubmit() {
     if (!name.trim()) return;
-    onSubmit({ name: name.trim(), description: bankDescription.trim(), visibility, groupIds });
+    onSubmit(
+      contentFormPayload(initialValues, {
+        name: name.trim(),
+        description: bankDescription.trim(),
+        visibility,
+        groupIds,
+      }),
+    );
   }
 
   return (

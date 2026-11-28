@@ -203,7 +203,11 @@ export class FlashcardDeckService {
         map: (item) => ({
           ...item,
           flashcard_count: dbCount(item.flashcard_count),
-          groupIds: dbRows(item.deck_groups).map((g) => g.group_id),
+          // PostgREST does not order an embed, so sort here: the same share set must
+          // come back in the same order on every read (#1557).
+          groupIds: dbRows(item.deck_groups)
+            .map((g) => g.group_id)
+            .toSorted(),
           suspended: suspendedIds.has(item.id),
         }),
       },
@@ -230,7 +234,9 @@ export class FlashcardDeckService {
     return success({
       ...deck,
       flashcard_count: dbCount(deck.flashcard_count),
-      groupIds: dbRows(deck.deck_groups).map((g) => g.group_id),
+      groupIds: dbRows(deck.deck_groups)
+        .map((g) => g.group_id)
+        .toSorted(),
       suspended: suspendedIds.has(id),
     });
   }

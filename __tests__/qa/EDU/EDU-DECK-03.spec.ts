@@ -502,10 +502,11 @@ test.describe('@case:EDU-DECK-03 @area:EDU @prio:P2 deck visibility', () => {
       const restored = await findDeck(page, DECK_NAME);
       expect(restored.id).toBe(deckId);
       expect(restored.visibility, 'deck visibility after restoring „Grupy”').toBe('group');
-      expect(restored.groupIds, 'both selected groups are shared').toEqual([
-        groups.group1,
-        groups.group2,
-      ]);
+      // The read returns the share set sorted by id (#1557), and the seeded ids are
+      // random, so compare sorted: the assertion is about which groups are shared.
+      expect(restored.groupIds.toSorted(), 'both selected groups are shared').toEqual(
+        [groups.group1, groups.group2].toSorted(),
+      );
 
       // ── Step 4: the student sees the deck again ─────────────────────────
       await studentPage.goto('/app/flashcards');
