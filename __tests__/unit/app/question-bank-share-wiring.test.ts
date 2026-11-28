@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  *
  * This is a source check, not a render test: the unit environment has no DOM, so the behaviour is
  * pinned by `__tests__/integration/question-bank-edit-resave.test.ts`. This pins the wiring that
- * feeds it, the way `manage-seats-read-only-source.test.ts` pins a client page.
+ * feeds it, the way `deck-detail-save-error-source.test.ts` pins a client page.
  */
 const DIALOG = path.join(
   process.cwd(),

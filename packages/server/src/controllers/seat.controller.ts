@@ -12,6 +12,10 @@ import {
   UpdatePoolSchema,
 } from '@studiq/server/models/seat.model';
 import { type SeatService, seatService } from '@studiq/server/services/seat.service';
+import {
+  type SubscriptionPlanService,
+  subscriptionPlanService,
+} from '@studiq/server/services/subscription-plan.service';
 
 /**
  * The `/manage/seats` surface (ADR-0015 §4.1, §7): one capability,
@@ -20,7 +24,23 @@ import { type SeatService, seatService } from '@studiq/server/services/seat.serv
  * feature check is the table, not these routes, so nothing else needs them.
  */
 export class SeatController {
-  constructor(private service: SeatService) {}
+  constructor(
+    private service: SeatService,
+    private plans: SubscriptionPlanService,
+  ) {}
+
+  /**
+   * The licence tiers and the friendly pool names on `/manage/seats`. The
+   * channel, scope and active filters belong to the service, so the picker and
+   * `addPool` cannot disagree about what a licence is.
+   */
+  async listLicencePlans(ctx: RequestContext): Promise<ControllerResponse> {
+    await requirePermission(ctx, Permission.ORG_SEAT_MANAGE);
+
+    const result = await this.plans.listLicencePlans();
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
 
   async listPools(ctx: RequestContext): Promise<ControllerResponse> {
     await requirePermission(ctx, Permission.ORG_SEAT_MANAGE);
@@ -104,4 +124,7 @@ export class SeatController {
     return controllerResponse.success(undefined);
   }
 }
-export const seatController = wrapService(new SeatController(seatService), 'seat.controller');
+export const seatController = wrapService(
+  new SeatController(seatService, subscriptionPlanService),
+  'seat.controller',
+);

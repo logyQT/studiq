@@ -9,10 +9,9 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  * Expected: the member returns to the free plan and the pool's available
  * counter grows.
  *
- * Seats are frozen at the UI since #1493: `/manage/seats` keeps the pools and
- * assignments tables and every `GET`, and hides the purchase, assign and release
- * entries. The release is therefore driven through the product API, the same
- * `DELETE` the retired button sent.
+ * `/manage/seats` shows the three licence tiers and the assign and release
+ * controls. The purchase action is not on the page yet, so the release is
+ * driven through the same `DELETE` the release button sends.
  *
  * Tenant (deterministic, fresh run suffix per independent run):
  *
@@ -29,9 +28,8 @@ import { loadTenant, loginAs, test, type QaTenant } from '#test/qa/fixtures/tena
  *
  * Every id comes from the tenant fixture (`tenantKey`/`tenantId`); the spec reads
  * and writes only its own tenant's org, members and seat rows. The pool and
- * assignment tables label a row with the plan key: the seats page resolves the
- * name from the public catalogue, and #1511 serves that read on the `individual`
- * channel, which excludes a licence plan.
+ * assignment rows show the friendly licence name the page resolves from
+ * `GET /organization/seats/licence-plans`.
  */
 
 const CASE = 'MGR-SEAT-03';
@@ -41,6 +39,7 @@ const CASE = 'MGR-SEAT-03';
  * role.
  */
 const SEAT_PLAN_KEY = 'ai_max';
+const SEAT_PLAN_NAME = 'StudiQ AI Max';
 const POOL_SEATS = 2;
 
 /** Polish copy from `ManageSeatsPage` (`apps/web/src/i18n/messages/pl.json`). */
@@ -50,7 +49,6 @@ const COPY = {
   purchasedColumn: 'Wykupione',
   assignedColumn: 'Przydzielone',
   availableColumn: 'Dostępne',
-  frozenNote: 'Sprzedaż miejsc jest wstrzymana do czasu wprowadzenia licencji organizacji.',
 } as const;
 
 const POOLS_URL = '/api/v1/organization/seats/pools';
@@ -251,9 +249,9 @@ test('releasing a seat through the API frees the pool counter and returns the me
     poolsCard.getByRole('columnheader', { name: COPY.availableColumn, exact: true }),
   ).toBeVisible();
 
-  // Neither table shows the licence plan's name (the public catalogue does not
-  // serve it, #1511), so both rows carry the plan key they were bought on.
-  const poolRow = poolsCard.locator('tbody tr').filter({ hasText: SEAT_PLAN_KEY });
+  // Neither table prints the licence plan's key: the page resolves the friendly
+  // name from the licence read, so both rows carry it.
+  const poolRow = poolsCard.locator('tbody tr').filter({ hasText: SEAT_PLAN_NAME });
   await expect(poolRow, 'one row for the case pool').toHaveCount(1);
   await expect(poolRow.locator('td').nth(1), 'purchased seats').toHaveText(String(POOL_SEATS));
   await expect(poolRow.locator('td').nth(2), 'assigned seats before the release').toHaveText('2');
@@ -265,20 +263,18 @@ test('releasing a seat through the API frees the pool counter and returns the me
   const targetRow = assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(target) });
   await expect(targetRow, 'the assignment under test').toHaveCount(1);
   await expect(targetRow.locator('td').nth(1), 'the assignment shows the seat plan').toHaveText(
-    SEAT_PLAN_KEY,
+    SEAT_PLAN_NAME,
   );
 
   const controlRow = assignmentsCard.locator('tbody tr').filter({ hasText: rowLabel(untouched) });
   await expect(controlRow, 'the control assignment').toHaveCount(1);
 
-  // The B2 freeze: the release control is gone, the data stays.
-  await expect(page.getByText(COPY.frozenNote)).toBeVisible();
-  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
-  for (const label of ['Kup miejsca', 'Przydziel miejsce']) {
-    await expect(page.getByRole('button', { name: label }), `${label} is hidden`).toHaveCount(0);
-  }
+  // The page exposes the assign and release controls; purchase is not on it yet.
+  await expect(page.getByRole('button', { name: 'Przydziel miejsce' })).toBeVisible();
+  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Kup miejsca' })).toHaveCount(0);
 
-  // --- Step 1: release through the API the page no longer exposes ----------
+  // --- Step 1: release through the API, then read the page's own state -----
   await call<undefined>(page, `${ASSIGNMENTS_URL}/${target.id}`, { method: 'DELETE' });
 
   // --- Expected result: member back to free, available counter up -----------
@@ -300,7 +296,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
     .locator('[data-slot="card"]')
     .filter({ hasText: COPY.poolsTitle })
     .locator('tbody tr')
-    .filter({ hasText: SEAT_PLAN_KEY });
+    .filter({ hasText: SEAT_PLAN_NAME });
   await expect(poolRowAfterReload.locator('td').nth(1), 'purchased seats are unchanged').toHaveText(
     String(POOL_SEATS),
   );
@@ -320,7 +316,7 @@ test('releasing a seat through the API frees the pool counter and returns the me
     assignmentsCardAfterReload.locator('tbody tr').filter({ hasText: rowLabel(untouched) }),
     'the control assignment persists after a reload',
   ).toHaveCount(1);
-  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
+  await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(1);
 
   // --- API cross-check: exactly the control assignment remains -------------
   const poolsAfter = await call<Pool[]>(page, POOLS_URL);

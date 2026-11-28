@@ -17,10 +17,10 @@ import {
  * longer intersects it (D38), so a seat adds AI and the tier quota and nothing
  * else — no content limit, no non-AI feature.
  *
- * `/manage/seats` keeps the pools and assignments tables and every `GET`, and
- * hides the purchase, assign and release entries (the #1493 freeze), so this
- * case drives the assignment through the API and checks what a seat changes:
- * the member's effective plan and user-scope limits.
+ * `/manage/seats` shows the three licence tiers, the pools and assignments
+ * tables, and the assign and release controls. The purchase action is not on the
+ * page yet, so this case drives the assignment through the API and checks what
+ * a seat changes: the member's effective plan and user-scope limits.
  *
  * Tenant: `__tests__/qa/profiles/MGR-SEAT-02.json` declares the `content` profile
  * on the `hub` plan with an explicit roster (manager `admin`, teacher, `student`
@@ -38,10 +38,11 @@ import {
  * assertion reads the licence, not the personal plan. Nothing global is written.
  *
  * Acceptance points:
- * 1. `/manage/seats` renders both tables and no purchase, assign or release
- *    control (the #1493 freeze).
- * 2. The assignment appears in „Przydziały”, the Pro pool (3 seats) moves from
- *    3/0/3 to 3/1/2, and the other pools keep their counters.
+ * 1. `/manage/seats` renders the three licence tiers with their prices and the
+ *    assign and release controls, and no purchase control.
+ * 2. The assignment appears in „Przydziały” under the friendly licence name,
+ *    the Pro pool (3 seats) moves from 3/0/3 to 3/1/2, and the other pools keep
+ *    their counters.
  * 3. The seated member's `/me/plan` is the licence `ai_pro`; the user-scope
  *    limits resolve `max(org, seat, personal)`: `max_ai_tokens_per_day` is
  *    300 000 (the tier quota, over Plus 100 000 and Hub's absent AI row) and
@@ -69,6 +70,7 @@ const POOLS = [
 ] as const;
 
 const SEAT_PLAN_KEY = 'ai_pro';
+const SEAT_PLAN_NAME = 'StudiQ AI Pro';
 
 interface Pool {
   id: string;
@@ -182,7 +184,7 @@ async function usage(page: Page): Promise<{ limit: number; plan: string }> {
 }
 
 test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member', () => {
-  test('the frozen seat surface keeps its tables and the API still raises the member plan and limits', async ({
+  test('the seat surface renders the tiers and the API still raises the member plan and limits', async ({
     page,
     request,
   }) => {
@@ -199,9 +201,9 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     }
 
     // The org and personal plans are on the public catalogue the numbers below
-    // are derived from. The licence tiers are not: #1511 serves that read on the
-    // `individual` channel, which is also why the seats page labels a pool with
-    // its plan key.
+    // are derived from. The licence tiers are not: that read filters to the
+    // `individual` channel, so the page reads them from
+    // `GET /organization/seats/licence-plans`.
     const catalog = (
       await readEnvelope<PlanInfo[]>(await request.get('/api/v1/subscription-plans'))
     ).data;
@@ -227,7 +229,7 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     expect(plus.features, 'catalog: Plus carries quiz.templates').toContain('quiz.templates');
     expect(plus.limits.max_ai_tokens_per_day, 'catalog: Plus AI budget').toBe(100_000);
 
-    // ── The read-only surface ────────────────────────────────────────────────
+    // ── The seat surface ─────────────────────────────────────────────────────
     await signIn(page, tenant, 'manager', /\/manage$/);
     await resetSeats(page);
     const pools = new Map<string, Pool>();
@@ -241,16 +243,21 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(page.getByText('Pule miejsc')).toBeVisible();
     await expect(page.getByText('Przydziały')).toBeVisible();
 
-    // The B2 freeze: the data is visible, the sale and assignment are not.
-    for (const control of ['Kup miejsca', 'Przydziel miejsce']) {
-      await expect(page.getByRole('button', { name: control }), `${control} is hidden`).toHaveCount(
-        0,
-      );
+    // The tier cards are the licence comparison; purchase is not on the page yet.
+    for (const [name, price] of [
+      ['StudiQ AI Lite', /19,99/],
+      ['StudiQ AI Pro', /39,99/],
+      ['StudiQ AI Max', /79,99/],
+    ] as const) {
+      const card = page.locator('section#licence-tiers li').filter({ hasText: name });
+      await expect(card, `the ${name} tier card`).toHaveCount(1);
+      await expect(card).toContainText(price);
     }
-    await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Kup miejsca' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Przydziel miejsce' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    // ── Step 1: assign through the API the page no longer exposes ────────────
+    // ── Step 1: assign through the API --------------------------------------
     const created = await page.request.post('/api/v1/organization/seats/assignments', {
       data: { userId: userId(tenant, 'student'), poolId: pools.get(SEAT_PLAN_KEY)!.id },
     });
@@ -279,7 +286,8 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
       ].toSorted(),
     );
 
-    // The table renders the new assignment; the release control stays hidden.
+    // The table renders the new assignment under the friendly licence name,
+    // with the release control.
     await page.reload();
     const assignmentTable = page.locator('table').nth(1);
     await expect(assignmentTable.locator('tbody tr')).toHaveCount(1);
@@ -287,13 +295,11 @@ test.describe('@case:MGR-SEAT-02 @area:MGR @prio:P2 assigning a seat to a member
     await expect(assignmentTable.locator('tbody tr').first()).toContainText(
       assignments[0]?.userFullName || tenantUser(tenant, 'student').email,
     );
-    // The plan cell falls back to the key: the public catalogue the page labels
-    // from does not serve licence plans (#1511).
-    await expect(assignmentTable.locator('tbody tr').first()).toContainText(SEAT_PLAN_KEY);
-    await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(0);
+    await expect(assignmentTable.locator('tbody tr').first()).toContainText(SEAT_PLAN_NAME);
+    await expect(page.getByLabel('Zwolnij miejsce')).toHaveCount(1);
 
-    // 5. Server-side guards behind the removed UI: one seat per member, and a
-    //    pool accepts any member because a personal plan carries no audience.
+    // 5. Server-side guards: one seat per member, and a pool accepts any member
+    //    because a personal plan carries no audience.
     const duplicate = await page.request.post('/api/v1/organization/seats/assignments', {
       data: { userId: userId(tenant, 'student'), poolId: pools.get(SEAT_PLAN_KEY)!.id },
     });
